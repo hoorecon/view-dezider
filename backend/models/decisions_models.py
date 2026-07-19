@@ -36,6 +36,10 @@ class Factor(BaseModel):
     # the "decision_link" (Dependent Decision) config so a factor's value can be
     # pulled from another scored decision's option. Generic dict to stay flexible.
     data_source: Optional[Dict[str, Any]] = None
+    # Option-Bank join key: the ORIGINAL template sub-factor id this cloned
+    # factor maps to (bank docs key their `vals` by it). Must survive every
+    # factor save or the scaled Finder loses its indexed pre-filter.
+    source_sub_id: Optional[str] = None
 
 
 class OptionAssessment(BaseModel):

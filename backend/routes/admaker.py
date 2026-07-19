@@ -191,6 +191,159 @@ async def track_click(request: Request, user: dict = Depends(get_current_user)):
     return {"ok": True, "charged_paise": price}
 
 
+# ═══════════════ AdMaker Studio (advertiser self-serve) ═══════════════
+# Same USER login — no separate auth stack. Access ladder:
+#   platform admins → always; Org members with role org_admin/advertiser →
+#   always; everyone else → ACM feature `admaker_program` (Premium paid_pro+).
+async def _require_admaker(user: dict) -> None:
+    role = str(user.get("role") or "").lower()
+    if role in ("admin", "super_admin", "co_admin"):
+        return
+    if user.get("org_id") and str(user.get("org_role") or "").lower() in ("org_admin", "advertiser"):
+        return
+    from core.acm_engine import check_feature_access
+    acm = await check_feature_access(user, "admaker_program", check_quota=False)
+    if acm.get("allowed"):
+        return
+    raise HTTPException(403, acm.get("upgrade_message")
+                        or "AdMaker Studio needs a Premium (Pro) plan or an Org advertiser role.")
+
+
+async def _owned_options(user: dict, template_id: str) -> Dict[str, Dict[str, Any]]:
+    """name_norm → {option_name, solution_id} for options whose bridged
+    Solution-Store listing the caller owns (created_by, or same-org creator)."""
+    t = await db.decider_store_templates.find_one(
+        {"template_id": template_id}, {"_id": 0, "options.name": 1, "options.linked_solution_id": 1})
+    if not t:
+        raise HTTPException(404, "template not found")
+    by_sol: Dict[str, str] = {}
+    for o in t.get("options") or []:
+        if o.get("linked_solution_id") and o.get("name"):
+            by_sol[o["linked_solution_id"]] = o["name"]
+    # Bank options bridged from the Solution Store carry source_ref=solution_id.
+    async for b in db.decider_option_bank.find(
+            {"template_id": template_id, "source": "store_bridge",
+             "source_ref": {"$ne": None}}, {"_id": 0, "name": 1, "source_ref": 1}):
+        by_sol.setdefault(b["source_ref"], b["name"])
+    if not by_sol:
+        return {}
+    owner_q: Dict[str, Any] = {"solution_id": {"$in": list(by_sol.keys())}}
+    if user.get("org_id"):
+        org_user_ids = [m.get("user_id") async for m in db.users.find(
+            {"org_id": user["org_id"]}, {"_id": 0, "user_id": 1})]
+        owner_q["created_by"] = {"$in": list({user["user_id"], *filter(None, org_user_ids)})}
+    else:
+        owner_q["created_by"] = user["user_id"]
+    owned: Dict[str, Dict[str, Any]] = {}
+    async for s in db.solutions_store.find(owner_q, {"_id": 0, "solution_id": 1}):
+        name = by_sol.get(s["solution_id"])
+        if name:
+            owned[ad_auction._norm(name)] = {"option_name": name,
+                                             "solution_id": s["solution_id"]}
+    return owned
+
+
+@router.get("/my/eligible-options")
+async def my_eligible_options(template_id: str, user: dict = Depends(get_current_user)):
+    await _require_admaker(user)
+    owned = await _owned_options(user, template_id)
+    return {"options": sorted(owned.values(), key=lambda x: x["option_name"])}
+
+
+@router.get("/my/bids")
+async def my_bids(user: dict = Depends(get_current_user)):
+    await _require_admaker(user)
+    bids = await db.admaker_bids.find(
+        {"created_by": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    tids = list({b["template_id"] for b in bids})
+    titles = {t["template_id"]: t.get("title") for t in await db.decider_store_templates.find(
+        {"template_id": {"$in": tids}}, {"_id": 0, "template_id": 1, "title": 1}).to_list(200)}
+    for b in bids:
+        b["template_title"] = titles.get(b["template_id"]) or b["template_id"]
+    return {"bids": bids}
+
+
+@router.post("/my/bids")
+async def my_create_bid(request: Request, user: dict = Depends(get_current_user)):
+    await _require_admaker(user)
+    body = await request.json()
+    template_id = str(body.get("template_id") or "").strip()
+    owned = await _owned_options(user, template_id)
+    key = ad_auction._norm(body.get("option_name"))
+    if key not in owned:
+        raise HTTPException(403, "You can only promote options linked to your own "
+                                 "Solution-Store listings.")
+    clean = _clean_bid(body, partial=False)
+    doc = {
+        "bid_id": str(uuid.uuid4()), "template_id": template_id,
+        "advertiser_name": clean.get("advertiser_name") or user.get("name") or "Advertiser",
+        "option_name": owned[key]["option_name"],
+        "solution_id": owned[key]["solution_id"],
+        "region": clean["region"], "bid_paise": clean["bid_paise"],
+        "budget_paise": clean.get("budget_paise", 0),
+        "slot_start": clean.get("slot_start"), "slot_end": clean.get("slot_end"),
+        "daily_start_hour": clean.get("daily_start_hour"),
+        "daily_end_hour": clean.get("daily_end_hour"),
+        "timezone": clean.get("timezone") or "Asia/Kolkata",
+        "status": "active", "spent_paise": 0, "impressions": 0, "clicks": 0,
+        "last_price_paise": None, "org_id": user.get("org_id"),
+        "created_by": user["user_id"], "created_at": _now(), "updated_at": _now(),
+    }
+    await db.admaker_bids.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.put("/my/bids/{bid_id}")
+async def my_update_bid(bid_id: str, request: Request, user: dict = Depends(get_current_user)):
+    await _require_admaker(user)
+    body = await request.json()
+    body.pop("option_name", None)  # target changes require a fresh ownership check
+    update = _clean_bid(body, partial=True)
+    if not update:
+        raise HTTPException(400, "Nothing to update")
+    update["updated_at"] = _now()
+    res = await db.admaker_bids.update_one(
+        {"bid_id": bid_id, "created_by": user["user_id"]}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Bid not found")
+    return await db.admaker_bids.find_one({"bid_id": bid_id}, {"_id": 0})
+
+
+@router.delete("/my/bids/{bid_id}")
+async def my_delete_bid(bid_id: str, user: dict = Depends(get_current_user)):
+    await _require_admaker(user)
+    res = await db.admaker_bids.delete_one({"bid_id": bid_id, "created_by": user["user_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Bid not found")
+    return {"message": "deleted"}
+
+
+@router.get("/my/dashboard")
+async def my_dashboard(user: dict = Depends(get_current_user)):
+    """Advertiser metrics: per-bid + account totals (impressions, clicks, CTR,
+    spend, avg CPC, budget headroom)."""
+    await _require_admaker(user)
+    bids = await db.admaker_bids.find(
+        {"created_by": user["user_id"]}, {"_id": 0}).to_list(200)
+    tids = list({b["template_id"] for b in bids})
+    titles = {t["template_id"]: t.get("title") for t in await db.decider_store_templates.find(
+        {"template_id": {"$in": tids}}, {"_id": 0, "template_id": 1, "title": 1}).to_list(200)}
+    tot_imp = tot_clk = tot_spend = 0
+    rows = []
+    for b in bids:
+        imp, clk, spend = int(b.get("impressions") or 0), int(b.get("clicks") or 0), int(b.get("spent_paise") or 0)
+        tot_imp += imp; tot_clk += clk; tot_spend += spend
+        rows.append({**b, "template_title": titles.get(b["template_id"]) or b["template_id"],
+                     "ctr_pct": round(clk / imp * 100.0, 2) if imp else 0.0,
+                     "avg_cpc_paise": int(spend / clk) if clk else 0})
+    return {"totals": {"bids": len(bids), "impressions": tot_imp, "clicks": tot_clk,
+                       "ctr_pct": round(tot_clk / tot_imp * 100.0, 2) if tot_imp else 0.0,
+                       "spend_paise": tot_spend,
+                       "avg_cpc_paise": int(tot_spend / tot_clk) if tot_clk else 0},
+            "bids": rows}
+
+
 # ═══════════════════ effective config (for the admin UI) ═══════════════════
 @router.get("/resolve-config")
 async def resolve_config(node_id: Optional[str] = None, template_id: Optional[str] = None,

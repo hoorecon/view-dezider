@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-24-06"  # +subscription.sub_auto_renew (disabled by default until Razorpay approves recurring)
+ACM_SEED_VERSION = "2026-07-19-01"  # +ad_programs.admaker_program (AdMaker Studio gate)
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1846,6 +1846,38 @@ ACM_MODULES = [
                     "trial": _full(), "paid_starter": _full(),
                     "paid_pro": _full(), "paid_enterprise": _full(),
                     "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
+    # MODULE: Ad Programs — AdMaker Studio (advertiser self-
+    # serve) gate. Solution owners promote their own options
+    # in DeciderApp results ("Sponsored Solutions"). Premium
+    # (paid_pro+) individual subscribers; Org members get in
+    # via their org role (advertiser / org_admin) regardless
+    # of this matrix (checked in routes/admaker.py).
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "ad_programs",
+        "module_name": "Ad Programs (AdMaker Studio)",
+        "module_icon": "megaphone",
+        "module_description": "Advertiser self-serve: bid on your own Solution-Store listings to appear as Sponsored Solutions below organic DeciderApp results.",
+        "order": 46,
+        "features": [
+            {
+                "feature_id": "admaker_program",
+                "feature_name": "AdMaker Studio — place & manage Sponsored bids",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _locked(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
                 },
             },
         ],

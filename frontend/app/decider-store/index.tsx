@@ -112,6 +112,18 @@ export default function DeciderStoreHome() {
               <Text style={s.signInText}>Sign in</Text>
             </TouchableOpacity>
           )}
+          {isAuthenticated && (
+            <View style={s.heroLinks}>
+              <TouchableOpacity style={s.heroLink} onPress={() => router.push('/admaker-studio' as any)}>
+                <Ionicons name="megaphone" size={13} color="#FDE68A" />
+                <Text style={s.heroLinkText}>AdMaker</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.heroLink} onPress={() => router.push('/adtaker-portal' as any)}>
+                <Ionicons name="globe" size={13} color="#BAE6FD" />
+                <Text style={s.heroLinkText}>Publisher</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
         <View style={s.search}>
           <Ionicons name="search" size={16} color="#94A3B8" />
@@ -184,6 +196,9 @@ const s = StyleSheet.create({
   heroTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A' },
   heroTag: { fontSize: 12.5, color: '#64748B', marginTop: 1 },
   signIn: { backgroundColor: '#4F46E5', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  heroLinks: { flexDirection: 'row', gap: 6 },
+  heroLink: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.14)', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
+  heroLinkText: { color: '#FFF', fontSize: 11.5, fontWeight: '800' },
   signInText: { color: '#FFF', fontWeight: '800', fontSize: 12.5 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 },
   searchInput: { flex: 1, fontSize: 14, color: '#0F172A', padding: 0 },

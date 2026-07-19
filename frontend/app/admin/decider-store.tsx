@@ -258,6 +258,35 @@ export default function AdminDeciderStore() {
       setCatForId(null); load();
     } catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
   };
+  // Option Bank (10M-scale Finder) management
+  const [bankForId, setBankForId] = useState<string | null>(null);
+  const [bankStats, setBankStats] = useState<any>(null);
+  const [bankBusy, setBankBusy] = useState(false);
+  const openBank = async (t: Template) => {
+    setBankForId(t.template_id); setBankStats(null);
+    try {
+      const r = await api.get(`/decider-store/${t.template_id}/bank`);
+      setBankStats(r.data);
+    } catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+  };
+  const bankAction = async (path: string, method: 'post' | 'delete' = 'post') => {
+    if (!bankForId) return;
+    setBankBusy(true);
+    try {
+      const r = method === 'delete'
+        ? await api.delete(`/decider-store/${bankForId}/bank`)
+        : await api.post(`/decider-store/${bankForId}/bank/${path}`);
+      const d = r.data;
+      showAlert('Done', d.deleted != null
+        ? `Deleted ${d.deleted} bank rows`
+        : `${d.source}: +${d.inserted} new, ${d.updated} updated, ${d.skipped || 0} skipped`);
+      const st = await api.get(`/decider-store/${bankForId}/bank`);
+      setBankStats(st.data);
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Try again');
+    } finally { setBankBusy(false); }
+  };
+
   const remove = async (t: Template) => {
     showAlert('Delete template?', t.title, [
       { text: 'Cancel', style: 'cancel' },
@@ -458,6 +487,9 @@ export default function AdminDeciderStore() {
               <TouchableOpacity style={[s.act, { backgroundColor: '#EDE9FE' }]} onPress={() => openCatalog(t)}>
                 <Ionicons name="git-network" size={13} color="#7C3AED" /><Text style={[s.actText, { color: '#7C3AED' }]}>{t.catalog_node_id ? 'Catalog ✓' : 'Catalog'}</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[s.act, { backgroundColor: '#ECFDF5' }]} onPress={() => openBank(t)}>
+                <Ionicons name="server" size={13} color="#059669" /><Text style={[s.actText, { color: '#059669' }]}>Bank</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => openData(t)}>
                 <Ionicons name="create" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Edit Data</Text>
               </TouchableOpacity>
@@ -602,6 +634,47 @@ export default function AdminDeciderStore() {
             <TouchableOpacity style={s.clearMapBtn} onPress={() => setCatalogNode(null)}>
               <Text style={s.clearMapText}>Clear mapping</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Option Bank modal (10M-scale Finder ingestion) */}
+      <Modal visible={!!bankForId} transparent animationType="fade" onRequestClose={() => setBankForId(null)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <View style={s.mHeader}>
+              <Text style={s.mTitle}>Option Bank</Text>
+              <TouchableOpacity onPress={() => setBankForId(null)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
+            </View>
+            <Text style={s.help}>
+              The indexed Option Bank powers the scaled Finder (streamed Top-K over millions of
+              options). Sources: this template&apos;s own options, bridged Solution Store + ReviewNet
+              items, partner APIs and Deep-Import (via the bank ingest API).
+            </Text>
+            {!bankStats ? <ActivityIndicator color="#059669" style={{ marginVertical: 16 }} /> : (
+              <>
+                <Text style={s.bankTotal}>{(bankStats.total || 0).toLocaleString()} options in bank</Text>
+                {Object.entries(bankStats.by_source || {}).map(([src, n]: any) => (
+                  <Text key={src} style={s.bankSrc}>• {src}: {Number(n).toLocaleString()}</Text>
+                ))}
+                <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#059669' }]} disabled={bankBusy}
+                  onPress={() => bankAction('sync-template')}>
+                  <Text style={s.bankBtnText}>Sync template options → bank</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#0369A1' }]} disabled={bankBusy}
+                  onPress={() => bankAction('ingest/solutions')}>
+                  <Text style={s.bankBtnText}>Ingest bridged Solution Store + ReviewNet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#FEE2E2' }]} disabled={bankBusy}
+                  onPress={() => bankAction('', 'delete')}>
+                  <Text style={[s.bankBtnText, { color: '#DC2626' }]}>Clear bank</Text>
+                </TouchableOpacity>
+                <Text style={s.bankApiNote}>
+                  Partner API / Deep-Import bulk loads: POST /api/decider-store/{bankForId}/bank/ingest/partner
+                  or …/ingest/bulk (see SRS v3.23).
+                </Text>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -986,4 +1059,9 @@ const s = StyleSheet.create({
   catName: { flex: 1, fontSize: 13, fontWeight: '600', color: '#0F172A' },
   clearMapBtn: { alignItems: 'center', paddingVertical: 10, marginTop: 6 },
   clearMapText: { fontSize: 12.5, fontWeight: '700', color: '#DC2626' },
+  bankTotal: { fontSize: 15, fontWeight: '900', color: '#059669', marginBottom: 4 },
+  bankSrc: { fontSize: 12, color: '#475569', fontWeight: '600', marginBottom: 2 },
+  bankBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 8 },
+  bankBtnText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  bankApiNote: { fontSize: 10.5, color: '#94A3B8', marginTop: 10, lineHeight: 15 },
 });

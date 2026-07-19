@@ -5,13 +5,25 @@ tracker ID (DZ-PUB-XXXXXXXX). We measure impressions / clicks / conversions
 per tracker and the publisher earns a revenue share (default from the global
 `adtaker_default_share_pct`).
 
+Publisher identity — BOTH rails enabled:
+  • API Key + Secret (minted at creation, secret shown ONCE, stored sha256-
+    hashed) → self-serve API under /adtaker/self/* with X-Adtaker-Key/-Secret
+    headers. No login required (AdSense-style).
+  • Org login portal → publishers linked to an organization (`org_id`) are
+    visible to that org's logged-in members at /adtaker/portal/me.
+
 Routes (under /api):
   Admin:
     GET    /adtaker/publishers                      list + lifetime totals
-    POST   /adtaker/publishers                      create (mints tracker ID)
-    PUT    /adtaker/publishers/{publisher_id}       update
+    POST   /adtaker/publishers                      create (mints tracker + keys)
+    PUT    /adtaker/publishers/{publisher_id}       update (incl. org link)
+    POST   /adtaker/publishers/{publisher_id}/rotate-keys
     DELETE /adtaker/publishers/{publisher_id}       delete
     GET    /adtaker/publishers/{publisher_id}/stats daily series + earnings est.
+  Publisher self-serve (API key + secret headers):
+    GET    /adtaker/self/profile · /adtaker/self/stats · /adtaker/self/apps
+  Org portal (session auth):
+    GET    /adtaker/portal/me
   Public (no auth — served to 3rd-party pages):
     GET    /adtaker/widget.js?tracker=&app=         drop-in <script> loader
     GET    /adtaker/embed/{template_id}?tracker=    self-contained HTML card
@@ -19,16 +31,18 @@ Routes (under /api):
 """
 from __future__ import annotations
 
+import hashlib
 import html as _html
 import json
+import secrets as _secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
-from core.auth import require_admin
+from core.auth import get_current_user, require_admin
 from core.database import db
 from routes.partner_embed_widget import _public_base
 
@@ -48,6 +62,15 @@ def _now() -> str:
 
 def _mint_tracker() -> str:
     return f"DZ-PUB-{uuid.uuid4().hex[:8].upper()}"
+
+
+def _mint_keys() -> tuple:
+    """(api_key, api_secret) — key is public, secret is shown ONCE."""
+    return f"dzk_{_secrets.token_hex(8)}", f"dzs_{_secrets.token_hex(24)}"
+
+
+def _hash_secret(secret: str) -> str:
+    return hashlib.sha256(secret.encode()).hexdigest()
 
 
 async def _pub_by_tracker(tracker: str) -> Optional[Dict[str, Any]]:
@@ -79,7 +102,8 @@ async def log_conversion(tracker_id: str, template_id: str,
 # ══════════════════════════════ admin CRUD ══════════════════════════════
 @router.get("/publishers")
 async def list_publishers(user: dict = Depends(require_admin)):
-    pubs = await db.adtaker_publishers.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    pubs = await db.adtaker_publishers.find(
+        {}, {"_id": 0, "api_secret_hash": 0}).sort("created_at", -1).to_list(500)
     rows = await db.adtaker_events.aggregate([
         {"$group": {"_id": {"t": "$tracker_id", "e": "$event"}, "n": {"$sum": 1}}}
     ]).to_list(3000)
@@ -111,17 +135,24 @@ async def create_publisher(request: Request, user: dict = Depends(require_admin)
         raise HTTPException(400, "revenue_share_pct must be a number")
     if not (0 <= share <= 95):
         raise HTTPException(400, "revenue_share_pct must be 0-95")
+    api_key, api_secret = _mint_keys()
     doc = {
         "publisher_id": f"pub_{uuid.uuid4().hex[:10]}",
         "tracker_id": _mint_tracker(),
+        "api_key": api_key,
+        "api_secret_hash": _hash_secret(api_secret),
         "name": name,
         "site_url": str(body.get("site_url") or "").strip(),
+        "org_id": (str(body.get("org_id") or "").strip() or None),
         "revenue_share_pct": share,
         "status": "active",
         "created_by": user["user_id"], "created_at": _now(), "updated_at": _now(),
     }
     await db.adtaker_publishers.insert_one(doc)
     doc.pop("_id", None)
+    doc.pop("api_secret_hash", None)
+    # The ONLY time the secret is ever returned.
+    doc["api_secret"] = api_secret
     return doc
 
 
@@ -134,6 +165,10 @@ async def update_publisher(publisher_id: str, request: Request,
         update["name"] = str(body["name"]).strip()
     if body.get("site_url") is not None:
         update["site_url"] = str(body["site_url"]).strip()
+    if "org_id" in body:
+        update["org_id"] = (str(body.get("org_id") or "").strip() or None)
+    if "org_id" in body:
+        update["org_id"] = (str(body.get("org_id") or "").strip() or None)
     if body.get("revenue_share_pct") is not None:
         try:
             share = float(body["revenue_share_pct"])
@@ -151,7 +186,22 @@ async def update_publisher(publisher_id: str, request: Request,
         {"publisher_id": publisher_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Publisher not found")
-    return await db.adtaker_publishers.find_one({"publisher_id": publisher_id}, {"_id": 0})
+    return await db.adtaker_publishers.find_one(
+        {"publisher_id": publisher_id}, {"_id": 0, "api_secret_hash": 0})
+
+
+@router.post("/publishers/{publisher_id}/rotate-keys")
+async def rotate_publisher_keys(publisher_id: str, user: dict = Depends(require_admin)):
+    """Mint a fresh API key + secret (old pair stops working immediately).
+    The new secret is returned ONCE."""
+    api_key, api_secret = _mint_keys()
+    res = await db.adtaker_publishers.update_one(
+        {"publisher_id": publisher_id},
+        {"$set": {"api_key": api_key, "api_secret_hash": _hash_secret(api_secret),
+                  "updated_at": _now()}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Publisher not found")
+    return {"publisher_id": publisher_id, "api_key": api_key, "api_secret": api_secret}
 
 
 @router.delete("/publishers/{publisher_id}")
@@ -162,12 +212,7 @@ async def delete_publisher(publisher_id: str, user: dict = Depends(require_admin
     return {"message": "deleted"}
 
 
-@router.get("/publishers/{publisher_id}/stats")
-async def publisher_stats(publisher_id: str, days: int = 30,
-                          user: dict = Depends(require_admin)):
-    pub = await db.adtaker_publishers.find_one({"publisher_id": publisher_id}, {"_id": 0})
-    if not pub:
-        raise HTTPException(404, "Publisher not found")
+async def _stats_payload(pub: Dict[str, Any], days: int) -> Dict[str, Any]:
     days = max(1, min(365, int(days)))
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = await db.adtaker_events.aggregate([
@@ -190,9 +235,81 @@ async def publisher_stats(publisher_id: str, days: int = 30,
     bounty = int(cfg.get("adtaker_conversion_bounty_paise", 500))
     earnings = int(round(totals["conversions"] * bounty * pub.get("revenue_share_pct", 68.0) / 100.0))
     ctr = round(totals["clicks"] / totals["impressions"] * 100.0, 2) if totals["impressions"] else 0.0
-    return {"publisher": pub, "days": days, "totals": totals, "ctr_pct": ctr,
+    pub_safe = {k: v for k, v in pub.items() if k != "api_secret_hash"}
+    return {"publisher": pub_safe, "days": days, "totals": totals, "ctr_pct": ctr,
             "conversion_bounty_paise": bounty, "earnings_estimate_paise": earnings,
             "daily": [{"date": d, **v} for d, v in sorted(daily.items())]}
+
+
+@router.get("/publishers/{publisher_id}/stats")
+async def publisher_stats(publisher_id: str, days: int = 30,
+                          user: dict = Depends(require_admin)):
+    pub = await db.adtaker_publishers.find_one({"publisher_id": publisher_id}, {"_id": 0})
+    if not pub:
+        raise HTTPException(404, "Publisher not found")
+    return await _stats_payload(pub, days)
+
+
+# ═════════════ publisher self-serve (API key + secret, no login) ═════════════
+async def _pub_by_keys(api_key: Optional[str], api_secret: Optional[str]) -> Dict[str, Any]:
+    if not api_key or not api_secret:
+        raise HTTPException(401, "X-Adtaker-Key and X-Adtaker-Secret headers required")
+    pub = await db.adtaker_publishers.find_one({"api_key": api_key.strip()}, {"_id": 0})
+    if not pub or pub.get("api_secret_hash") != _hash_secret(api_secret.strip()):
+        raise HTTPException(401, "Invalid API key or secret")
+    if pub.get("status") != "active":
+        raise HTTPException(403, "Publisher account is paused")
+    return pub
+
+
+@router.get("/self/profile")
+async def self_profile(x_adtaker_key: Optional[str] = Header(None),
+                       x_adtaker_secret: Optional[str] = Header(None)):
+    pub = await _pub_by_keys(x_adtaker_key, x_adtaker_secret)
+    pub.pop("api_secret_hash", None)
+    return pub
+
+
+@router.get("/self/stats")
+async def self_stats(days: int = 30, x_adtaker_key: Optional[str] = Header(None),
+                     x_adtaker_secret: Optional[str] = Header(None)):
+    pub = await _pub_by_keys(x_adtaker_key, x_adtaker_secret)
+    return await _stats_payload(pub, days)
+
+
+@router.get("/self/apps")
+async def self_apps(request: Request, x_adtaker_key: Optional[str] = Header(None),
+                    x_adtaker_secret: Optional[str] = Header(None)):
+    """Embeddable Decider Apps + a ready-to-paste snippet per app."""
+    pub = await _pub_by_keys(x_adtaker_key, x_adtaker_secret)
+    root = _public_base(request)
+    apps = await db.decider_store_templates.find(
+        {"status": "authorized", "is_public": True},
+        {"_id": 0, "template_id": 1, "title": 1, "subtitle": 1, "kind": 1,
+         "install_count": 1}).sort("kind", 1).to_list(200)
+    for a in apps:
+        a["embed_snippet"] = (f'<script src="{root}/api/adtaker/widget.js'
+                              f'?tracker={pub["tracker_id"]}&app={a["template_id"]}"></script>')
+    return {"tracker_id": pub["tracker_id"], "apps": apps}
+
+
+# ═══════════════════ org-login publisher portal (session) ═══════════════════
+@router.get("/portal/me")
+async def portal_me(days: int = 30, user: dict = Depends(get_current_user)):
+    """Publishers linked to the caller's organization (org login rail)."""
+    if not user.get("org_id"):
+        raise HTTPException(403, "This portal is for organization accounts. "
+                                 "Ask the admin to link your org to a publisher.")
+    pubs = await db.adtaker_publishers.find(
+        {"org_id": user["org_id"]}, {"_id": 0, "api_secret_hash": 0}).to_list(50)
+    if not pubs:
+        raise HTTPException(404, "No publisher is linked to your organization yet.")
+    out = []
+    for p in pubs:
+        st = await _stats_payload(p, days)
+        out.append({**p, "stats": {k: st[k] for k in
+                                   ("totals", "ctr_pct", "earnings_estimate_paise", "daily")}})
+    return {"publishers": out}
 
 
 # ═══════════════════════ public widget delivery ═══════════════════════
@@ -291,3 +408,4 @@ async def track_event(request: Request):
     await _log_event(pub, str(body.get("template_id") or ""), event,
                      {"referer": request.headers.get("referer", "")[:300]})
     return {"ok": True}
+

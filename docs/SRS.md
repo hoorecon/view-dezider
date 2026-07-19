@@ -1,6 +1,8 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.22.0", "updated": "2026-07-19" }
+_metadata: { "version": "3.23.0", "updated": "2026-07-19" }
+
+> **v3.23.0 (2026-07-19):** **FRAME @ scale** — Option-Bank Finder (indexed pre-filter → streamed heap Top-K, async jobs with % progress + 'finder' loader-music slot, benchmarked 200K options in 2.65s), 3-source ingestion (Solution Store/ReviewNet · partner APIs · Deep-Import/bulk), **AdMaker Studio** (advertiser self-serve on the SAME user login, ACM-gated `admaker_program`), **AdTaker publisher identity** (API Key + Secret self-serve rail AND Org-login portal). Full section at the end of this document.
 
 > **v3.22.0 (2026-07-19):** **FRAME** — the Finder Ranking & Monetization Engine spec (Filter → Rank → Auction → Merge → Embed) for DeciderApps: organic Top-N (money can never reorder it), hierarchical Min-Cutoff % quality gate from the Central Catalog Manager, **AdMaker** Sponsored-Solutions auction (AdRank = bid × Quality Score, GSP pricing, region + time-slot targeting), and **AdTaker** embeddable widgets with tracker IDs + publisher revenue share. See the full section at the end of this document.
 
@@ -451,3 +453,140 @@ Persisted: `decisions.finder_sponsored_ids` next to `finder_result_ids`.
 | /adtaker/embed/{id} | 250 ms | 2 point reads + 1 insert |
 | /adtaker/publishers/{id}/stats | 400 ms | single aggregation, tracker-indexed |
 | /admaker/track (CPC charge) | 200 ms | 1 read + 2 writes |
+
+---
+## v3.23.0 — FRAME @ Scale: Option Bank · AdMaker Studio · AdTaker Identity (2026-07-19)
+
+Extends FRAME (v3.22.0) from embedded options (≤ ~15K, Mongo doc cap) to a
+search-engine-shaped pipeline able to serve the best Top-N out of **millions of
+options in ≤ 60s**, plus advertiser/publisher identity rails.
+
+### Part A — Option-Bank Finder (10M-option architecture)
+
+**Shape**: candidate generation → light ranking → exact re-rank (the 3-tier
+retrieval shape used by Google Search / Amazon product ranking).
+
+```
+S0 INGEST (pay parse cost ONCE)      decider_option_bank — 1 doc/option/template
+   {bank_id, template_id, name, name_norm, source, source_ref,
+    vals: {<sub_factor_id>: {num, txt}}}       ← pre-normalized at ingest
+   Indexes: (template_id,name_norm) UNIQUE · (template_id,source) · vals.$** wildcard
+
+S1 PRE-FILTER (inside the DB engine) mandatory expectations compile to native
+   Mongo clauses (vals.<sid>.num ranges / .txt regex) → wildcard index prunes
+   N → 10⁴-10⁵ BEFORE Python sees a row. Adaptive funnel preserved:
+   too few → relaxed_all · too many → tighten with optional factors.
+   Non-compilable ops become residual Python checks (never lose correctness).
+
+S2 STREAM + HEAP (O(K) memory)       Motor cursor, projection = only needed
+   vals paths, batch 5K, deterministic FRAME scorer, heapq Top-K (K≥50),
+   progress % per batch, event-loop yield every 1K docs.
+
+S3 RE-RANK + AUCTION                 unchanged v3.22 stages: quality gate →
+   AdRank×GSP auction (bid-targeted bank options are scored individually via
+   name_norm lookup even outside the heap — they still must clear the cutoff).
+
+S4 ASYNC JOB + LOADER MUSIC          finder_jobs {status, progress{pct,label},
+   result, spec_hash}; POST /api/decisions/{id}/finder/jobs (returns cached
+   job when an identical expectations-hash finished < 10 min ago),
+   GET /api/finder/jobs/{job_id}. Frontend polls @1.2s, renders a progress bar
+   + the 'finder' loader-music slot (same UX contract as Deep-Import).
+```
+
+**Decision→Bank join**: cloned factors persist `source_sub_id` (the original
+template sub-factor id — the bank's `vals` key). Legacy clones fall back to
+normalized-name matching (`core.finder_bank.build_leaf_specs`).
+
+**Ingestion — all 3 mandated sources** (`routes/option_bank.py`, admin):
+1. INTERNAL — `POST /decider-store/{tid}/bank/sync-template` (embedded options)
+   and `POST …/bank/ingest/solutions` (Solution-Store items bridged via
+   `decider_template_id` + quantitative_factors keyed by sub-factor id, merged
+   with ReviewNet `baseline_profile`).
+2. PARTNER APIs — `POST …/bank/ingest/partner` {api_url, items_path, name_key,
+   value_map {sub_id: json_key}, headers, limit}: fetch → map → normalize.
+3. DEEP-IMPORT / BULK — `POST …/bank/ingest/bulk` {items[], source} (≤50K/call).
+All rails converge on `finder_bank.bank_upsert` (idempotent on template+name).
+Plus `GET …/bank` (stats by source), `DELETE …/bank?source=` (targeted clear).
+
+**Measured benchmark** (`scripts/seed_finder_bank_synthetic.py`, single worker,
+in-cluster Mongo, BMP template with ~60 leaf sub-factors):
+| Metric | Value |
+|---|---|
+| Bank size | 200,000 synthetic options |
+| S1 prune (indexed) | 200,000 → 25,026 candidates (mandatory+optional stage) |
+| End-to-end pipeline | **2.65 s** |
+| Scan throughput | ~9,400 options/s/worker at 60 leaves (scales inversely with leaf count) |
+| Extrapolation | ≤60s SLA holds up to ~500K SCANNED candidates/worker; the indexed S1 filter is the contract that keeps scanned ≪ N at 10M. Scale-out levers (documented, not yet needed): batch-parallel scan across API pods, per-factor pre-scores, numeric quantization. |
+
+**FRs**
+- FB-FR-1: Bank pipeline MUST return the identical Top-N ordering the embedded scorer would produce for the same specs (same `_score` roll-up math — verified by unit tests).
+- FB-FR-2: S1 MUST execute mandatory filtering inside MongoDB via the wildcard index; residual (non-compilable) constraints MUST still be enforced in-stream.
+- FB-FR-3: Jobs MUST stream progress {pct,label}, terminate in done|error (never spin), and serve a spec-hash cache for identical re-runs within 10 min.
+- FB-FR-4: All ingestion rails normalize values ONCE at ingest and upsert idempotently on (template_id, name_norm); per-source clear supported.
+- FB-FR-5: The finder UI MUST auto-switch to job mode when bank_options > 0 (exposed by GET /finder/config) and keep the classic sync run otherwise.
+
+### Part B — Identity architecture (AdMaker · AdTaker · OrgLogin)
+
+**Identity ladder** (no third auth stack — deliberate):
+```
+Free user ──ACM tier──▶ Premium subscriber ──org membership──▶ Organization (OrgLogin)
+     │                        │                                     │
+  Solution Store         AdMaker Studio                    Publisher Portal (AdTaker)
+  (list solutions)       (admaker_program,                 + white-label Partner Embed
+                          paid_pro+ / trial)               + org member mgmt
+```
+
+**AdMaker = SAME user login.** ACM feature `ad_programs.admaker_program`
+(ga_paid: trial/paid_pro/paid_enterprise full; free/paid_starter locked);
+Org members with `org_role ∈ {org_admin, advertiser}` bypass the matrix;
+platform admins always pass. Enforcement: `routes/admaker._require_admaker`.
+- **AdMaker Studio** (`/admaker-studio`): metrics dashboard (impressions,
+  clicks, CTR, spend, avg CPC, budget headroom — per bid + account totals via
+  `GET /api/admaker/my/dashboard`) + self-serve bid CRUD (`/api/admaker/my/bids*`).
+- **Ownership invariant**: advertisers may ONLY bid on options whose bridged
+  Solution-Store listing they created (or a same-org member created) —
+  `GET /api/admaker/my/eligible-options?template_id=` resolves the whitelist
+  from `options[].linked_solution_id` ∪ bank `source_ref` × `solutions_store.created_by`.
+
+**AdTaker = BOTH rails enabled.**
+1. **API Key + Secret** (AdSense-style, no login): minted at publisher
+   creation — `api_key` (`dzk_…`, public) + `api_secret` (`dzs_…`, returned
+   ONCE, stored sha256-hashed). Admin can rotate
+   (`POST /api/adtaker/publishers/{id}/rotate-keys` → old pair dies instantly).
+   Self-serve API with `X-Adtaker-Key` / `X-Adtaker-Secret` headers:
+   `GET /api/adtaker/self/profile | /self/stats?days= | /self/apps`
+   (apps includes a ready-to-paste embed snippet per Decider App).
+2. **Org-login portal**: admin links a publisher to an organization
+   (`org_id` on the publisher). Org-authenticated members open
+   `/adtaker-portal` (`GET /api/adtaker/portal/me`) → tracker ID, API key,
+   snippet builder, 30-day stats + earnings estimate.
+
+**Widget code (unchanged public contract)**:
+`<script src="{host}/api/adtaker/widget.js?tracker=DZ-PUB-…&app={template_id}"></script>`
+The tracker ID is deliberately public (it ships in page source, like AdSense
+pub-IDs); the key+secret pair guards only the reporting/management API.
+
+**FRs**
+- ID-FR-1: No new auth stack: AdMaker rides user sessions + ACM; AdTaker rides API-key headers or Org sessions.
+- ID-FR-2: API secrets are irrecoverable by design (hash-only storage); rotation invalidates the old pair atomically; secrets are shown exactly once (create/rotate responses + one-time admin modal).
+- ID-FR-3: Publisher responses NEVER include `api_secret_hash`; self-serve endpoints reject paused publishers (403) and bad credentials (401).
+- ID-FR-4: `/adtaker/portal/me` requires an org identity (403 otherwise) and returns only publishers whose org_id matches the caller's org.
+- ID-FR-5: AdMaker Studio surfaces the ACM upgrade message on 403 (frontend shows the locked state + "See plans").
+
+### Admin & UX surface (v3.23)
+- Admin → Decider Store: per-template **Bank** modal (counts by source, sync-template, ingest-solutions, clear; partner/bulk documented as API).
+- Admin → AdMaker & AdTaker → Publishers: API key display + copy, **Rotate keys** (one-time secret modal), Org-link field.
+- `/finder/[id]`: auto job mode with progress bar + % + loader music ('finder' slot, admin-uploadable at Admin → Appearance); results show funnel numbers + duration; Step-7 link hidden in bank mode (bank results aren't embedded options).
+- Decider Store hero (signed-in): quick links to **AdMaker Studio** and **Publisher Portal**.
+
+### Index plan additions (v3.23)
+- `decider_option_bank (template_id,name_norm) unique · (template_id,source) · vals.$** wildcard`
+- `finder_jobs (decision_id,created_at desc) · (user_id,created_at desc)`
+
+### Performance targets (v3.23)
+| Path | Target | Measured |
+|---|---|---|
+| Bank job, ≤200K candidates after S1 | ≤ 30 s | 2.65 s @ 25K candidates / 60 leaves |
+| Bank job, worst case (SLA) | ≤ 60 s | holds to ~500K scanned/worker |
+| Spec-hash cache hit | instant | job reused < 10 min |
+| /adtaker/self/* · /admaker/my/* | ≤ 400 ms p95 | indexed point reads + small aggregates |

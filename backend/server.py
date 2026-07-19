@@ -140,6 +140,7 @@ from routes.partner_embed import router as partner_embed_router
 from routes.partner_embed_widget import router as partner_embed_widget_router
 from routes.admaker import router as admaker_router
 from routes.adtaker import router as adtaker_router
+from routes.option_bank import router as option_bank_router
 from routes.screener import router as screener_router
 from routes.url_analyze import router as url_analyze_router
 from routes.matrix_import import router as matrix_import_router
@@ -255,6 +256,7 @@ api_router.include_router(partner_embed_router)
 api_router.include_router(partner_embed_widget_router)
 api_router.include_router(admaker_router)
 api_router.include_router(adtaker_router)
+api_router.include_router(option_bank_router)
 api_router.include_router(screener_router)
 api_router.include_router(url_analyze_router)
 api_router.include_router(matrix_import_router)

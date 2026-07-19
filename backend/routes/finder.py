@@ -6,15 +6,19 @@ Routes (under /api):
   GET  /decisions/{id}/finder/config          -> resolved defaults for the UI
   POST /decisions/{id}/finder/run             -> ranked Top-N (persists results)
         body: {min_options?, max_options?, top_n?, match_rule?, engine?}
+  POST /decisions/{id}/finder/jobs            -> async Option-Bank run (10M scale)
+  GET  /finder/jobs/{job_id}                  -> poll {status, progress, result}
 """
 from __future__ import annotations
 
+import asyncio
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core import ad_auction, ai_wallet, finder_engine
+from core import ad_auction, ai_wallet, finder_bank, finder_engine
 from core.auth import get_current_user
 from core.database import db
 
@@ -54,8 +58,67 @@ async def finder_config(decision_id: str, user: dict = Depends(get_current_user)
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
     cfg = await _resolve_cfg(decision, {})
+    bank_options = 0
+    if decision.get("source_template_id"):
+        bank_options = await db[finder_bank.BANK].count_documents(
+            {"template_id": decision["source_template_id"]})
     return {"config": cfg, "total_options": len(decision.get("options") or []),
+            "bank_options": bank_options,
             "is_app": decision.get("decider_kind") == "app"}
+
+
+# ═══════════════ Option-Bank async jobs (10M-option scale) ═══════════════
+@router.post("/decisions/{decision_id}/finder/jobs")
+async def finder_job_start(decision_id: str, body: Dict[str, Any] = None,
+                           user: dict = Depends(get_current_user)):
+    body = body or {}
+    decision = await db.decisions.find_one(
+        {"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    tid = decision.get("source_template_id")
+    if not tid:
+        raise HTTPException(400, "This decision has no linked Decider App.")
+    template = await db.decider_store_templates.find_one({"template_id": tid}, {"_id": 0})
+    if not template:
+        raise HTTPException(404, "Source Decider App not found")
+    if await db[finder_bank.BANK].count_documents({"template_id": tid}) == 0:
+        raise HTTPException(400, "No Option Bank for this app — use the standard run.")
+
+    cfg = await _resolve_cfg(decision, body)
+    region = str(body.get("region") or user.get("country") or "global").strip().lower() or "global"
+    specs = finder_bank.build_leaf_specs(decision, template)
+    shash = finder_bank.spec_hash(specs, cfg)
+
+    # Expectations-hash cache: identical spec finished recently → instant.
+    cached = await db.finder_jobs.find_one(
+        {"decision_id": decision_id, "spec_hash": shash, "status": "done"},
+        {"_id": 0}, sort=[("created_at", -1)])
+    if cached and not body.get("force"):
+        age = (datetime.now(timezone.utc)
+               - datetime.fromisoformat(cached["created_at"])).total_seconds()
+        if age < 600:
+            return {"job_id": cached["id"], "cached": True}
+
+    job = {"id": str(uuid.uuid4()), "decision_id": decision_id,
+           "user_id": user["user_id"], "template_id": tid, "spec_hash": shash,
+           "status": "running", "progress": {"pct": 1, "label": "Queued…"},
+           "result": None, "error": None,
+           "created_at": datetime.now(timezone.utc).isoformat(),
+           "updated_at": datetime.now(timezone.utc).isoformat()}
+    await db.finder_jobs.insert_one({**job})
+    asyncio.create_task(finder_bank.run_bank_job(job["id"], decision, template,
+                                                 cfg, user, region))
+    return {"job_id": job["id"], "cached": False}
+
+
+@router.get("/finder/jobs/{job_id}")
+async def finder_job_status(job_id: str, user: dict = Depends(get_current_user)):
+    job = await db.finder_jobs.find_one(
+        {"id": job_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return job
 
 
 async def _llm_enrich(decision: Dict[str, Any], survivors: List[Dict[str, Any]],

@@ -500,10 +500,14 @@ def _build_decision_from_template(t: Dict[str, Any], mode: str, user: dict) -> D
                     "factor_type": f.get("factor_type") or "qualitative",
                     "data_type": _dt_map(sf.get("data_type")),
                     "unit": "%" if is_pct else "",
+                    # Option-Bank join key (bank `vals` are keyed by the
+                    # ORIGINAL template sub-factor id).
+                    "source_sub_id": sf.get("id"),
                 })
         else:
             # single implicit sub-factor -> maps straight onto the parent
             sid_to_fid[subs[0].get("id")] = parent_id
+            factors_out[-1]["source_sub_id"] = subs[0].get("id")
 
     options_out: List[Dict[str, Any]] = []
     for opt in t.get("options") or []:

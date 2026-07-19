@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { safeBack } from '../../src/utils/navigation';
+import { LoaderMusicChip } from '../../src/components/LoaderMusicChip';
 
 type Ranked = { option_id: string; name?: string; worth_percentage: number; ai_rationale?: string };
 
@@ -33,6 +34,8 @@ export default function FinderScreen() {
   const [engine, setEngine] = useState<'deterministic' | 'llm'>('deterministic');
   const [result, setResult] = useState<any>(null);
   const [totalOptions, setTotalOptions] = useState(0);
+  const [bankOptions, setBankOptions] = useState(0);
+  const [progress, setProgress] = useState<{ pct: number; label: string }>({ pct: 0, label: '' });
 
   const loadConfig = useCallback(async () => {
     try {
@@ -47,6 +50,7 @@ export default function FinderScreen() {
       setMatchRule(c.match_rule === 'any' ? 'any' : 'all');
       setEngine(c.engine === 'llm' ? 'llm' : 'deterministic');
       setTotalOptions(cfgR.data.total_options || 0);
+      setBankOptions(cfgR.data.bank_options || 0);
       if (decR?.data?.title) setTitle(decR.data.title);
     } catch (e: any) {
       showAlert('Could not load', e?.response?.data?.detail || 'Try again.');
@@ -57,20 +61,35 @@ export default function FinderScreen() {
 
   const run = async () => {
     setRunning(true);
+    const cfg = {
+      min_options: parseInt(minOpt) || 3,
+      max_options: parseInt(maxOpt) || 15,
+      top_n: parseInt(topN) || 5,
+      match_rule: matchRule,
+      engine,
+    };
     try {
-      const r = await api.post(`/decisions/${id}/finder/run`, {
-        min_options: parseInt(minOpt) || 3,
-        max_options: parseInt(maxOpt) || 15,
-        top_n: parseInt(topN) || 5,
-        match_rule: matchRule,
-        engine,
-      });
-      setResult(r.data);
-      if (r.data?.llm?.out_of_credits) {
-        showAlert('AI credits low', 'Some options were assessed without AI (deterministic fallback). Top up to use full AI assessment.');
+      if (bankOptions > 0) {
+        // Option-Bank scale — async job with % progress + loader music.
+        setProgress({ pct: 1, label: 'Starting…' });
+        const start = await api.post(`/decisions/${id}/finder/jobs`, cfg);
+        const jobId = start.data.job_id;
+        for (;;) {
+          const { data: job } = await api.get(`/finder/jobs/${jobId}`);
+          setProgress(job.progress || { pct: 10, label: 'Working…' });
+          if (job.status === 'done') { setResult(job.result); break; }
+          if (job.status === 'error') throw new Error(job.error || 'Finder job failed');
+          await new Promise((res) => setTimeout(res, 1200));
+        }
+      } else {
+        const r = await api.post(`/decisions/${id}/finder/run`, cfg);
+        setResult(r.data);
+        if (r.data?.llm?.out_of_credits) {
+          showAlert('AI credits low', 'Some options were assessed without AI (deterministic fallback). Top up to use full AI assessment.');
+        }
       }
     } catch (e: any) {
-      showAlert('Finder failed', e?.response?.data?.detail || 'Try again.');
+      showAlert('Finder failed', e?.response?.data?.detail || e?.message || 'Try again.');
     } finally { setRunning(false); }
   };
 
@@ -109,7 +128,11 @@ export default function FinderScreen() {
         {/* Settings */}
         <View style={s.card}>
           <Text style={s.cardTitle}>Finder settings</Text>
-          <Text style={s.help}>Searching {totalOptions} options. Adjust below or just run with the defaults.</Text>
+          <Text style={s.help}>
+            {bankOptions > 0
+              ? `Searching an Option Bank of ${bankOptions.toLocaleString()} options (indexed pipeline).`
+              : `Searching ${totalOptions} options. Adjust below or just run with the defaults.`}
+          </Text>
           <View style={s.row3}>
             <View style={s.num}><Text style={s.numLabel}>Min</Text>
               <TextInput style={s.numInput} value={minOpt} onChangeText={setMinOpt} keyboardType="numeric" /></View>
@@ -139,6 +162,18 @@ export default function FinderScreen() {
               <><Ionicons name="search" size={18} color="#FFF" /><Text style={s.runText}>Run Finder</Text></>
             )}
           </TouchableOpacity>
+          {running && bankOptions > 0 && (
+            <View style={s.progWrap}>
+              <Text style={s.progLabel}>{progress.label || 'Working…'}</Text>
+              <View style={s.progTrack}>
+                <View style={[s.progFill, { width: `${Math.min(100, progress.pct)}%` }]} />
+              </View>
+              <View style={s.progFoot}>
+                <Text style={s.progPct}>{Math.min(100, progress.pct)}%</Text>
+                <LoaderMusicChip slot="finder" enabled={running} />
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Results */}
@@ -147,7 +182,10 @@ export default function FinderScreen() {
             <Text style={s.cardTitle}>Top {result.top?.length || 0} matches</Text>
             <View style={s.funnelRow}>
               <Ionicons name="funnel" size={13} color="#64748B" />
-              <Text style={s.funnel}>{STAGE_LABEL[result.stage] || result.stage} · {result.survivors}/{result.total_options} shortlisted</Text>
+              <Text style={s.funnel}>
+                {STAGE_LABEL[result.stage] || result.stage} · {(result.survivors ?? 0).toLocaleString()}/{(result.total_options ?? 0).toLocaleString()} shortlisted
+                {result.engine === 'bank' && result.duration_ms != null ? ` · ${(result.duration_ms / 1000).toFixed(1)}s` : ''}
+              </Text>
             </View>
             {(result.top || []).length === 0 ? (
               <Text style={s.empty}>No options matched. Loosen your expected values or switch match to ANY.</Text>
@@ -164,10 +202,12 @@ export default function FinderScreen() {
                 <Text style={[s.pct, { color: barColor(r.worth_percentage) }]}>{r.worth_percentage.toFixed(1)}%</Text>
               </View>
             ))}
-            <TouchableOpacity style={s.openBtn} onPress={() => router.push(`/prr/${id}?step=7` as any)}>
-              <Ionicons name="options-outline" size={16} color="#4F46E5" />
-              <Text style={s.openText}>Open full comparison (Step 7)</Text>
-            </TouchableOpacity>
+            {result.engine !== 'bank' && (
+              <TouchableOpacity style={s.openBtn} onPress={() => router.push(`/prr/${id}?step=7` as any)}>
+                <Ionicons name="options-outline" size={16} color="#4F46E5" />
+                <Text style={s.openText}>Open full comparison (Step 7)</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -246,4 +286,10 @@ const s = StyleSheet.create({
   adBadge: { backgroundColor: '#F59E0B', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, marginBottom: 6 },
   adBadgeText: { color: '#FFF', fontSize: 9.5, fontWeight: '900', letterSpacing: 0.6 },
   sponBy: { fontSize: 11, color: '#B45309', fontWeight: '700', marginTop: 2 },
+  progWrap: { marginTop: 14 },
+  progLabel: { fontSize: 13, fontWeight: '600', color: '#0F172A', marginBottom: 8 },
+  progTrack: { height: 8, backgroundColor: '#E2E8F0', borderRadius: 999, overflow: 'hidden' },
+  progFill: { height: 8, backgroundColor: '#4F46E5', borderRadius: 999 },
+  progFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  progPct: { fontSize: 12, fontWeight: '800', color: '#4F46E5' },
 });

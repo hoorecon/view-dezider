@@ -35,6 +35,7 @@ type Bid = {
 };
 type Publisher = {
   publisher_id: string; tracker_id: string; name: string; site_url?: string;
+  api_key?: string; org_id?: string | null;
   revenue_share_pct: number; status: string;
   totals?: { impressions: number; clicks: number; conversions: number };
 };
@@ -73,6 +74,9 @@ export default function AdminAdPrograms() {
   const [pName, setPName] = useState('');
   const [pSite, setPSite] = useState('');
   const [pShare, setPShare] = useState('68');
+  const [pOrg, setPOrg] = useState('');
+  // one-time secret reveal (create / rotate)
+  const [secretInfo, setSecretInfo] = useState<{ api_key: string; api_secret: string } | null>(null);
 
   // snippet modal
   const [snipPub, setSnipPub] = useState<Publisher | null>(null);
@@ -192,22 +196,36 @@ export default function AdminAdPrograms() {
     setEditPub(p || null);
     setPName(p?.name || ''); setPSite(p?.site_url || '');
     setPShare(p ? String(p.revenue_share_pct) : '68');
+    setPOrg(p?.org_id || '');
     setPubOpen(true);
   };
   const savePub = async () => {
     if (!pName.trim()) return showAlert('Name required', 'Give the publisher a name.');
     setBusy(true);
-    const payload = { name: pName.trim(), site_url: pSite.trim(), revenue_share_pct: parseFloat(pShare) || 68 };
+    const payload = { name: pName.trim(), site_url: pSite.trim(),
+      revenue_share_pct: parseFloat(pShare) || 68, org_id: pOrg.trim() || null };
     try {
       if (editPub) await api.put(`/adtaker/publishers/${editPub.publisher_id}`, payload);
       else {
         const r = await api.post('/adtaker/publishers', payload);
-        showAlert('Publisher created', `Tracker ID: ${r.data.tracker_id}`);
+        setSecretInfo({ api_key: r.data.api_key, api_secret: r.data.api_secret });
       }
       setPubOpen(false); load();
     } catch (e: any) {
       showAlert('Save failed', e?.response?.data?.detail || 'Try again');
     } finally { setBusy(false); }
+  };
+  const rotateKeys = (p: Publisher) => {
+    showAlert('Rotate API keys?', 'The old key + secret stop working immediately.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Rotate', style: 'destructive', onPress: async () => {
+        try {
+          const r = await api.post(`/adtaker/publishers/${p.publisher_id}/rotate-keys`);
+          setSecretInfo({ api_key: r.data.api_key, api_secret: r.data.api_secret });
+          load();
+        } catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+      } },
+    ]);
   };
   const togglePub = async (p: Publisher) => {
     try {
@@ -392,8 +410,15 @@ export default function AdminAdPrograms() {
                     <Text style={s.tracker}>{p.tracker_id}</Text>
                     <Ionicons name="copy-outline" size={14} color="#4F46E5" />
                   </TouchableOpacity>
+                  {!!p.api_key && (
+                    <TouchableOpacity style={[s.trackerRow, { marginTop: 6 }]} onPress={() => copy(p.api_key!, 'API key copied')}>
+                      <Text style={[s.tracker, { color: '#0369A1' }]}>{p.api_key}</Text>
+                      <Ionicons name="copy-outline" size={14} color="#0369A1" />
+                    </TouchableOpacity>
+                  )}
                   <View style={s.metaRow}>
                     <Text style={s.meta}>🤝 {p.revenue_share_pct}% share</Text>
+                    {!!p.org_id && <Text style={s.meta}>🏢 org: {p.org_id}</Text>}
                     <Text style={s.meta}>👁 {p.totals?.impressions || 0}</Text>
                     <Text style={s.meta}>👆 {p.totals?.clicks || 0}</Text>
                     <Text style={s.meta}>✅ {p.totals?.conversions || 0} installs</Text>
@@ -404,6 +429,9 @@ export default function AdminAdPrograms() {
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.act, { backgroundColor: '#F3E8FF' }]} onPress={() => openStats(p)}>
                       <Ionicons name="stats-chart" size={13} color="#9333EA" /><Text style={[s.actText, { color: '#9333EA' }]}>Stats</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.act, { backgroundColor: '#E0F2FE' }]} onPress={() => rotateKeys(p)}>
+                      <Ionicons name="key" size={13} color="#0369A1" /><Text style={[s.actText, { color: '#0369A1' }]}>Rotate keys</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.act, { backgroundColor: '#EEF2FF' }]} onPress={() => openPub(p)}>
                       <Ionicons name="create" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Edit</Text>
@@ -584,8 +612,35 @@ export default function AdminAdPrograms() {
             <TextInput style={s.input} value={pSite} onChangeText={setPSite} autoCapitalize="none" placeholder="https://…" placeholderTextColor="#9CA3AF" />
             <Text style={s.label}>Revenue share %</Text>
             <TextInput style={s.input} value={pShare} onChangeText={setPShare} keyboardType="numeric" placeholderTextColor="#9CA3AF" />
+            <Text style={s.label}>Linked Org ID (optional — enables the org-login portal)</Text>
+            <TextInput style={s.input} value={pOrg} onChangeText={setPOrg} autoCapitalize="none" placeholder="org id from Admin → Organizations" placeholderTextColor="#9CA3AF" />
             <TouchableOpacity style={s.primaryBtn} onPress={savePub} disabled={busy}>
               {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.primaryText}>{editPub ? 'Save changes' : 'Create & mint tracker'}</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── One-time API secret reveal ── */}
+      <Modal visible={!!secretInfo} transparent animationType="fade" onRequestClose={() => setSecretInfo(null)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <View style={s.mHead}>
+              <Text style={s.mTitle}>API credentials — shown ONCE</Text>
+              <TouchableOpacity onPress={() => setSecretInfo(null)}><Ionicons name="close" size={22} color="#64748B" /></TouchableOpacity>
+            </View>
+            <Text style={s.label}>API Key (public)</Text>
+            <TouchableOpacity style={s.trackerRow} onPress={() => copy(secretInfo!.api_key, 'API key copied')}>
+              <Text style={s.tracker}>{secretInfo?.api_key}</Text>
+              <Ionicons name="copy-outline" size={14} color="#4F46E5" />
+            </TouchableOpacity>
+            <Text style={s.label}>API Secret (store it now — we only keep a hash)</Text>
+            <TouchableOpacity style={s.trackerRow} onPress={() => copy(secretInfo!.api_secret, 'API secret copied')}>
+              <Text style={[s.tracker, { color: '#DC2626' }]} numberOfLines={1}>{secretInfo?.api_secret}</Text>
+              <Ionicons name="copy-outline" size={14} color="#DC2626" />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.primaryBtn} onPress={() => setSecretInfo(null)}>
+              <Text style={s.primaryText}>I&apos;ve saved the secret</Text>
             </TouchableOpacity>
           </View>
         </View>
