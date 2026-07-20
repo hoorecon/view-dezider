@@ -11362,3 +11362,24 @@ test_plan:
     - "Post-merge UI verify: /decider-store renders Business Model Chooser; admin dashboard Active Modules=34, no console errors; login + one tool still works"
   test_all: false
   test_priority: "high_first"
+
+# REGRESSION FIX — /tools/pros-cons "Updating to the latest version…" hang (2026-07-20)
+agent_communication:
+  - agent: "main"
+    message: |
+      ROOT CAUSE: the splash is the NavErrorBoundary crash fallback in app/_layout.tsx
+      (NOT an OTA gate). Deep-linking /tools/pros-cons crashed with expo-router
+      "Attempted to navigate before mounting the Root Layout component" because
+      app/tools/pros-cons.tsx did router.replace() inside a child useEffect (child
+      effects fire before the root layout is ready on first render). Latent race —
+      prod's static export timing masks it; dev Metro here exposes it. Merge only
+      surfaced it (added decider-store public route; pros-cons.tsx itself unchanged).
+      FIX: app/tools/pros-cons.tsx now returns declarative <Redirect href=...>
+      (expo-router-safe, defers until navigator ready), params preserved; removed
+      unused imports/styles. Self-check: fresh-session deep links to /tools/pros-cons,
+      /tools/swot, /tools/goal-setter all -> /auth/login with no splash/pageerrors.
+test_plan:
+  current_focus:
+    - "Verify /tools/pros-cons deep-link renders (no splash hang), logged-in wizard works + entry can be created; spot-check /tools/swot and /tools/goal-setter"
+  test_all: false
+  test_priority: "high_first"
