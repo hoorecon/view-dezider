@@ -1,73 +1,73 @@
 {
   "summary": {
     "total": 9,
-    "passed": 9,
-    "failed": 0,
-    "success_rate": 100.0
+    "passed": 8,
+    "failed": 1,
+    "success_rate": 88.88888888888889
   },
   "tests": [
     {
       "test": "User Registration",
       "status": "\u2705 PASSED",
       "passed": true,
-      "details": "User: expand_test_1777887818@test.com, Token: session_518362cc93fd...",
-      "timestamp": "2026-05-04T09:43:38.720924"
+      "details": "User: expand_test_1784542963@test.com, Token: session_712f2b0b0719...",
+      "timestamp": "2026-07-20T10:22:43.882188"
     },
     {
       "test": "Make User Admin",
       "status": "\u2705 PASSED",
       "passed": true,
-      "details": "User user_9fccec7570e7 promoted to super_admin",
-      "timestamp": "2026-05-04T09:43:39.070803"
+      "details": "User user_d3f32adb7806 promoted to super_admin",
+      "timestamp": "2026-07-20T10:22:44.192527"
     },
     {
       "test": "ACM Seed",
       "status": "\u2705 PASSED",
       "passed": true,
-      "details": "Seeded 31 modules, 78 features",
-      "timestamp": "2026-05-04T09:43:39.244356"
+      "details": "Seeded 33 modules, 152 features",
+      "timestamp": "2026-07-20T10:22:44.316069"
     },
     {
       "test": "CLD Invalid Module Type Validation",
       "status": "\u2705 PASSED",
       "passed": true,
       "details": "Correctly rejected invalid module type. Found 7 valid types in error message",
-      "timestamp": "2026-05-04T09:43:39.356249"
+      "timestamp": "2026-07-20T10:22:44.423775"
     },
     {
       "test": "CLD List Modules",
       "status": "\u2705 PASSED",
       "passed": true,
       "details": "Endpoint working correctly. Found 0 module CLDs (expected 0 for new user)",
-      "timestamp": "2026-05-04T09:43:39.459745"
+      "timestamp": "2026-07-20T10:22:44.530792"
     },
     {
       "test": "ACM Matrix",
-      "status": "\u2705 PASSED",
-      "passed": true,
-      "details": "Verified: 31 modules, 78 features",
-      "timestamp": "2026-05-04T09:43:39.591617"
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Expected 31 modules, got: 33",
+      "timestamp": "2026-07-20T10:22:44.650274"
     },
     {
       "test": "ACM Conflict Breaker Module",
       "status": "\u2705 PASSED",
       "passed": true,
       "details": "Verified: 4 features - cb_sessions, cb_9_stage_wizard, cb_ai_script_rewrite, cb_dashboard",
-      "timestamp": "2026-05-04T09:43:39.753931"
+      "timestamp": "2026-07-20T10:22:44.776931"
     },
     {
       "test": "ACM AI Solution Assistant Module",
       "status": "\u2705 PASSED",
       "passed": true,
       "details": "Verified: 4 features - ai_assistant_conversations, ai_assistant_quick_ask, ai_assistant_tts, ai_assistant_cross_module",
-      "timestamp": "2026-05-04T09:43:39.884102"
+      "timestamp": "2026-07-20T10:22:44.898072"
     },
     {
       "test": "ACM CLD Engine Module",
       "status": "\u2705 PASSED",
       "passed": true,
       "details": "Verified: 4 features - cld_viewer, cld_module_generate, cld_master_generate, cld_simulation",
-      "timestamp": "2026-05-04T09:43:40.020791"
+      "timestamp": "2026-07-20T10:22:45.012821"
     }
   ]
 }

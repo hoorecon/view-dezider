@@ -14,7 +14,7 @@ from pymongo import MongoClient
 
 BACKEND_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
-DB_NAME = "test_database"
+DB_NAME = "dezider"
 
 results = []
 

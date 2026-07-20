@@ -74,7 +74,7 @@ def make_user_admin(user_id):
     try:
         # Use MongoDB to update user role
         import subprocess
-        cmd = f"""mongosh mongodb://localhost:27017/test_database --quiet --eval 'db.users.updateOne({{user_id: "{user_id}"}}, {{$set: {{role: "super_admin"}}}})' """
+        cmd = f"""mongosh mongodb://localhost:27017/dezider --quiet --eval 'db.users.updateOne({{user_id: "{user_id}"}}, {{$set: {{role: "super_admin"}}}})' """
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
         
         if result.returncode == 0:

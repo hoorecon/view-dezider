@@ -11032,3 +11032,31 @@ agent_communication:
       SELF-CHECKS PASS: (a) canonical + og:url = repo-blueprint-1 origin (playwright-verified);
       (b) POST /api/shared-steps/create -> link https://repo-blueprint-1.preview.emergentagent.com/contribute?share=...
       No code changes in this step. Known warnings left as-is per user (prioritize-factors 500 on malformed body; /api/shares module enum).
+
+# MIGRATION PHASE 3 — Full regression pass (2026-07-20)
+agent_communication:
+  - agent: "main"
+    message: |
+      Ran all 10 root backend_test_*.py suites + 4 /app/tests suites against local backend
+      with restored prod data. RESULTS: 329 PASS / 15 FAIL / 0 migration-caused.
+      Full pass: backend_test_review (11/11), backend_retest_slowapi (10/10),
+      tests/test_dtl_timedezider_timestore (31/31), tests/test_hardening (23/23),
+      tests/test_solution_matrix_orgtype (61/61), tests/test_yoy_and_portal_smoke (13/13).
+      Near pass: backend_test (21/22), backend_test_v2 (8/9), admin_seed (19/20),
+      hardening_review (45/53), public_pulse (50/51), public_pulse_phase2 (50/51),
+      regression (27/28), v372 (blocked at fixture).
+      ALL failures classified (b) stale expectations vs evolved prod data (ACM 31/32→33
+      modules, seed_version 2026-06-01-01→2026-06-23-01, 6→15 decision modes) or
+      (c) fixtures absent from prod DB (org sub-portal slug, embed partner slug, seeded
+      solution, dev-env HSTS expectation). NO app code changed.
+      Config-only test-file patches: DB pointer test_database→dezider in backend_test_v2.py,
+      backend_test_public_pulse.py, backend_test_public_pulse_phase2.py.
+      Local fixture users created (see /app/memory/test_credentials.md — admin@test.com,
+      super@test.com, harden_1777921741@example.com now WORK).
+      RATE_LIMIT_ENABLED=false was set temporarily for the run and RESTORED after.
+      Log sweep: only known pre-existing /api/ai/prioritize-factors 500s (out of scope).
+test_plan:
+  current_focus:
+    - "Phase3 verify: environment still healthy post-regression-run; admin@test.com + prod super_admin login OK; sample module APIs respond; no new console/API errors"
+  test_all: false
+  test_priority: "high_first"
