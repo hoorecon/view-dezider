@@ -64,6 +64,21 @@
 - Local fixture users created (see `memory/test_credentials.md`): admin@test.com,
   super@test.com, migration.tester@test.com, harden_1777921741@example.com.
 
+### Deploy blocker fixed: mobile/.env PullSource (2026-07-20, evening)
+- Prod deploy failed at PullSource: "read env file mobile/.env: no such file".
+- ROOT CAUSE: base image's /etc/supervisor/conf.d/supervisord.conf declares a
+  [program:mobile] service (directory=/app/mobile, yarn expo start --port 3001) —
+  BAKED INTO BASE IMAGE, not in our repo (git ls-files shows no supervisor conf).
+  Deployer derives required env files from that service list -> expects mobile/.env.
+- FIX: created /app/mobile/.env (comment-only stub, no vars) + /app/mobile/README.md;
+  added `.gitignore` exception `!mobile/.env` so it reaches the build context.
+  Deliberately NO package.json in /app/mobile -> mobile service stays FATAL/inert
+  (same as preview), so deployer won't attempt a downstream mobile BUILD.
+- DID NOT follow deployment_agent's incorrect advice to commit backend/.env &
+  frontend/.env (those are platform-injected secrets, MUST stay gitignored).
+- SECURITY TODO for user: memory/test_credentials.md is git-TRACKED and contains the
+  real prod super_admin password; repo is public. Rotate that password + consider
+  gitignoring the file (fork/test agents can use the local admin@test.com fixtures).
 ### Code-review triage + 3 real-defect fixes (2026-07-20, evening)
 - Publish-flow scanner claims triaged: 71 "high-severity" not reproducible (bandit
   high-sev live backend = 0); 91 "undefined" = 6 real F821s; circular import
