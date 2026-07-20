@@ -1,6 +1,12 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.19.0", "updated": "2026-06-15" }
+_metadata: { "version": "3.23.0", "updated": "2026-07-19" }
+
+> **v3.23.0 (2026-07-19):** **FRAME @ scale** — Option-Bank Finder (indexed pre-filter → streamed heap Top-K, async jobs with % progress + 'finder' loader-music slot, benchmarked 200K options in 2.65s), 3-source ingestion (Solution Store/ReviewNet · partner APIs · Deep-Import/bulk), **AdMaker Studio** (advertiser self-serve on the SAME user login, ACM-gated `admaker_program`), **AdTaker publisher identity** (API Key + Secret self-serve rail AND Org-login portal). Full section at the end of this document.
+
+> **v3.22.0 (2026-07-19):** **FRAME** — the Finder Ranking & Monetization Engine spec (Filter → Rank → Auction → Merge → Embed) for DeciderApps: organic Top-N (money can never reorder it), hierarchical Min-Cutoff % quality gate from the Central Catalog Manager, **AdMaker** Sponsored-Solutions auction (AdRank = bid × Quality Score, GSP pricing, region + time-slot targeting), and **AdTaker** embeddable widgets with tracker IDs + publisher revenue share. See the full section at the end of this document.
+
+> **v3.21.0 (2026-07-13):** New non-functional/integration items — **Stripe** payment rail (`/api/stripe/*`, USD/INR, idempotent server-side-priced checkout for wallet + subscriptions); **AI Assistant** model policy = Claude default + quota-based fallback to `gpt-4.1-mini`; **auth** `effective_whatsapp_verified` applied at register/google-session; **build** `opencv-python==4.11.0.86` pin; env adds `SECRET_KEY`/`CORS_ORIGINS`. Architecture overview: see `SYSTEM_KT`.
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -314,3 +320,273 @@ the newest ~500 entries. Test sends MUST NOT mutate schedule/throttle state.
 next/last run), allow inline enable + per-channel toggles, full create/edit
 modal (event picker, schedule, recipients chips, throttle), instant "Test now"
 with per-channel delivery report, and show the recent dispatch log.
+
+---
+## v3.22.0 — FRAME: Finder Ranking & Monetization Engine · AdMaker · AdTaker (2026-07-19)
+
+**FRAME** = **F**ilter → **R**ank → **A**uction → **M**erge → **E**mbed.
+The end-to-end pipeline behind every DeciderApp run. Design principles are borrowed from the
+best-understood ranking/monetization systems in the industry:
+
+| Principle | Borrowed from | FRAME rule |
+|---|---|---|
+| Hard constraints before scoring | Amazon retrieval (candidate generation → ranking) | Mandatory factors FILTER before anything is scored |
+| Organic is sacred | Google Search (organic ≠ paid) | Money can NEVER reorder the organic Top-N |
+| Ads must be relevant | Google AdWords (AdRank = bid × Quality Score) | A bid only competes if its option clears the user's own quality cutoff |
+| Pay the minimum to win | GSP auction (AdWords) | Winner pays `next AdRank ÷ own QS + ₹0.01`, never above its own bid |
+| Config cascades | Apple entitlements / iOS profiles | Cutoff & slot-count inherit down the Central Catalog: leaf overrides win |
+| Distribution network | AdSense @ GDN, Meta Audience Network | Any DeciderApp embeds on 3rd-party sites with a tracker ID + revenue share |
+
+### Stage 1 — FILTER (eligibility funnel) `core/finder_engine.run_finder`
+1. Apply every **Mandatory** (Step-3 "primary") factor that has an expectation as a boolean,
+   operator-aware constraint (`match_rule` = all|any across a factor's sub-factors).
+2. Adaptive funnel: if survivors < `min_options` → **relax** to the full option set
+   (stage=`relaxed_all`); if survivors > `max_options` → **tighten** with Optional
+   ("secondary") factors too (stage=`mandatory+optional`) but only when that still leaves
+   ≥ `min_options`.
+3. Complexity O(options × factors) — deterministic, no LLM in the hot path.
+
+### Stage 2 — RANK (quality scoring, organic)
+- Leaf score (0–100) is operator-directional: `≤ target` → `min(100, target/actual·100)`;
+  `≥ target` → `min(100, actual/target·100)`; `=` → proximity decay; text ops → binary;
+  no expectation → the option's own % value stands in.
+- Roll-up 1: sub-factor → main factor by **Split %** weights (authoring enforces Σ=100).
+- Roll-up 2: main factor → **Overall Suitability %** by the user's Step-4 priority ratings
+  (rating-weighted mean; equal weights when the user skipped prioritization).
+- Optional `engine=llm`: missing actuals are AI-filled for the survivor set ONLY (bounded
+  cost), then the SAME deterministic scorer runs — the math never changes.
+- Organic list = survivors sorted by Overall %, top `top_n` returned. **No pay-to-play.**
+
+### Stage 3 — QUALITY GATE (Min-Cutoff %, hierarchical) `core/ad_auction.resolve_ad_config`
+Only options with `Overall % ≥ min_cutoff_pct` are auction-eligible ("Sponsored" can never
+be a worse match than the user's own bar). Resolution precedence, nearest wins:
+```
+template.finder_settings.min_cutoff_pct / sponsored_n     (per-app override)
+  → CCM node chain: Scenario(L3) → Category(L2) → SubArea(L1) → LifeArea(L0)
+      (catalog_nodes.finder_ad_config, per-key inheritance; -1 clears an override)
+  → global admin defaults (ai_wallet_config.finder_min_cutoff_pct=60, finder_sponsored_n=3)
+```
+Templates map to the catalog via `decider_store_templates.catalog_node_id`
+(Admin → Decider Store → "Catalog" action).
+
+### Stage 4 — AUCTION (AdMaker Program) `core/ad_auction.score_bids`
+- **Bid** = `{template_id, option_name, advertiser_name, region('global'|country),
+  bid_paise, budget_paise, slot_start/slot_end (calendar window),
+  daily_start_hour/daily_end_hour + timezone (dayparting, overnight wrap supported),
+  status active|paused|exhausted}` in `admaker_bids`.
+- Liveness (`bid_is_live`, pure): active + budget not exhausted + region matches the
+  runner's region (body.region → user.country → 'global') + inside calendar window +
+  inside daily hours in the bid's IANA timezone.
+- **AdRank = bid_paise × QualityScore**, QS = Overall %/100 (floor 0.05). One slot per
+  option (strongest bid wins the option). Top `sponsored_n` by AdRank win slots.
+- **GSP price**: winner i pays `⌊AdRank(i+1) ÷ QS(i)⌋ + 1` paise, clamped to
+  `[reserve=1, own bid]`; last winner pays the reserve. Charged **per click** (CPC) via
+  `POST /api/admaker/track`; budget exhaustion auto-pauses (status=exhausted).
+- Impressions logged per run (`admaker_events`), the computed CPC snapshots to
+  `last_price_paise`.
+
+### Stage 5 — MERGE (assembly, trust-preserving)
+`POST /api/decisions/{id}/finder/run` returns:
+```
+organic:   result.top (unchanged, ranked by Overall % only)
+sponsored: result.sponsored — rendered BELOW the organic list, each card labelled
+           "AD / Promoted by <advertiser>"; bid amounts & CPC prices NEVER exposed
+ad_config: {min_cutoff_pct, sponsored_n, region, eligible_above_cutoff}
+```
+Persisted: `decisions.finder_sponsored_ids` next to `finder_result_ids`.
+
+### Stage 6 — EMBED (AdTaker Program) `routes/adtaker.py`
+- **Publisher** = `{publisher_id, tracker_id "DZ-PUB-XXXXXXXX", name, site_url,
+  revenue_share_pct (default ai_wallet_config.adtaker_default_share_pct=68),
+  status}` in `adtaker_publishers` (tracker minted server-side, AdSense-style).
+- Drop-in snippet (any 3rd-party site):
+  `<script src="{host}/api/adtaker/widget.js?tracker=DZ-PUB-…&app={template_id}"></script>`
+  → injects a responsive iframe → `GET /api/adtaker/embed/{template_id}?tracker=…`
+  (self-contained HTML card, `frame-ancestors *`, brand color from the template).
+- Telemetry: embed render logs an **impression**; the CTA beacons a **click**
+  (`POST /api/adtaker/track`, public) and deep-links to
+  `/decider-store/{id}?ref={tracker}`; a clone with `ref` logs a **conversion**
+  (`routes/decider_store.clone` → `adtaker.log_conversion`). All events in
+  `adtaker_events` keyed by tracker.
+- Earnings estimate (per publisher stats): `conversions × adtaker_conversion_bounty_paise
+  (default 500) × revenue_share_pct%`. CPC-share upgrade path reserved for when AdMaker
+  clicks are attributed through embeds.
+
+### Functional requirements
+- F-FR-1: Finder MUST return organic Top-N ranked ONLY by Overall Suitability % (funnel → score → sort); no monetization signal may affect organic order or membership.
+- F-FR-2: Sponsored candidates MUST clear the resolved Min-Cutoff %; the resolution MUST honour template → CCM-chain → global precedence with per-key (cutoff vs slots) inheritance.
+- F-FR-3: AdRank MUST equal bid × QualityScore; slot pricing MUST be GSP clamped to [reserve, own bid]; billing is per click; budget exhaustion MUST auto-set status=exhausted.
+- F-FR-4: Bids MUST support region targeting ('global' or country code) and time-slot targeting (calendar window + daily hours in an IANA timezone, overnight wrap included).
+- F-FR-5: Sponsored results MUST render BELOW organic, labelled "AD"/"Promoted by", and MUST NOT expose bid amounts or CPC prices to end users.
+- F-FR-6: Admin CRUD: `/api/admaker/bids*` (bids), `/api/adtaker/publishers*` (publishers), `PUT /api/catalog/nodes/{id}` (finder_min_cutoff_pct / finder_sponsored_n, -1 clears), `PUT /api/admin/ai-wallet/config` (global defaults) — all admin/super-admin gated.
+- F-FR-7: `GET /api/admaker/resolve-config?node_id|template_id` MUST expose the effective config AND the source of each value (template / node / global) for admin transparency.
+- F-FR-8: AdTaker widget delivery MUST be public + iframe-safe; every embed render logs an impression, CTA click logs a click, attributed clone logs a conversion — all keyed by tracker ID; unknown/paused trackers are rejected (404).
+- F-FR-9: Publisher stats MUST return totals, CTR, daily series and an earnings estimate derived from the conversion bounty × revenue share.
+
+### Non-functional requirements
+- NFR-FR-1: Auction math (`bid_is_live`, `score_bids`) is pure/DB-free (unit-testable); auction adds ≤1 indexed query per Finder run; O(bids log bids).
+- NFR-FR-2: Ad-config resolution ≤ 8 ancestor hops, each an indexed point read.
+- NFR-FR-3: Telemetry writes are fire-and-forget relative to UX; failures never break a Finder run, an embed render, or a clone.
+- NFR-FR-4: Tracker IDs are unguessable (uuid4-derived) and unique-indexed; public track endpoint validates event whitelist + active tracker.
+- NFR-FR-5: `widget.js` cacheable 5 min; embed HTML `no-store` (fresh impression accounting).
+
+### Data model additions
+- `catalog_nodes.finder_ad_config = {min_cutoff_pct?, sponsored_n?}` (any level, inherited).
+- `decider_store_templates.catalog_node_id`; `finder_settings += {min_cutoff_pct?, sponsored_n?}`.
+- `decisions.finder_sponsored_ids`.
+- NEW `admaker_bids`, `admaker_events` (impression|click, price_paise), `adtaker_publishers`, `adtaker_events` (impression|click|conversion).
+- `ai_wallet_config += {finder_min_cutoff_pct, finder_sponsored_n, adtaker_default_share_pct, adtaker_conversion_bounty_paise}`.
+
+### Index plan additions (v3.22)
+- `admaker_bids (template_id, status)`, `admaker_bids.created_at desc`
+- `admaker_events (bid_id, ts desc)`, `(template_id, ts desc)`
+- `adtaker_publishers.tracker_id` unique, `.publisher_id` unique
+- `adtaker_events (tracker_id, ts desc)`, `(template_id, event)`
+
+### API surface (v3.22)
+`/api/admaker/*` (6 routes) + `/api/adtaker/*` (9 routes) + finder-run response extension + catalog-node ad-config fields. Admin UI: `/admin/ad-programs` (Bids · Publishers · Cutoffs & Slots), Decider-Store "Catalog" mapping + global Sponsored defaults in "Finder & Landing".
+
+### Performance targets (v3.22)
+| Endpoint family | Target p95 | Notes |
+|---|---|---|
+| finder/run incl. auction (deterministic) | 600 ms | auction adds 1 indexed query + O(bids log bids) |
+| /adtaker/embed/{id} | 250 ms | 2 point reads + 1 insert |
+| /adtaker/publishers/{id}/stats | 400 ms | single aggregation, tracker-indexed |
+| /admaker/track (CPC charge) | 200 ms | 1 read + 2 writes |
+
+---
+## v3.23.0 — FRAME @ Scale: Option Bank · AdMaker Studio · AdTaker Identity (2026-07-19)
+
+Extends FRAME (v3.22.0) from embedded options (≤ ~15K, Mongo doc cap) to a
+search-engine-shaped pipeline able to serve the best Top-N out of **millions of
+options in ≤ 60s**, plus advertiser/publisher identity rails.
+
+### Part A — Option-Bank Finder (10M-option architecture)
+
+**Shape**: candidate generation → light ranking → exact re-rank (the 3-tier
+retrieval shape used by Google Search / Amazon product ranking).
+
+```
+S0 INGEST (pay parse cost ONCE)      decider_option_bank — 1 doc/option/template
+   {bank_id, template_id, name, name_norm, source, source_ref,
+    vals: {<sub_factor_id>: {num, txt}}}       ← pre-normalized at ingest
+   Indexes: (template_id,name_norm) UNIQUE · (template_id,source) · vals.$** wildcard
+
+S1 PRE-FILTER (inside the DB engine) mandatory expectations compile to native
+   Mongo clauses (vals.<sid>.num ranges / .txt regex) → wildcard index prunes
+   N → 10⁴-10⁵ BEFORE Python sees a row. Adaptive funnel preserved:
+   too few → relaxed_all · too many → tighten with optional factors.
+   Non-compilable ops become residual Python checks (never lose correctness).
+
+S2 STREAM + HEAP (O(K) memory)       Motor cursor, projection = only needed
+   vals paths, batch 5K, deterministic FRAME scorer, heapq Top-K (K≥50),
+   progress % per batch, event-loop yield every 1K docs.
+
+S3 RE-RANK + AUCTION                 unchanged v3.22 stages: quality gate →
+   AdRank×GSP auction (bid-targeted bank options are scored individually via
+   name_norm lookup even outside the heap — they still must clear the cutoff).
+
+S4 ASYNC JOB + LOADER MUSIC          finder_jobs {status, progress{pct,label},
+   result, spec_hash}; POST /api/decisions/{id}/finder/jobs (returns cached
+   job when an identical expectations-hash finished < 10 min ago),
+   GET /api/finder/jobs/{job_id}. Frontend polls @1.2s, renders a progress bar
+   + the 'finder' loader-music slot (same UX contract as Deep-Import).
+```
+
+**Decision→Bank join**: cloned factors persist `source_sub_id` (the original
+template sub-factor id — the bank's `vals` key). Legacy clones fall back to
+normalized-name matching (`core.finder_bank.build_leaf_specs`).
+
+**Ingestion — all 3 mandated sources** (`routes/option_bank.py`, admin):
+1. INTERNAL — `POST /decider-store/{tid}/bank/sync-template` (embedded options)
+   and `POST …/bank/ingest/solutions` (Solution-Store items bridged via
+   `decider_template_id` + quantitative_factors keyed by sub-factor id, merged
+   with ReviewNet `baseline_profile`).
+2. PARTNER APIs — `POST …/bank/ingest/partner` {api_url, items_path, name_key,
+   value_map {sub_id: json_key}, headers, limit}: fetch → map → normalize.
+3. DEEP-IMPORT / BULK — `POST …/bank/ingest/bulk` {items[], source} (≤50K/call).
+All rails converge on `finder_bank.bank_upsert` (idempotent on template+name).
+Plus `GET …/bank` (stats by source), `DELETE …/bank?source=` (targeted clear).
+
+**Measured benchmark** (`scripts/seed_finder_bank_synthetic.py`, single worker,
+in-cluster Mongo, BMP template with ~60 leaf sub-factors):
+| Metric | Value |
+|---|---|
+| Bank size | 200,000 synthetic options |
+| S1 prune (indexed) | 200,000 → 25,026 candidates (mandatory+optional stage) |
+| End-to-end pipeline | **2.65 s** |
+| Scan throughput | ~9,400 options/s/worker at 60 leaves (scales inversely with leaf count) |
+| Extrapolation | ≤60s SLA holds up to ~500K SCANNED candidates/worker; the indexed S1 filter is the contract that keeps scanned ≪ N at 10M. Scale-out levers (documented, not yet needed): batch-parallel scan across API pods, per-factor pre-scores, numeric quantization. |
+
+**FRs**
+- FB-FR-1: Bank pipeline MUST return the identical Top-N ordering the embedded scorer would produce for the same specs (same `_score` roll-up math — verified by unit tests).
+- FB-FR-2: S1 MUST execute mandatory filtering inside MongoDB via the wildcard index; residual (non-compilable) constraints MUST still be enforced in-stream.
+- FB-FR-3: Jobs MUST stream progress {pct,label}, terminate in done|error (never spin), and serve a spec-hash cache for identical re-runs within 10 min.
+- FB-FR-4: All ingestion rails normalize values ONCE at ingest and upsert idempotently on (template_id, name_norm); per-source clear supported.
+- FB-FR-5: The finder UI MUST auto-switch to job mode when bank_options > 0 (exposed by GET /finder/config) and keep the classic sync run otherwise.
+
+### Part B — Identity architecture (AdMaker · AdTaker · OrgLogin)
+
+**Identity ladder** (no third auth stack — deliberate):
+```
+Free user ──ACM tier──▶ Premium subscriber ──org membership──▶ Organization (OrgLogin)
+     │                        │                                     │
+  Solution Store         AdMaker Studio                    Publisher Portal (AdTaker)
+  (list solutions)       (admaker_program,                 + white-label Partner Embed
+                          paid_pro+ / trial)               + org member mgmt
+```
+
+**AdMaker = SAME user login.** ACM feature `ad_programs.admaker_program`
+(ga_paid: trial/paid_pro/paid_enterprise full; free/paid_starter locked);
+Org members with `org_role ∈ {org_admin, advertiser}` bypass the matrix;
+platform admins always pass. Enforcement: `routes/admaker._require_admaker`.
+- **AdMaker Studio** (`/admaker-studio`): metrics dashboard (impressions,
+  clicks, CTR, spend, avg CPC, budget headroom — per bid + account totals via
+  `GET /api/admaker/my/dashboard`) + self-serve bid CRUD (`/api/admaker/my/bids*`).
+- **Ownership invariant**: advertisers may ONLY bid on options whose bridged
+  Solution-Store listing they created (or a same-org member created) —
+  `GET /api/admaker/my/eligible-options?template_id=` resolves the whitelist
+  from `options[].linked_solution_id` ∪ bank `source_ref` × `solutions_store.created_by`.
+
+**AdTaker = BOTH rails enabled.**
+1. **API Key + Secret** (AdSense-style, no login): minted at publisher
+   creation — `api_key` (`dzk_…`, public) + `api_secret` (`dzs_…`, returned
+   ONCE, stored sha256-hashed). Admin can rotate
+   (`POST /api/adtaker/publishers/{id}/rotate-keys` → old pair dies instantly).
+   Self-serve API with `X-Adtaker-Key` / `X-Adtaker-Secret` headers:
+   `GET /api/adtaker/self/profile | /self/stats?days= | /self/apps`
+   (apps includes a ready-to-paste embed snippet per Decider App).
+2. **Org-login portal**: admin links a publisher to an organization
+   (`org_id` on the publisher). Org-authenticated members open
+   `/adtaker-portal` (`GET /api/adtaker/portal/me`) → tracker ID, API key,
+   snippet builder, 30-day stats + earnings estimate.
+
+**Widget code (unchanged public contract)**:
+`<script src="{host}/api/adtaker/widget.js?tracker=DZ-PUB-…&app={template_id}"></script>`
+The tracker ID is deliberately public (it ships in page source, like AdSense
+pub-IDs); the key+secret pair guards only the reporting/management API.
+
+**FRs**
+- ID-FR-1: No new auth stack: AdMaker rides user sessions + ACM; AdTaker rides API-key headers or Org sessions.
+- ID-FR-2: API secrets are irrecoverable by design (hash-only storage); rotation invalidates the old pair atomically; secrets are shown exactly once (create/rotate responses + one-time admin modal).
+- ID-FR-3: Publisher responses NEVER include `api_secret_hash`; self-serve endpoints reject paused publishers (403) and bad credentials (401).
+- ID-FR-4: `/adtaker/portal/me` requires an org identity (403 otherwise) and returns only publishers whose org_id matches the caller's org.
+- ID-FR-5: AdMaker Studio surfaces the ACM upgrade message on 403 (frontend shows the locked state + "See plans").
+
+### Admin & UX surface (v3.23)
+- Admin → Decider Store: per-template **Bank** modal (counts by source, sync-template, ingest-solutions, clear; partner/bulk documented as API).
+- Admin → AdMaker & AdTaker → Publishers: API key display + copy, **Rotate keys** (one-time secret modal), Org-link field.
+- `/finder/[id]`: auto job mode with progress bar + % + loader music ('finder' slot, admin-uploadable at Admin → Appearance); results show funnel numbers + duration; Step-7 link hidden in bank mode (bank results aren't embedded options).
+- Decider Store hero (signed-in): quick links to **AdMaker Studio** and **Publisher Portal**.
+
+### Index plan additions (v3.23)
+- `decider_option_bank (template_id,name_norm) unique · (template_id,source) · vals.$** wildcard`
+- `finder_jobs (decision_id,created_at desc) · (user_id,created_at desc)`
+
+### Performance targets (v3.23)
+| Path | Target | Measured |
+|---|---|---|
+| Bank job, ≤200K candidates after S1 | ≤ 30 s | 2.65 s @ 25K candidates / 60 leaves |
+| Bank job, worst case (SLA) | ≤ 60 s | holds to ~500K scanned/worker |
+| Spec-hash cache hit | instant | job reused < 10 min |
+| /adtaker/self/* · /admaker/my/* | ≤ 400 ms p95 | indexed point reads + small aggregates |

@@ -133,6 +133,21 @@ async def get_solution_finder(entry_id: str, user: dict = Depends(get_current_us
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    # Central → SF status reconciliation: pushed action-plan items mirror the
+    # live status of their linked central action item (kept in sync by CTT /
+    # Lifestyle / Action Center edits) so the Action Plan step never goes stale.
+    plan = entry.get("action_plan_items") or []
+    linked_ids = [it.get("action_id") for it in plan
+                  if isinstance(it, dict) and it.get("action_id")]
+    if linked_ids:
+        cur = await db.action_items.find(
+            {"action_id": {"$in": linked_ids}, "user_id": user["user_id"]},
+            {"_id": 0, "action_id": 1, "status": 1},
+        ).to_list(500)
+        status_by_id = {c["action_id"]: c.get("status") for c in cur}
+        for it in plan:
+            if isinstance(it, dict) and it.get("action_id") in status_by_id:
+                it["status"] = status_by_id[it["action_id"]]
     return entry
 
 
@@ -199,6 +214,28 @@ def _strip_code_fence(txt: str) -> str:
     return t.strip()
 
 
+def _parse_ai_json(txt: str):
+    """Lenient JSON parse for LLM output — strips code fences, then falls back
+    to extracting the outermost {...} block. Reduces intermittent 502s when the
+    model wraps JSON in prose/markdown. Returns a dict or None."""
+    import json as _json
+    import re as _re
+    if not txt:
+        return None
+    cleaned = _strip_code_fence(txt)
+    try:
+        return _json.loads(cleaned)
+    except Exception:
+        pass
+    m = _re.search(r"\{.*\}", cleaned, _re.DOTALL)
+    if m:
+        try:
+            return _json.loads(m.group(0))
+        except Exception:
+            return None
+    return None
+
+
 def _clamp_pct(v) -> int:
     try:
         n = int(round(float(v)))
@@ -207,12 +244,21 @@ def _clamp_pct(v) -> int:
     return max(0, min(100, n))
 
 
+def _lim(v, d=2):
+    """Clamp an AI 'max items per parent' limit to 1–10 (default 2). Keeps
+    AI auto-fill from generating an unusable explosion of action items."""
+    try:
+        return max(1, min(10, int(v)))
+    except Exception:
+        return d
+
+
 @router.post("/solution-finders/ai/suggest-solutions")
 async def ai_suggest_solutions(request: Request, user: dict = Depends(get_current_user)):
     """Q3 — AI-suggest root-cause-specific solutions for the given root causes.
 
     Body: {
-      area_of_life, smart_goal,
+      area_of_life, smart_goal, max_per_rca?,
       root_causes: [{rca_id, text, concern_text?, existing?: [str]}]
     }
     Returns: { suggestions: { <rca_id>: [str, ...] } }
@@ -224,6 +270,7 @@ async def ai_suggest_solutions(request: Request, user: dict = Depends(get_curren
     body = await request.json()
     area = (body.get("area_of_life") or "").strip()
     goal = (body.get("smart_goal") or "").strip()
+    max_per_rca = _lim(body.get("max_per_rca"), 2)
     rcas = [r for r in (body.get("root_causes") or []) if r.get("rca_id") and (r.get("text") or "").strip()]
     if not rcas:
         return {"suggestions": {}}
@@ -248,7 +295,7 @@ async def ai_suggest_solutions(request: Request, user: dict = Depends(get_curren
     prompt = (
         f"Life area: {area or 'general'}. SMART goal: {goal or '(not specified)'}.\n"
         f"Root causes:\n{rca_block}\n\n"
-        "Propose 2-3 NEW, distinct solutions per root cause. Do not repeat any "
+        f"Propose up to {max_per_rca} NEW, distinct solution(s) per root cause. Do not repeat any "
         "'already listed' items. Each solution is a short imperative phrase (max ~14 words).\n"
         'Return JSON exactly as: {"suggestions": {"<rca_id>": ["solution 1", "solution 2"]}}'
     )
@@ -267,11 +314,12 @@ async def ai_suggest_solutions(request: Request, user: dict = Depends(get_curren
             ),
         )
 
-    try:
-        data = _json.loads(_strip_code_fence(txt))
-        raw = data.get("suggestions") or data
-    except Exception:
+    data = _parse_ai_json(txt)
+    if data is None:
         raise HTTPException(status_code=502, detail="AI returned an unreadable response — please try again.")
+    raw = data.get("suggestions") if isinstance(data, dict) else None
+    if raw is None:
+        raw = data
 
     valid_ids = {r["rca_id"] for r in rcas}
     out: Dict = {}
@@ -280,7 +328,7 @@ async def ai_suggest_solutions(request: Request, user: dict = Depends(get_curren
             continue
         items = [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
         if items:
-            out[k] = items[:5]
+            out[k] = items[:max_per_rca]
     return {"suggestions": out}
 
 
@@ -304,6 +352,9 @@ async def ai_suggest_risks(request: Request, user: dict = Depends(get_current_us
     body = await request.json()
     area = (body.get("area_of_life") or "").strip()
     goal = (body.get("smart_goal") or "").strip()
+    max_risks = _lim(body.get("max_risks_per_solution"), 2)
+    max_mit = _lim(body.get("max_mitigations_per_risk"), 2)
+    max_con = _lim(body.get("max_contingencies_per_risk"), 2)
     sols = [s for s in (body.get("solutions") or []) if s.get("sol_id") and (s.get("text") or "").strip()]
     if not sols:
         return {"suggestions": {}}
@@ -327,9 +378,10 @@ async def ai_suggest_risks(request: Request, user: dict = Depends(get_current_us
     prompt = (
         f"Life area: {area or 'general'}. SMART goal: {goal or '(not specified)'}.\n"
         f"Solutions:\n{sol_block}\n\n"
-        "For each solution, propose 1-3 NEW distinct risks (do not repeat 'already-listed' "
-        "ones). For each risk give: name (short), impact_pct (0-100), probability_pct (0-100), "
-        "1-2 mitigations, and 1-2 contingencies (short imperative phrases).\n"
+        f"For each solution, propose up to {max_risks} NEW distinct risk(s) (do not repeat "
+        f"'already-listed' ones). For each risk give: name (short), impact_pct (0-100), "
+        f"probability_pct (0-100), up to {max_mit} mitigation(s), and up to {max_con} "
+        "contingency(ies) (short imperative phrases).\n"
         'Return JSON exactly as: {"suggestions": {"<sol_id>": [{"name": "...", '
         '"impact_pct": 60, "probability_pct": 40, "mitigations": ["..."], '
         '"contingencies": ["..."]}]}}'
@@ -349,11 +401,12 @@ async def ai_suggest_risks(request: Request, user: dict = Depends(get_current_us
             ),
         )
 
-    try:
-        data = _json.loads(_strip_code_fence(txt))
-        raw = data.get("suggestions") or data
-    except Exception:
+    data = _parse_ai_json(txt)
+    if data is None:
         raise HTTPException(status_code=502, detail="AI returned an unreadable response — please try again.")
+    raw = data.get("suggestions") if isinstance(data, dict) else None
+    if raw is None:
+        raw = data
 
     valid_ids = {s["sol_id"] for s in sols}
     out: Dict = {}
@@ -361,14 +414,14 @@ async def ai_suggest_risks(request: Request, user: dict = Depends(get_current_us
         if k not in valid_ids or not isinstance(v, list):
             continue
         risks = []
-        for r in v[:4]:
+        for r in v[:max_risks]:
             if not isinstance(r, dict):
                 continue
             name = str(r.get("name") or "").strip()
             if not name:
                 continue
-            mits = [str(x).strip() for x in (r.get("mitigations") or []) if str(x).strip()][:4]
-            cons = [str(x).strip() for x in (r.get("contingencies") or []) if str(x).strip()][:4]
+            mits = [str(x).strip() for x in (r.get("mitigations") or []) if str(x).strip()][:max_mit]
+            cons = [str(x).strip() for x in (r.get("contingencies") or []) if str(x).strip()][:max_con]
             risks.append({
                 "name": name,
                 "impact_pct": _clamp_pct(r.get("impact_pct")),
@@ -460,7 +513,8 @@ async def push_action_plan_to_action_center(
                 "user_id": user["user_id"],
                 "task": it.get("text") or "Solution Finder action",
                 "deadline": it.get("by_when"),
-                "status": "pending",
+                "status": it.get("status") or "pending",
+                "current_status": it.get("status") or "pending",
                 "source_module": "solution_finder",
                 "source_id": entry_id,
                 "linked_action_id": action_id,

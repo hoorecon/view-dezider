@@ -348,6 +348,19 @@ export default function ProsConsWizard() {
       return n;
     });
   };
+  // Step 7: "Realistic Gap" connector visibility. `showGaps` is the global
+  // master (default ON = current behaviour). When OFF, all gap connectors are
+  // hidden for a clean glanceable factor list, and a per-factor toggle lets the
+  // user reveal just one gap via `expandedGapIds`.
+  const [showGaps, setShowGaps] = useState(true);
+  const [expandedGapIds, setExpandedGapIds] = useState<Set<string>>(new Set());
+  const toggleGapExpand = (fid: string) => {
+    setExpandedGapIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(fid)) n.delete(fid); else n.add(fid);
+      return n;
+    });
+  };
   const toggleOptCollapsed = (oid: string) => {
     setCollapsedOptIds((s) => {
       const n = new Set(s);
@@ -1563,7 +1576,7 @@ export default function ProsConsWizard() {
                   const cell = (analysis.assessments?.[o.id] || {})[f.id] || { assessment_pct: 0, cell_value: 0, actual_value: '' };
                   return (
                     <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
-                      <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+                      <Text style={styles.assessOpt}>{o.name}</Text>
                       <Text style={styles.cellLabel}>Actual</Text>
                       <DebouncedInput
                         style={[styles.inputSm, { width: 84 }]}
@@ -1619,6 +1632,17 @@ export default function ProsConsWizard() {
                     <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: '700' }}>
                       Assess {analysis.options.length} option{analysis.options.length === 1 ? '' : 's'} →
                     </Text>
+                  </TouchableOpacity>
+                )}
+                {!showGaps && f.id !== bottomMostId && (
+                  <TouchableOpacity
+                    onPress={() => toggleGapExpand(f.id)}
+                    style={pcAssess.gapToggleInline}
+                    testID={`pc-gap-toggle-${f.id}`}
+                    accessibilityLabel={expandedGapIds.has(f.id) ? `Hide realistic gap below ${displayName(f)}` : `Show realistic gap below ${displayName(f)}`}
+                  >
+                    <Ionicons name={expandedGapIds.has(f.id) ? 'chevron-up' : 'swap-vertical'} size={13} color={COLORS.primary} />
+                    <Text style={pcAssess.gapToggleInlineText}>{expandedGapIds.has(f.id) ? 'Hide realistic gap' : 'Realistic gap'}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -1710,10 +1734,10 @@ export default function ProsConsWizard() {
                   Default gap is 100% (+10); change any one to tighten (50%) or widen (200%) just that pair.
                 </Text>
 
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
                   <TouchableOpacity
                     onPress={() => setStep7ExpandedIds(new Set([...mandatoryFactors, ...optionalFactors].map(ff => ff.id)))}
-                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 }}
+                    style={{ flex: 1, minWidth: 130, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 }}
                     accessibilityLabel="Expand all factors to assess"
                   >
                     <Ionicons name="create-outline" size={16} color="#fff" />
@@ -1721,11 +1745,20 @@ export default function ProsConsWizard() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setStep7ExpandedIds(new Set())}
-                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 10, paddingVertical: 10 }}
+                    style={{ flex: 1, minWidth: 130, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 10, paddingVertical: 10 }}
                     accessibilityLabel="Collapse all factors"
                   >
                     <Ionicons name="contract-outline" size={16} color={COLORS.primary} />
                     <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>Collapse all</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setShowGaps(v => !v)}
+                    testID="pc-toggle-gaps"
+                    style={{ flex: 1, minWidth: 130, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: showGaps ? COLORS.primary : COLORS.border, backgroundColor: showGaps ? '#EDE7F6' : '#fff', borderRadius: 10, paddingVertical: 10 }}
+                    accessibilityLabel={showGaps ? 'Hide Realistic Gap connectors' : 'Show Realistic Gap connectors'}
+                  >
+                    <Ionicons name={showGaps ? 'eye-off-outline' : 'eye-outline'} size={16} color={showGaps ? COLORS.primary : COLORS.textDim} />
+                    <Text style={{ color: showGaps ? COLORS.primary : COLORS.textDim, fontWeight: '800', fontSize: 13 }}>{showGaps ? 'Hide Realistic Gap' : 'Show Realistic Gap'}</Text>
                   </TouchableOpacity>
                 </View>
                 <Text style={{ fontSize: 11.5, color: COLORS.textDim, marginBottom: 12, lineHeight: 17 }}>
@@ -1749,7 +1782,7 @@ export default function ProsConsWizard() {
                     mandatoryFactors.map((f, i) => (
                       <React.Fragment key={`mand-${f.id}`}>
                         {renderCard(f, i, mandatoryFactors, 'A')}
-                        {f.id !== bottomMostId && renderGapConnector(f)}
+                        {f.id !== bottomMostId && (showGaps || expandedGapIds.has(f.id)) && renderGapConnector(f)}
                       </React.Fragment>
                     ))
                   )}
@@ -1772,7 +1805,7 @@ export default function ProsConsWizard() {
                     optionalFactors.map((f, i) => (
                       <React.Fragment key={`opt-${f.id}`}>
                         {renderCard(f, i, optionalFactors, 'B')}
-                        {f.id !== bottomMostId && renderGapConnector(f)}
+                        {f.id !== bottomMostId && (showGaps || expandedGapIds.has(f.id)) && renderGapConnector(f)}
                       </React.Fragment>
                     ))
                   )}
@@ -1834,15 +1867,16 @@ export default function ProsConsWizard() {
             //    returns null so we render "—" instead of NaN.
             const mandFactors = directFactors.filter(f => f.notation === 'mandatory');
             const optFactors  = directFactors.filter(f => f.notation !== 'mandatory');
-            const sectionPctByOpt: Record<string, { a: number | null; b: number | null }> = {};
+            const sectionPctByOpt: Record<string, { a: number | null; b: number | null }> = {};    // Case-2 (MPPS)
+            const sectionPctByOptC1: Record<string, { a: number | null; b: number | null }> = {};   // Case-1 (Step 7)
             analysis.options.forEach(o => {
-              const calcPct = (subset: Factor[]): number | null => {
+              const calcPct = (subset: Factor[], withImprovement: boolean): number | null => {
                 if (!subset.length) return null;
                 let num = 0, den = 0;
                 subset.forEach(f => {
                   const cell = (analysis.assessments?.[o.id] || {})[f.id] || {};
                   const a7 = Number(cell.assessment_pct) || 0;
-                  const d  = Number(cell.improvement_pct) || 0;
+                  const d  = withImprovement ? (Number(cell.improvement_pct) || 0) : 0;
                   const std = Number(f.std_rating) || 0;
                   const eff = Math.max(0, Math.min(100, a7 + d));
                   num += (eff * std) / 100;
@@ -1850,7 +1884,8 @@ export default function ProsConsWizard() {
                 });
                 return den > 0 ? (num / den) * 100 : null;
               };
-              sectionPctByOpt[o.id] = { a: calcPct(mandFactors), b: calcPct(optFactors) };
+              sectionPctByOpt[o.id]   = { a: calcPct(mandFactors, true),  b: calcPct(optFactors, true) };
+              sectionPctByOptC1[o.id] = { a: calcPct(mandFactors, false), b: calcPct(optFactors, false) };
             });
             // listing order; disqualified options pushed to bottom with no rank).
             const rankByOptId: Record<string, number | null> = {};
@@ -1877,6 +1912,24 @@ export default function ProsConsWizard() {
               catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed to save'); }
             };
 
+            // Case-1 (Step 7 as-is) vs Case-2 (MPPS projected) comparison row.
+            const renderCmpRow = (label: string, c1: number | null, c2: number | null, mode: 'pct' | 'num' = 'pct') => {
+              const digits = mode === 'pct' ? 1 : 0;
+              const fmt = (v: number | null) => v === null ? '—' : (mode === 'pct' ? `${v.toFixed(digits)}%` : v.toFixed(digits));
+              const d = (c1 !== null && c2 !== null) ? c2 - c1 : null;
+              const dColor = (d === null || Math.abs(d) < 0.05) ? COLORS.textDim : (d > 0 ? COLORS.ok : COLORS.con);
+              return (
+                <View style={pcAssess.cmpRow}>
+                  <Text style={[pcAssess.cmpCell, pcAssess.cmpMetricCol]}>{label}</Text>
+                  <Text style={[pcAssess.cmpCell, pcAssess.cmpValCol]}>{fmt(c1)}</Text>
+                  <Text style={[pcAssess.cmpCell, pcAssess.cmpValCol, pcAssess.cmpC2Val]}>{fmt(c2)}</Text>
+                  <Text style={[pcAssess.cmpCell, pcAssess.cmpDeltaCol, { color: dColor }]}>
+                    {d === null ? '—' : `${d > 0 ? '▲' : d < 0 ? '▼' : ''} ${Math.abs(d).toFixed(digits)}`}
+                  </Text>
+                </View>
+              );
+            };
+
             return (
             <View>
               <Text style={styles.stepTitle}>Step 8 — Detailed Assessment &amp; Final Score</Text>
@@ -1889,49 +1942,90 @@ export default function ProsConsWizard() {
               {/* Per-option overall card */}
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Overall score per option (Case-2 / MPPS)</Text>
+
+                {/* Compare all options — ranked winner at a glance (no scrolling each card) */}
+                {(() => {
+                  const rows = analysis.options.map(o => {
+                    const c2 = maxScore > 0 ? ((case2ScoreByOpt[o.id] || 0) / maxScore) * 100 : 0;
+                    const c1 = maxScore > 0 ? ((case1ScoreByOpt[o.id] || 0) / maxScore) * 100 : 0;
+                    return { id: o.id, name: o.name, c2, c1, delta: c2 - c1, rank: rankByOptId[o.id], dqd: !!rollupByOpt[o.id]?.disqualified };
+                  }).sort((a, b) => {
+                    if (a.dqd !== b.dqd) return a.dqd ? 1 : -1;
+                    return (a.rank ?? 999) - (b.rank ?? 999) || b.c2 - a.c2;
+                  });
+                  if (rows.length === 0) return null;
+                  const best = rows.find(r => r.rank === 1);
+                  return (
+                    <View style={pcAssess.cmpAllWrap}>
+                      <View style={pcAssess.cmpAllHead}>
+                        <Ionicons name="trophy" size={14} color="#B45309" />
+                        <Text style={pcAssess.cmpAllTitle}>Compare all options</Text>
+                        {best && <Text style={pcAssess.cmpAllWinner} numberOfLines={1}>🏆 {best.name}</Text>}
+                      </View>
+                      {rows.map(r => (
+                        <View key={r.id} style={[pcAssess.cmpAllRow, r.rank === 1 && pcAssess.cmpAllRowWin, r.dqd && { opacity: 0.55 }]}>
+                          <View style={[pcAssess.cmpAllRankPill, r.rank === 1 && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}>
+                            <Text style={[pcAssess.cmpAllRankText, r.rank === 1 && { color: '#fff' }]}>{r.dqd ? '—' : `#${r.rank}`}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={pcAssess.cmpAllName} numberOfLines={1}>{r.name}</Text>
+                            <View style={pcAssess.cmpAllBarTrack}>
+                              <View style={[pcAssess.cmpAllBarFill, { width: `${Math.max(2, Math.min(100, r.c2))}%`, backgroundColor: r.dqd ? COLORS.textDim : r.rank === 1 ? '#F59E0B' : COLORS.primary }]} />
+                            </View>
+                          </View>
+                          <View style={{ alignItems: 'flex-end', minWidth: 76 }}>
+                            <Text style={pcAssess.cmpAllPct}>{r.c2.toFixed(1)}%</Text>
+                            <Text style={[pcAssess.cmpAllDelta, { color: Math.abs(r.delta) < 0.05 ? COLORS.textDim : r.delta > 0 ? COLORS.ok : COLORS.con }]}>
+                              {Math.abs(r.delta) < 0.05 ? '±0' : `${r.delta > 0 ? '▲' : '▼'} ${Math.abs(r.delta).toFixed(1)}`} vs C1
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                      {best && (
+                        <Text style={pcAssess.cmpAllFoot}>
+                          Bars show Case-2 (MPPS) Overall %. “vs C1” is the change from Case-1 (Step 7).
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })()}
+
                 {analysis.options.map(o => {
                   const score = case2ScoreByOpt[o.id] || 0;
                   const baseline = case1ScoreByOpt[o.id] || 0;
                   const overallPct = maxScore > 0 ? (score / maxScore) * 100 : 0;
-                  const delta = score - baseline;
+                  const overallPctC1 = maxScore > 0 ? (baseline / maxScore) * 100 : 0;
                   const dqd = !!rollupByOpt[o.id]?.disqualified;
+                  const sp = sectionPctByOpt[o.id] || { a: null, b: null };
+                  const spC1 = sectionPctByOptC1[o.id] || { a: null, b: null };
                   return (
-                    <View key={o.id} style={styles.overallRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.factorName}>{o.name}</Text>
-                        {dqd ? (
-                          <Text style={{ color: COLORS.con, fontSize: 12 }}>Disqualified (Mandatory factor below threshold)</Text>
-                        ) : rankByOptId[o.id] ? (
-                          <Text style={{ color: COLORS.ok, fontSize: 12 }}>Rank #{rankByOptId[o.id]}</Text>
-                        ) : null}
+                    <View key={o.id} style={pcAssess.overallCard}>
+                      <View style={pcAssess.overallHeadRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.factorName}>{o.name}</Text>
+                          {dqd ? (
+                            <Text style={{ color: COLORS.con, fontSize: 12 }}>Disqualified (Mandatory factor below threshold)</Text>
+                          ) : rankByOptId[o.id] ? (
+                            <Text style={{ color: COLORS.ok, fontSize: 12 }}>Rank #{rankByOptId[o.id]}</Text>
+                          ) : null}
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.overallPct}>{overallPct.toFixed(1)}%</Text>
+                          <Text style={styles.cellLabel}>Case-2 · MPPS</Text>
+                        </View>
                       </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={styles.overallPct}>{overallPct.toFixed(1)}%</Text>
-                        <Text style={styles.cellLabel}>Score: {score.toFixed(0)}</Text>
-                        {/* A / B section split — matches spreadsheet's
-                            yellow-row (A subtotal) and grey-row (B subtotal) */}
-                        {(() => {
-                          const sp = sectionPctByOpt[o.id] || { a: null, b: null };
-                          if (sp.a === null && sp.b === null) return null;
-                          return (
-                            <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
-                              {sp.a !== null && (
-                                <Text style={styles.sectionPctA}>A {sp.a.toFixed(1)}%</Text>
-                              )}
-                              {sp.a !== null && sp.b !== null && (
-                                <Text style={styles.sectionPctSep}>·</Text>
-                              )}
-                              {sp.b !== null && (
-                                <Text style={styles.sectionPctB}>B {sp.b.toFixed(1)}%</Text>
-                              )}
-                            </View>
-                          );
-                        })()}
-                        {Math.abs(delta) >= 0.5 && (
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: delta > 0 ? COLORS.ok : COLORS.con }}>
-                            {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(0)} vs Case-1
-                          </Text>
-                        )}
+                      {/* Case-1 (Step 7) vs Case-2 (MPPS) — full metric comparison */}
+                      <View style={pcAssess.cmpTable}>
+                        <View style={[pcAssess.cmpRow, pcAssess.cmpHeadRow]}>
+                          <Text style={[pcAssess.cmpCell, pcAssess.cmpMetricCol, pcAssess.cmpHeadText]}>Metric</Text>
+                          <Text style={[pcAssess.cmpCell, pcAssess.cmpValCol, pcAssess.cmpHeadText]}>Case-1</Text>
+                          <Text style={[pcAssess.cmpCell, pcAssess.cmpValCol, pcAssess.cmpHeadText, pcAssess.cmpC2Val]}>Case-2</Text>
+                          <Text style={[pcAssess.cmpCell, pcAssess.cmpDeltaCol, pcAssess.cmpHeadText]}>Change</Text>
+                        </View>
+                        {renderCmpRow('Overall %', overallPctC1, overallPct)}
+                        {renderCmpRow('Score', baseline, score, 'num')}
+                        {(sp.a !== null || spC1.a !== null) && renderCmpRow('Mandatory %', spC1.a, sp.a)}
+                        {(sp.b !== null || spC1.b !== null) && renderCmpRow('Optional %', spC1.b, sp.b)}
                       </View>
                     </View>
                   );

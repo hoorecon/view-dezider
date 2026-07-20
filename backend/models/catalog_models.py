@@ -70,6 +70,10 @@ class CatalogNodeUpdate(BaseModel):
     color: Optional[str] = None
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+    # Sponsored Solutions (AdMaker) overrides — a value set here applies to ALL
+    # descendant nodes unless a deeper node overrides it. Send -1 to CLEAR.
+    finder_min_cutoff_pct: Optional[float] = Field(None, ge=-1, le=100)
+    finder_sponsored_n: Optional[int] = Field(None, ge=-1, le=20)
 
 
 class CatalogMapping(BaseModel):

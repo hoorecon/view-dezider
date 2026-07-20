@@ -390,6 +390,18 @@ export default function SolutionDetailScreen() {
               )}
             </View>
 
+            {/* Cross-link: this solution originated from a Decider Store template */}
+            {solution.decider_template_id && (
+              <TouchableOpacity
+                style={styles.deciderLink}
+                onPress={() => router.push(`/decider-store/${solution.decider_template_id}` as any)}
+              >
+                <Ionicons name="storefront" size={16} color="#4F46E5" />
+                <Text style={styles.deciderLinkText}>Use as decision template · Open in The Decider Store</Text>
+                <Ionicons name="chevron-forward" size={16} color="#4F46E5" />
+              </TouchableOpacity>
+            )}
+
             {/* Creator impact — flywheel visibility (Karma/Cash earned) */}
             {impact && user?.user_id === solution.created_by && (
               <View style={styles.impactCard}>
@@ -863,6 +875,8 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: '600' },
   description: { fontSize: 15, color: COLORS.textSecondary, lineHeight: 22, marginBottom: 16 },
   infoCard: { backgroundColor: COLORS.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border },
+  deciderLink: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#EEF2FF', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#C7D2FE' },
+  deciderLinkText: { flex: 1, fontSize: 13, fontWeight: '700', color: '#4F46E5' },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   infoLabel: { fontSize: 13, color: COLORS.textMuted, width: 80, textTransform: 'capitalize' },
   infoValue: { flex: 1, fontSize: 14, color: COLORS.text, fontWeight: '500' },

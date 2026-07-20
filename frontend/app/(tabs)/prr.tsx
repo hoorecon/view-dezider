@@ -24,6 +24,7 @@ import { useDashboardTiles } from '../../src/utils/useDashboardTiles';
 import { formatAbsolute } from '../../src/utils/datetime';
 import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
 import ListFilterBar, { DateRangeKey, withinDateRange } from '../../src/components/ListFilterBar';
+import LoadErrorState from '../../src/components/LoadErrorState';
 
 // Stable references so the pinned ListFilterBar never re-mounts on parent renders.
 const NOOP = () => {};
@@ -108,6 +109,7 @@ export default function SolutionBoxScreen() {
   const [items, setItems] = useState<SolutionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [selectedLifeArea, setSelectedLifeArea] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<'all' | SolutionType>('all');
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
@@ -167,10 +169,20 @@ export default function SolutionBoxScreen() {
       }
     } catch (err) {
       console.error('Solution Box fetch error:', err);
+      // Transient failure (network / API hiccup) — flag it instead of quietly
+      // rendering an "empty account". Items are wiped so stale data from a
+      // different filter is never shown.
       setItems([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryFetch = () => {
+    setLoading(true);
+    setLoadError(false);
+    fetchItems(selectedLifeArea, selectedType, selectedStatus);
   };
 
   const fetchUserRole = async () => {
@@ -569,7 +581,7 @@ export default function SolutionBoxScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={renderHeader()}
-        ListEmptyComponent={loading ? null : renderEmpty}
+        ListEmptyComponent={loading ? null : loadError ? <LoadErrorState onRetry={retryFetch} /> : renderEmpty}
       />
 
       {/* New flow chooser modal */}

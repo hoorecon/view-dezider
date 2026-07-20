@@ -258,3 +258,218 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 
 **Status**: Verified by testing_agent (13/13 backend pytest PASS incl. BS-ties-out & DCF; all 5 frontend flows PASS; no new bugs).
 
+
+---
+
+## ITER 184 — Solution Finder UX finish + Pros & Cons Step 4/5/7/8 polish ✅ TESTED
+
+**Solution Finder** (`app/tools/solution-finder.tsx`) — completed the 6-point feedback:
+- Clickable breadcrumbs (jump fwd/back up to `reachableMax`; current step ringed).
+- Visible AI-credits meter row above the AI auto-fill buttons in Q3 & Q4 (balance + per-action estimate + Top up).
+- Hierarchy in UI: Step 4 Solution cards show Concern›RCA trail chips + collapse (Expand/Collapse all); Step 5 action items show full lineage (Concern›RCA›Solution›Risk), colour-coded by source (solution=indigo / mitigation=emerald / contingency=amber) with legend + per-item & all collapse.
+- Report export (Step 5, when saved): Download PDF (`GET /api/reports/solution_finder/{id}.pdf`; 402 → store, paid L1 gate like dezider/pros_cons/swot) + Share report (ReportShareSheet, module=solution_finder).
+
+**Pros & Cons** (`pros-cons-wizard.tsx` + `src/features/pros-cons/*`):
+- Step 4: "+ Sub-factor" existing-factor chips now carry a web hover tooltip (WebTitle → real `<div title>`; RN-Web strips `title` from View/Text).
+- Step 5: ALL operators (numeric symbols + Contains/Starts/Ends/Equals/Not-equals) now common to BOTH Quantitative & Qualitative factors (`ALL_OPERATORS`).
+- Step 7: new "Show/Hide Realistic Gap" 3rd toggle hides/shows all gap connectors; per-factor "Realistic gap" reveal when hidden; option names wrap full-width (no truncation).
+- Step 8 (Case-2/MPPS): per-option **Case-1 vs Case-2 comparison table** (Overall %, Score, Mandatory %, Optional % + Change delta); A%/B% relabeled to Mandatory %/Optional %. Factor card Type chips renamed Subjective/Objective → **Quantitative/Qualitative** (preselected from Step-5 type, writes data_type+factor_type), a `|` separator between Type & Improvability groups, and **multi-select improvability** (Not-improvable exclusive; Improvable + Improvable(self) combinable → stored `y_both`).
+
+**Status**: Verified by testing_agent across 2 rounds — Solution Finder all 6 PASS; Pros & Cons Step 4/5/7/8 all PASS; no new bugs. Backend unchanged (report/PDF/estimate endpoints pre-existing). NOTE: Stripe key is still the pod placeholder (`sk_test_emergent`) — live checkout only works post-deploy.
+
+---
+
+## ITER 188 — The Decider Store (Phase 1) ✅ TESTED (13/13 BE + admin FE PASS)
+
+**What**: A public storefront (App-Store/Play-Store style) for Admin-**Authorized Decision Templates**.
+Browsable WITHOUT login; cloning requires login and auto-launches a **prefilled MyDezider decision**.
+
+**Backend** (`routes/decider_store.py`, prefix `/api/decider-store`; parser `core/decider_import.py`):
+- PUBLIC (no auth): `GET ""` (cards), `GET /meta`, `GET /{id}`, `GET /import-template.xlsx` (downloadable authoring template).
+- ADMIN: `GET /admin/all`, `POST /import/excel {file_b64}`, `POST /import/gsheet {sheet_url}`, `POST ""` (create), `PUT /{id}`, `POST /{id}/authorize`, `POST /{id}/unpublish`, `DELETE /{id}`.
+- CLONE (auth): `POST /{id}/clone {mode}` → inserts a MyDezider decision (`db.decisions`, source=decider_store) and returns `decision_id`.
+  - `full` = factors + classification (category mandatory/optional) + priority + options + option-values.
+  - `values_only` = factors + options + option-values; category='' & rating=0 (user classifies).
+  - Option value carried as `assessment.unit_value` ("Solo, Startup (40%)") + `suitability_values`; `percentage`=None (suitability % is per-value info, NOT the scoring %).
+  - Paid template clone → **402** with price (fulfillment = Phase 2).
+- Collection `db.decider_store_templates`. Seeded "The 55 Business Model Patterns" (`bmp-55-patterns`, 10 factors × 54 options) via `scripts/seed_decider_store_bmp.py` (idempotent).
+
+**Import layout** (XLSX/Google-Sheet; col-A row labels): Factor Name / Possible Values / Main Factor Data-Type / Select-Type / UI-Object / Sub Factor Data-Type / Select-Type / UI-Object / Factor Group / Classification / Priority, then an option header row (No · Product Model · Option Name · Affected Components · Exemplary Companies · Description · Remarks · <factor cols>) with one option per row. Factor cell = "Value (nn%), Value2" (no % ⇒ 100%).
+
+**Frontend**: `app/admin/decider-store.tsx` (Download template · Import Excel/GSheet · Create · Classify factors mandatory/optional+priority · Authorize/Unpublish/Delete). Tile in `/admin` → Content group.
+
+**DEFERRED — Phase 2**: public storefront screen (`/decider-store` + detail) browsable logged-out; login-gated "Use this template" that launches the prefilled MyDezider flow; paid-template payment fulfillment (Stripe/Razorpay) with platform/creator split.
+
+---
+
+## ITER 189-190 — Decider Store Phase 2 + Store⇄ReviewNet Bridge ✅ TESTED
+
+**Phase 2A (public storefront + login-gated launch)** — `app/decider-store/index.tsx` (public grid,
+search, categories) + `app/decider-store/[id].tsx` (detail, Full/Values-only chooser, factor Quant/Qual
+tags). Route whitelisted in `app/_layout.tsx` PUBLIC_SEGMENTS. Logged-out "Use" stashes
+`pending_decider_clone` and bounces to /auth/login; `getPostAuthRoute()` returns `/decider-store/{id}?use={mode}`
+and the detail screen AUTO-RESUMES the clone → `/prr/{decision_id}` (prefilled MyDezider decision). Paid → 402.
+
+**Quant/Qual classification** — admin Classify modal per-factor Type toggle (Quantitative→Solution Store /
+Qualitative→ReviewNet), persisted as `factor_type`.
+
+**Store ⇄ ReviewNet bridge** (`routes/decider_store.py`):
+- New master solution type **STRATEGY** (models/solutions_store_data.py + catalog_explorer.py + add-solution.tsx).
+- `POST /decider-store/{id}/push-to-stores`: each option → upsert Solution-Store solution (type STRATEGY,
+  quantitative_factors, `decider_template_id`/`decider_option_id`, `linked_solution_id` back on option =
+  non-duplication) + ReviewNet baseline doc (`review_net` review_id=`rv_baseline_<sid>`,
+  reviewer_segment='authoritative', is_baseline, `baseline_profile` categorical + `factor_ratings` ★=pct/20);
+  qualitative factors also upsert `review_factors` catalog entries.
+- `POST /decider-store/{id}/sync-from-stores`: pull quant (solution) + qual (baseline) back into options.
+- `POST /decider-store/from-solutions`: build a NEW template from selected Strategy solutions + baselines.
+- `auto_push_on_authorize` flag (create/update) → authorize auto-pushes.
+- FE: admin Push to Stores / Sync / Build-from-Solution-Store; `app/tools/solution-detail.tsx` shows
+  "Open in The Decider Store" cross-link when `decider_template_id` present.
+
+**Regression suites**: scripts/test_decider_store.py, test_bridge.py; tests/test_decider_store_iter188.py (13/13),
+test_decider_bridge_iter190.py (13/13); FE iter189 (5/5), iter190 (7/7).
+
+**DEFERRED**: paid-template checkout (Stripe/Razorpay) with platform/creator split — clone returns 402 today.
+
+---
+
+## ITER 193 — FRAME: Finder logic spec + AdMaker & AdTaker Programs ✅ TESTED (13/13 BE pytest + all 5 FE flows)
+
+**SRS**: `docs/SRS.md` v3.22.0 — full **FRAME** pipeline spec (Filter → Rank → Auction → Merge → Embed)
+with FR/NFR, data models, indexes, perf targets. Principles: organic is sacred (money never reorders it),
+AdRank = bid × QualityScore, GSP pricing, config cascades via CCM, AdSense-style distribution.
+
+**Quality gate (hierarchical)**: `catalog_nodes.finder_ad_config {min_cutoff_pct, sponsored_n}` at ANY level
+(PUT /catalog/nodes/{id}, -1 clears) → nearest ancestor wins → globals `ai_wallet_config.finder_min_cutoff_pct`
+(60) / `finder_sponsored_n` (3). Template override via `finder_settings.{min_cutoff_pct,sponsored_n}` +
+`decider_store_templates.catalog_node_id` mapping (admin "Catalog" action).
+
+**AdMaker** (`core/ad_auction.py` + `routes/admaker.py`): `admaker_bids` CRUD (region, calendar slot,
+daily hours + IANA tz w/ overnight wrap, budget). Auction on finder run: eligible = ranked ≥ cutoff; AdRank
+= bid_paise × QS (worth/100, floor .05); one slot/option; GSP price = next AdRank ÷ own QS + 1p, clamped
+[1, own bid]; CPC billed at POST /admaker/track; budget exhaustion → status=exhausted. Impressions +
+last_price_paise persisted (`admaker_events`). Finder run response += `sponsored[]` (no bid/price exposure)
++ `ad_config`; decisions += `finder_sponsored_ids`. `GET /admaker/resolve-config` shows effective + source.
+
+**AdTaker** (`routes/adtaker.py`): `adtaker_publishers` (tracker `DZ-PUB-XXXXXXXX`, share % default 68)
+CRUD + stats (daily series, CTR, earnings = conversions × `adtaker_conversion_bounty_paise`(500) × share%).
+Public: `GET /adtaker/widget.js?tracker&app` (iframe loader), `GET /adtaker/embed/{tid}?tracker` (HTML card,
+frame-ancestors *, logs impression, CTA beacons click → deep-links `/decider-store/{id}?ref=tracker`),
+`POST /adtaker/track`. Clone accepts `ref` → conversion (`log_conversion`). FE detail screen forwards `ref`.
+
+**FE**: `/admin/ad-programs` (3 tabs: Bids CRUD w/ option suggestions · Publishers w/ snippet+stats ·
+Cutoffs & Slots w/ global + per-node override editor + effective-source display); admin index tile
+(Monetization group). `admin/decider-store.tsx`: Sponsored globals in Finder & Landing modal + Catalog
+mapping modal per template. `finder/[id].tsx`: amber "Sponsored Solutions · AD" card BELOW organic,
+"Promoted by X", click beacon.
+
+**Indexes**: admaker_bids/admaker_events/adtaker_publishers(unique tracker)/adtaker_events in db_indices.
+**Tests**: `tests/test_iter193_admaker_adtaker.py` (13/13) + FE testing agent all flows PASS
+(`/app/test_reports/iteration_193.json`). BUILD_VERSION bumped to 2026.07.19.001 (no deploy run).
+
+---
+
+## ITER 194 — FRAME @ Scale: Option Bank · AdMaker Studio · AdTaker Identity ✅ TESTED (14/14 BE pytest + all 6 FE flows)
+
+**SRS**: `docs/SRS.md` v3.23.0 (Part A scale architecture + Part B identity ladder + measured benchmarks).
+
+**Option-Bank Finder** (`core/finder_bank.py`): `decider_option_bank` (1 doc/option, vals pre-normalized
+at ingest, wildcard index `vals.$**`). Pipeline: S1 mandatory expectations compile to native Mongo query
+(indexed prune, adaptive funnel: relaxed_all / mandatory+optional, residual Python checks for
+non-compilable ops) → S2 motor cursor + projection + heapq Top-K (O(K) memory, yield/1K docs) → S3
+existing cutoff+AdRank/GSP auction (bid targets scored via name_norm even outside heap). Async
+`finder_jobs` {progress{pct,label}, spec_hash cache <10min} via POST /decisions/{id}/finder/jobs +
+GET /finder/jobs/{id}. Decision→bank join via new `Factor.source_sub_id` (persisted in clone +
+decisions_models; name-match fallback). **Benchmarks**: 200K bank → 25K candidates → 2.65s;
+full 200K scan (no expectations) → ~10s. 'finder' loader-music slot added (backend LOADER_SLOTS +
+useLoaderMusic union); finder/[id].tsx auto-switches to job mode when bank_options>0 (progress bar +
+LoaderMusicChip; Step-7 link hidden in bank mode).
+
+**Ingestion (3 rails, admin)** (`routes/option_bank.py`): GET /decider-store/{tid}/bank (stats by source),
+POST …/bank/sync-template, …/ingest/solutions (bridged solutions_store quantitative_factors +
+ReviewNet baseline_profile), …/ingest/partner {api_url, items_path, name_key, value_map}, …/ingest/bulk
+(≤50K, deep_import source), DELETE …/bank?source=. All → idempotent `bank_upsert` on (template_id,
+name_norm). Admin UI: 'Bank' action + modal on decider-store cards. Synthetic seeder/benchmark:
+`scripts/seed_finder_bank_synthetic.py` (200K seeded on BMP — left in place).
+
+**AdMaker Studio** (same user login): ACM module `ad_programs` / feature `admaker_program`
+(ACM_SEED_VERSION 2026-07-19-01; trial/paid_pro/paid_enterprise full; free/paid_starter locked; org_role
+org_admin|advertiser bypass; platform admins always). Routes `/admaker/my/*`: eligible-options
+(ownership = template options[].linked_solution_id ∪ bank store_bridge source_ref × solutions_store
+.created_by incl. same-org), bids CRUD (own-only, ownership 403 guard), dashboard (impressions/clicks/
+CTR/spend/avg CPC per bid + totals). FE `/admaker-studio` (locked-state w/ upgrade CTA on 403).
+
+**AdTaker identity (BOTH rails)**: publishers now mint `api_key` (dzk_) + `api_secret` (dzs_, returned
+ONCE, sha256 hash only) + optional `org_id`. Admin rotate: POST /adtaker/publishers/{id}/rotate-keys.
+Self-serve (X-Adtaker-Key/-Secret headers): GET /adtaker/self/profile|stats|apps (apps include embed
+snippets). Org portal: GET /adtaker/portal/me (org_id match) + FE `/adtaker-portal`. Admin ad-programs UI:
+api_key row + Rotate keys + one-time secret modal + Linked Org ID field. Storefront hero pills →
+AdMaker Studio / Publisher Portal. decider-store/[id] forwards ?ref for conversions (iter193).
+
+**Tests**: `tests/test_iter194_bank_studio_keys.py` 14/14 + iter193 13/13 regression; FE testing agent all
+6 flows + regression PASS (`/app/test_reports/iteration_194.json`). BUILD 2026.07.19.002 (no deploy).
+**Note**: BMP has a 200K synthetic bank — clear via admin Bank modal ('Clear bank') if real data lands.
+
+---
+
+## ITER 194b — KT doc bundle refresh v3.23.0 + release commit message ✅
+- Updated: docs/API_REFERENCE.md (v3.23 endpoint tables), Postman_Collection.json (+3 folders → 58: AdMaker 11 / AdTaker 13 / Option Bank & Jobs 8), POSTMAN.md, SYSTEM_KT.md (§10 FRAME diagram + cheat-sheet), ADMIN_USER_GUIDE.md ("Ad Programs" section), docs/PRD.md appendix, ACM.md (ad_programs module), INDEX.md changelog.
+- Release commit message (dual Technical/Functional KT) saved at `/app/memory/COMMIT_MSG_2026-07-19.md`.
+- BUILD bumped for push: **2026.07.19.003** / v3.111-frame-adprograms-optionbank-kt → deploy with `EXPECT_BUILD=2026.07.19.003 ./deploy/sync.sh emergent-v3` (owner runs it, per runbook).
+
+## ITER 194c — Docs comprehensiveness audit + Postman full parity ✅ (2026-07-19)
+User asked to ensure the KT docs are "comprehensive rather than a mere eye wash". Audit found the
+Postman collection was stale (generated 2026-06-12, hand-patched since): ~300 newer endpoints missing
+(live OpenAPI = 1,316 ops vs 1,021 in collection) and 419 requests dumped in an "Other" folder.
+Fixed permanently:
+- `backend/prompts/admin_docs_taxonomy.py` — CATEGORY_MAP overhauled: ALL ~130 route prefixes named,
+  admin sub-areas split out (Recon/Notification Engine/Import Analytics/PII/Quota/Payouts/Regression/
+  Loader Music), SUBPATH_CATEGORY_RULES (decider-store/*/bank → Option Bank; decisions/*/finder →
+  Finder Jobs; decisions/*/deep-import → Deep Import), partner channel tags.
+- `backend/core/openapi_helpers.py` — build_postman_collection() extracted (shared by admin endpoint
+  GET /admin/docs/postman-collection AND new script). AdTaker self/* requests carry X-Adtaker-Key/-Secret;
+  collection vars: BASE_URL, AUTH_TOKEN, adtakerKey/Secret, trackerId, templateId, decisionId, finderJobId.
+- `backend/scripts/generate_postman_collection.py` — NEW one-command regenerator (warns on "Other").
+- Regenerated `docs/Postman_Collection.json`: **126 folders · 1,316 requests · 0 uncategorized**.
+- Doc fixes: INDEX.md header refreshed to v3.23.1 + table now lists PRODUCTION_DEPLOYMENT and
+  ADMIN_USER_GUIDE; API_REFERENCE.md "Admin Docs" section corrected (16 slugs, PDF endpoint, live
+  /admin/docs tooling table) + Postman-parity banner; POSTMAN.md v3.23.1 regen guide; SYSTEM_KT
+  cheat-sheet row for stale-collection debugging.
+- COMMIT_MSG_2026-07-19.md updated (new Postman numbers + tooling section). BUILD bumped to
+  **2026.07.19.004** (same tag v3.111) → `EXPECT_BUILD=2026.07.19.004 ./deploy/sync.sh emergent-v3`.
+
+## ITER 195 — List-screen Retry Guards + in-app doc verification ✅ (2026-07-19)
+- NEW `src/components/LoadErrorState.tsx` (testIDs: load-error-state / load-error-retry) — friendly
+  "Couldn't load your data" + Retry panel for transient fetch failures.
+- Wired into: `(tabs)/prr.tsx` (Solution Box / MyDezider list — via ListEmptyComponent, retry re-runs
+  with active filters), `tools/pros-cons-list.tsx`, `tools/solution-finder-list.tsx` (error panel only
+  when fetch failed AND no items; stale items keep showing on those two).
+- Note for user: these list fetches are plain REST (no AI models involved) — intermittent empties were
+  network/API hiccups being swallowed into empty states, now surfaced with Retry.
+- Frontend testing agent 6/6 PASS (`/app/test_reports/iteration_195.json`): 3 normal loads, 3 simulated
+  API-failure→Retry recoveries, /admin/handbook renders 15 docs (POSTMAN shows 126 folders/1,316
+  requests; INDEX v3.23.1).
+- COMMIT_MSG_2026-07-19.md updated (FRONTEND section + functional note). BUILD → **2026.07.19.005**
+  (`EXPECT_BUILD=2026.07.19.005 ./deploy/sync.sh emergent-v3`).
+
+## ITER 196 — Import Template v2: Column Roles + Dynamic UI Objects ✅ (2026-07-19)
+- **3 column roles** under a Main Factor: `Value` (selectable choice — option rows carry
+  per-value Suitability %, EXEMPT from 100% split), `Sub-Factor` (classic weighted split,
+  must total 100), `Dependent` (optional refiner with own operator/expected, revealed by its
+  `Linked Value`, never in the split). Factor-level **Main UI Object**: Input Box / Checkbox
+  (multi) / Radio / Dropdown. Per-column **Default Operator/Expected** pre-fill the Step-2
+  refiner (user-overridable). All new rows OPTIONAL → old sheets import unchanged.
+- **Step 2 dynamic rendering** (`FactorValueUI.tsx`): checkbox/radio/dropdown value pickers;
+  tick → "Suitability >= 60 %" refiner; dependents gated on linked value; "n selected" badge;
+  split bar hidden for value-mode. **"Configure UI objects"** toggle (Decider Apps only,
+  `decision.decider_kind==='app'`) exposes a per-factor widget picker + add/remove values.
+- **Finder**: multi-select factors match ANY ticked value (bank + in-decision engines);
+  unticked value/dependent leaves neither filter nor score. Verified union semantics
+  (Solo>=60 → 11 cands; +Startup>=50 → 23).
+- **BMC reseeded in v2** (10 checkbox factors × 28 Value cols, default >= 60). Prod data push:
+  `docker exec deploy-api-1 python3 scripts/seed_business_model_chooser.py` after code deploy.
+- Files: core/decider_import.py, models/decisions_models.py, routes/decider_store.py,
+  core/finder_bank.py, core/finder_engine.py, scripts/convert_bma_to_import_template.py,
+  src/components/steps/{FactorValueUI,Step2}.tsx, src/types/decision.ts. Tests: subfactor_v2 +
+  iter188/193/194 all green (retargeted from deleted bmp-55-patterns to live BMC).
+  BUILD → **2026.07.19.007** (`EXPECT_BUILD=2026.07.19.007 ./deploy/sync.sh emergent-v3`).

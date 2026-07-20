@@ -1,13 +1,21 @@
 /* Pros & Cons wizard — leaf presentational components (extracted). */
 import React, { useState, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, Modal, ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LMH_VALUES, NUMERIC_OPERATORS, TEXT_OPERATORS } from '../../utils/decisionHelpers';
+import { LMH_VALUES, ALL_OPERATORS } from '../../utils/decisionHelpers';
 import { Factor, OptionT, Cell } from './types';
 import { COLORS } from './constants';
 import { styles, pcMeta, pcAssess, pcWeightStyles } from './styles';
+
+// Web-only hover tooltip. RN-Web strips unknown DOM props (incl. `title`) from
+// View/Text, so on web we wrap children in a real DOM node that carries the
+// title; on native we pass the children straight through.
+const WebTitle = ({ title, children }: { title: string; children: React.ReactNode }) =>
+  Platform.OS === 'web'
+    ? React.createElement('div', { title, style: { display: 'inline-flex', maxWidth: '100%' } }, children as any)
+    : (children as any);
 
 export const DebouncedInput = React.forwardRef<any, {
   value: string;
@@ -266,13 +274,14 @@ export function FactorGroupRow({ factor, parentName, candidateChildren, onAddChi
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {candidateChildren.map(c => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={styles.parentChip}
-                    onPress={() => { onAddChild(c.id); setOpen(false); }}
-                  >
-                    <Text style={styles.parentChipText} numberOfLines={1}>{c.name}</Text>
-                  </TouchableOpacity>
+                  <WebTitle key={c.id} title={c.name}>
+                    <TouchableOpacity
+                      style={styles.parentChip}
+                      onPress={() => { onAddChild(c.id); setOpen(false); }}
+                    >
+                      <Text style={styles.parentChipText} numberOfLines={1}>{c.name}</Text>
+                    </TouchableOpacity>
+                  </WebTitle>
                 ))}
               </View>
             </>
@@ -298,7 +307,9 @@ export function FactorMetaControls({ factor, onPatch, onOpenDataSource }: {
   onOpenDataSource: (factor: Factor) => void;
 }) {
   const isQuant = (factor.data_type || 'numeric') === 'numeric';
-  const operators = isQuant ? NUMERIC_OPERATORS : TEXT_OPERATORS;
+  // All operators (numeric symbols + text operators like "Contains") are now
+  // common to both factor types, per user request.
+  const operators = ALL_OPERATORS;
   const dsType = factor.data_source?.type;
   const dsLabel = DATA_SOURCE_TYPES.find(d => d.value === dsType)?.label;
   return (
@@ -744,22 +755,45 @@ export function FactorAssessmentCard({ factor, factorIndex, options, cells, disp
         <Text style={[styles.factorName, { flex: 1 }]}>{displayName || factor.name}</Text>
       </View>
 
-      {/* Type & Improvable */}
-      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginVertical: 6 }}>
-        {(['subjective', 'objective'] as const).map(t => (
-          <TouchableOpacity key={t} style={[styles.tinyChip, factor.factor_type === t && styles.tinyChipOn]}
-            onPress={() => onFactorUpdate({ factor_type: t })}>
-            <Text style={[styles.tinyChipText, factor.factor_type === t && { color: '#fff' }]}>{t[0].toUpperCase() + t.slice(1)}</Text>
-          </TouchableOpacity>
-        ))}
-        {(['n', 'y', 'y_bf'] as const).map(im => (
-          <TouchableOpacity key={im} style={[styles.tinyChip, factor.improvable === im && styles.tinyChipOn]}
-            onPress={() => onFactorUpdate({ improvable: im })}>
-            <Text style={[styles.tinyChipText, factor.improvable === im && { color: '#fff' }]}>
-              {im === 'n' ? 'Not improvable' : im === 'y' ? 'Improvable' : 'Improvable (self)'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Type (Quantitative / Qualitative — same naming as Step 5) | Improvability */}
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginVertical: 6, alignItems: 'center' }}>
+        {(() => {
+          // Derive current type from the Step-5 fields so the preselection here
+          // matches what the user already picked in "Review & Refine Expectations"
+          // (instead of defaulting every factor to Subjective).
+          const isQual = (factor.data_type === 'text') || factor.factor_type === 'subjective';
+          const TYPES: { key: 'quant' | 'qual'; label: string; on: boolean }[] = [
+            { key: 'quant', label: 'Quantitative', on: !isQual },
+            { key: 'qual', label: 'Qualitative', on: isQual },
+          ];
+          return TYPES.map(t => (
+            <TouchableOpacity key={t.key} style={[styles.tinyChip, t.on && styles.tinyChipOn]}
+              onPress={() => onFactorUpdate(t.key === 'quant'
+                ? { data_type: 'numeric', factor_type: 'objective' }
+                : { data_type: 'text', factor_type: 'subjective' })}>
+              <Text style={[styles.tinyChipText, t.on && { color: '#fff' }]}>{t.label}</Text>
+            </TouchableOpacity>
+          ));
+        })()}
+        <Text style={{ color: COLORS.textDim, fontWeight: '800', marginHorizontal: 2 }}>|</Text>
+        {(() => {
+          // Improvability: "Not improvable" is exclusive; "Improvable" and
+          // "Improvable (self)" can be selected independently or together.
+          const cur = factor.improvable || 'n';
+          const hasY = cur === 'y' || cur === 'y_both';
+          const hasBF = cur === 'y_bf' || cur === 'y_both';
+          const combine = (y: boolean, bf: boolean) => (y && bf) ? 'y_both' : y ? 'y' : bf ? 'y_bf' : 'n';
+          const chips = [
+            { key: 'n', label: 'Not improvable', on: !hasY && !hasBF, press: () => onFactorUpdate({ improvable: 'n' }) },
+            { key: 'y', label: 'Improvable', on: hasY, press: () => onFactorUpdate({ improvable: combine(!hasY, hasBF) }) },
+            { key: 'y_bf', label: 'Improvable (self)', on: hasBF, press: () => onFactorUpdate({ improvable: combine(hasY, !hasBF) }) },
+          ];
+          return chips.map(c => (
+            <TouchableOpacity key={c.key} style={[styles.tinyChip, c.on && styles.tinyChipOn]} onPress={c.press}>
+              <Text style={[styles.tinyChipText, c.on && { color: '#fff' }]}>{c.label}</Text>
+            </TouchableOpacity>
+          ));
+        })()}
       </View>
 
       {/* Expectations / market */}
@@ -813,7 +847,7 @@ export function FactorAssessmentCard({ factor, factorIndex, options, cells, disp
         const bgTint = isPos ? '#ECFDF5' : isNeg ? '#FEF2F2' : '#FFFFFF';
         return (
           <View key={o.id} style={styles.assessRow}>
-            <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+            <Text style={styles.assessOpt}>{o.name}</Text>
             <TextInput style={[styles.inputSm, { width: 80 }]} placeholder="Actual"
               defaultValue={c.actual_value || ''}
               onEndEditing={e => onCellUpdate(o.id, { actual_value: e.nativeEvent.text })} />
@@ -1046,7 +1080,7 @@ export function SubFactorEditableList({
                 const cell = (assessments[o.id] || {})[s.id] || { assessment_pct: 0, cell_value: 0, actual_value: '' };
                 return (
                   <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
-                    <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+                    <Text style={styles.assessOpt}>{o.name}</Text>
                     <Text style={styles.cellLabel}>Actual</Text>
                     <DebouncedInput
                       style={[styles.inputSm, { width: 80 }]}

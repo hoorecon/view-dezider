@@ -17,6 +17,32 @@ Format:
 # Coverage focus: auth/session lookups, user-scoped reads, time-sorted lists.
 
 INDEX_SPECS: dict[str, list] = {
+    "decider_option_bank": [
+        {"keys": [("template_id", 1), ("name_norm", 1)], "unique": True},
+        [("template_id", 1), ("source", 1)],
+        {"keys": [("vals.$**", 1)]},
+    ],
+    "finder_jobs": [
+        [("decision_id", 1), ("created_at", -1)],
+        [("user_id", 1), ("created_at", -1)],
+    ],
+    # ─── AdMaker / AdTaker (Sponsored Solutions + publisher widgets) ───
+    "admaker_bids": [
+        [("template_id", 1), ("status", 1)],
+        ("created_at", -1),
+    ],
+    "admaker_events": [
+        [("bid_id", 1), ("ts", -1)],
+        [("template_id", 1), ("ts", -1)],
+    ],
+    "adtaker_publishers": [
+        {"keys": [("tracker_id", 1)], "unique": True},
+        {"keys": [("publisher_id", 1)], "unique": True},
+    ],
+    "adtaker_events": [
+        [("tracker_id", 1), ("ts", -1)],
+        [("template_id", 1), ("event", 1)],
+    ],
     # ─── Auth & Sessions ─────────────────────────────────────────
     "users": [
         {"keys": [("email", 1)], "unique": True, "sparse": True},

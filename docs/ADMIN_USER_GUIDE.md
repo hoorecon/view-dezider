@@ -1,6 +1,12 @@
 # Admin User Guide
 
-**Version:** 3.20.0 (2026-06-28)
+_metadata: { "version": "3.23.0", "updated": "2026-07-19", "author": "engineering" }
+
+**Version:** 3.23.0 (2026-07-19)
+
+> **v3.22–v3.23 additions:** New **AdMaker & AdTaker** console (`/admin/ad-programs`) — Sponsored-Solutions bids, publisher tracker IDs + API keys, cutoff/slot configuration. **Decider Store** cards gained **Catalog** (Scenario mapping) and **Bank** (Option-Bank ingestion) actions, and the Finder settings modal now holds the global Sponsored defaults. Two new END-USER surfaces you may get questions about: **AdMaker Studio** (`/admaker-studio`, Premium/org advertisers promote their own solutions) and **Publisher Portal** (`/adtaker-portal`, org-linked publishers). See the "Ad Programs" section near the end.
+
+> **v3.21.0 additions:** **AI Assistant** (More Tools) now runs on **Anthropic Claude (claude-sonnet-4-6)** by default via the AI wallet; when a user's credits/quota run out it automatically switches to `gpt-4.1-mini` so answers keep flowing (the reply shows which model answered). **AI Wallet** screen now offers **card payment via Stripe** (USD/INR toggle + a "Card" button per pack) in addition to Razorpay (₹). **WhatsApp gate:** turning ON "Skip WhatsApp Gate" (Admin → Settings) now also applies to brand-new sign-ups/registrations (previously only to later logins).
 **Audience:** Anyone with admin/super_admin/co_admin role
 **Purpose:** Explain every Admin Panel menu item — what it does, when to use it, and a sample workflow.
 
@@ -450,3 +456,47 @@ A 5-MB clip at the same settings = ~2.2 credits. A user with a fresh 20-credit w
 - The post-import "Fetch My Best Factors" prompt reuses the existing plan-capped `tp_best_factors` flow
   (default cap 25 factors), so no separate quota to manage.
 
+
+---
+
+## AD PROGRAMS Section (v3.22–v3.23)
+
+### 📣 AdMaker & AdTaker (`/admin/ad-programs`)
+
+- **Purpose:** Run the Sponsored-Solutions business — advertiser bids (AdMaker), publisher widgets (AdTaker), and the quality cutoffs that keep ads trustworthy.
+- **Sidebar location:** Monetization & Billing → "AdMaker & AdTaker".
+- **Required role:** admin (global defaults save needs super_admin).
+- **How to use — 3 tabs:**
+  1. **AdMaker Bids** — "New bid": pick the Decider App, type/pick the promoted option (suggestion chips), advertiser name, **Bid ₹/click**, optional budget (auto-pauses as `EXHAUSTED` when spent), region (`global` or a country code like `in`), optional calendar window + daily hours in a timezone (AdWords-style dayparting). Cards show live counters: impressions, clicks, spend, and the **GSP price** actually charged per click (never more than the bid). Pause/Edit/Delete inline.
+  2. **AdTaker Publishers** — "New publisher" mints a **Tracker ID (`DZ-PUB-…`)** plus an **API Key (`dzk_…`) & Secret (`dzs_…`)**. ⚠️ The secret appears **exactly once** in the confirmation modal — copy it before dismissing; we only store a hash. "Rotate keys" issues a new pair (old one dies instantly). "Snippet" builds the copy-paste `<script>` embed per app. "Stats" expands 30-day impressions/clicks/conversions + the earnings estimate. The **Linked Org ID** field connects a publisher to an Organization so their members can self-serve at `/adtaker-portal`.
+  3. **Cutoffs & Slots** — the trust dial. **Min Cutoff %** = only options matching the user at/above this can be sponsored; **Sponsored slots (N)** = how many ads show BELOW the organic list. Set global defaults, then per-Catalog-node overrides (search a LifeArea/SubArea/Scenario, set values; blank = inherit; the editor shows the *effective* value and where it comes from).
+- **Sample config:** Global 60% / 3 slots. Override "Finance & Wealth" to 70% / 2 for stricter ads in money decisions.
+- **Business rules to remember:** organic ranking is NEVER affected by money; ads must clear the user's own quality bar; billing is per click at the second-price (GSP) — competitive but fair.
+- **Linked APIs:** `/api/admaker/bids*`, `/api/admaker/resolve-config`, `/api/adtaker/publishers*` (+`/rotate-keys`, `/stats`), `/api/admin/ai-wallet/config`, `PUT /api/catalog/nodes/{id}`.
+
+### 📋 Import Template v2 — Column Roles & Dynamic UI Objects (`/admin/decider-store` → Download template)
+
+The authoring workbook now models **3 column roles** under every Main Factor (old sheets still import unchanged — all rows are optional):
+
+| Sheet row | What it does |
+|---|---|
+| **Main UI Object** (factor level) | How deciders pick this factor in Step 2: `Input Box` (default), `Checkbox (multi-select)`, `Radio (single)`, `Dropdown (single)`. |
+| **Column Role** | `Value` = a selectable choice of the parent (e.g. Org Type → Solo/Startup/SME/Corporate); option rows hold that option's **Suitability %** per value. `Sub-Factor` (default) = classic weighted split. `Dependent` = an optional extra refiner, never part of the split. |
+| **Linked Value** | Dependent columns only — which parent Value reveals it (blank = always shown). |
+| **Default Operator / Default Expected** | Pre-fills the Step-2 refiner (e.g. `>=` / `60`); the decider can override any value. |
+| **Split %** | **Sub-Factor columns ONLY** must total 100. Value/Dependent columns are exempt. |
+
+**End-user effect (Step 2):** a Checkbox factor renders as tickboxes (☑ Solo ☑ Startup …); each tick reveals an editable "Suitability ≥ 60 %" refiner; Dependent refiners appear only with their linked value. The Finder matches **ANY** ticked value (union), then applies the per-value thresholds; unticked values neither filter nor score.
+
+**Configure UI objects flag (Decider Apps only):** inside a cloned Decider App's Step 2 there's a "Configure UI objects" toggle — flip it and every main factor card shows a `Text input / Checkbox / Radio / Dropdown` picker plus add/remove-value controls, so the widgets can be re-shaped without re-importing the workbook.
+
+### 🗄️ Decider Store — new per-template actions (`/admin/decider-store`)
+
+- **Catalog** (purple) — map the template to its Central-Catalog Scenario node. This mapping decides which cutoff/slot defaults its Finder inherits. "Catalog ✓" = mapped; "Clear mapping" reverts to globals.
+- **Bank** (green) — the **Option Bank** powering the scaled Finder (millions of options). The modal shows the count by source and offers: **Sync template options** (idempotent), **Ingest bridged Solution Store + ReviewNet**, and **Clear bank**. Partner-API and Deep-Import/bulk loads go through the documented API rails (see API_REFERENCE "Option Bank"). When a bank exists, end-users' Finder runs automatically switch to the async pipeline with a progress bar + loader music (upload a 'finder' slot track under Admin → Appearance → Loader music).
+- **Finder & Landing settings** modal now includes the global **Sponsored** defaults (same values as the Cutoffs tab).
+
+### 👥 End-user surfaces you'll get support questions about
+
+- **AdMaker Studio (`/admaker-studio`)** — advertiser self-serve on the normal user login. Gated by ACM feature `admaker_program` (module "Ad Programs"): trial + paid_pro + paid_enterprise = full; free + paid_starter = locked (screen shows the upgrade CTA). Org members with role `org_admin`/`advertiser` always pass. **Ownership rule:** users can ONLY bid on options linked to Solution-Store listings they (or their org) created — everything else returns "You can only promote options linked to your own Solution-Store listings." Their dashboard shows impressions, clicks, CTR, spend and avg CPC per bid.
+- **Publisher Portal (`/adtaker-portal`)** — for Organization logins linked to a publisher (set **Linked Org ID** on the publisher). Shows tracker ID, API key, snippet builder and 30-day earnings. Non-org users see the friendly gate message — that's by design, not a bug.

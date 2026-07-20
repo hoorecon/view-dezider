@@ -36,6 +36,21 @@ class Factor(BaseModel):
     # the "decision_link" (Dependent Decision) config so a factor's value can be
     # pulled from another scored decision's option. Generic dict to stay flexible.
     data_source: Optional[Dict[str, Any]] = None
+    # Option-Bank join key: the ORIGINAL template sub-factor id this cloned
+    # factor maps to (bank docs key their `vals` by it). Must survive every
+    # factor save or the scaled Finder loses its indexed pre-filter.
+    source_sub_id: Optional[str] = None
+    # ── Dynamic UI objects (template format v2, 2026-07) ──
+    # Parent-level widget: 'checkbox' (multi-select) | 'radio' | 'dropdown' |
+    # 'listbox' | None (= classic text/number input).
+    ui_object: Optional[str] = None
+    # Column role of a CHILD factor: 'value' (a selectable choice of the parent
+    # — no 100% split rule), 'sub' (classic weighted sub-factor), 'dependent'
+    # (optional refiner shown when its linked parent value is selected).
+    role: Optional[str] = None
+    linked_value: Optional[str] = None       # dependent → parent value name
+    default_operator: Optional[str] = None   # pre-selected operator in Step 2
+    default_expected: Optional[Any] = None   # pre-filled expected (overridable)
 
 
 class OptionAssessment(BaseModel):

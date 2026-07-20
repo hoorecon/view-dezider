@@ -1,8 +1,8 @@
 # Security posture & threat model — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.21.0", "updated": "2026-07-13" }
 
-## Identity & sessions
+> **v3.21.0 (2026-07-13):** **Payments** — Stripe added (`/api/stripe/*`). Keys are read only from env (`STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`), never hardcoded. Checkout amounts are computed **server-side** (client never sends an amount); fulfillment is **idempotent** (atomic `pending→completed` flip on `stripe_payments`) so webhook + poll can't double-grant; the webhook signature is verified when `STRIPE_WEBHOOK_SECRET` is set. **Auth** — session tokens remain opaque DB-backed lookups; `SECRET_KEY` (JWT-signing path) is now sourced from env instead of the in-code fallback. `CORS_ORIGINS` documented in env.
 
 - **Storage**: Argon2-rated bcrypt passwords (`passlib`). Salted; cost auto-tuned.
 - **Sessions**: 32-byte random tokens, server-side state in `user_sessions` (we do *not* use stateless JWTs so we can revoke immediately on logout / DPDP delete).

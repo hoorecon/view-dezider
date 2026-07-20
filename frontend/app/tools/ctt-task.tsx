@@ -16,6 +16,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
 import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
 import { safeBack } from '../../src/utils/navigation';
+import { ACTION_STATUS_OPTS, normStatus } from '../../src/constants/actionStatus';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const PRIORITIES = [
@@ -25,13 +26,14 @@ const PRIORITIES = [
   { id: 'low', label: 'Low', color: '#6B7280', icon: 'arrow-down-circle' },
 ];
 
-const STATUSES = [
-  { id: 'open', label: 'Open', color: '#6B7280', icon: 'radio-button-off' },
-  { id: 'in_progress', label: 'In Progress', color: '#3B82F6', icon: 'time' },
-  { id: 'done', label: 'Done', color: '#10B981', icon: 'checkmark-circle' },
-  { id: 'blocked', label: 'Blocked', color: '#EF4444', icon: 'close-circle' },
-  { id: 'cancelled', label: 'Cancelled', color: '#9CA3AF', icon: 'ban' },
-];
+const STATUS_ICONS: Record<string,string> = {
+  pending: 'radio-button-off', wip_25: 'time-outline', wip_50: 'time',
+  wip_75: 'time', done: 'checkmark-circle', deferred: 'pause-circle',
+  blocked: 'close-circle', cancelled: 'ban',
+};
+const STATUSES = ACTION_STATUS_OPTS.map(o => ({
+  id: o.id, label: o.label, color: o.color, icon: STATUS_ICONS[o.id] || 'ellipse',
+}));
 
 const FREQUENCIES = [
   { id: 'hourly', label: 'Hourly', icon: 'time-outline' },
@@ -77,7 +79,7 @@ export default function CTTTaskScreen() {
   // Form state
   const [task, setTask] = useState('');
   const [subTask, setSubTask] = useState('');
-  const [status, setStatus] = useState('open');
+  const [status, setStatus] = useState('pending');
   const [priority, setPriority] = useState('medium');
   const [remarks, setRemarks] = useState('');
   const [deadline, setDeadline] = useState('');
@@ -112,7 +114,7 @@ export default function CTTTaskScreen() {
       const d = res.data;
       setTask(d.task || '');
       setSubTask(d.sub_task || '');
-      setStatus(d.current_status || 'open');
+      setStatus(normStatus(d.current_status));
       setPriority(d.priority || 'medium');
       setRemarks(d.remarks || '');
       setDeadline(d.deadline || '');

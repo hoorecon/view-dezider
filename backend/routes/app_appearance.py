@@ -56,6 +56,7 @@ LOADER_SLOTS = {
     "top5_picker": "Top-5 fetch loader (Step 5 → Step 8)",
     "mpps_pdf": "MPPS PDF generation (Step 9)",
     "results_reveal": "Final Decision reveal (Step 8 / 10)",
+    "finder": "Finder — Option-Bank Top-N search (DeciderApps)",
 }
 
 # Allow-list of selectable fonts (Google Fonts + System). Keep in sync with the

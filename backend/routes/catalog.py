@@ -477,6 +477,21 @@ async def update_node(node_id: str, body: CatalogNodeUpdate, user: dict = Depend
         new_slug = _slugify(body.slug)
         await _ensure_unique_slug_under_parent(existing["parent_id"], new_slug, exclude_node_id=node_id)
         set_doc["slug"] = new_slug
+    # Sponsored Solutions (AdMaker) per-node overrides — inherited by all
+    # descendants unless a deeper node overrides; -1 clears the override.
+    if body.finder_min_cutoff_pct is not None or body.finder_sponsored_n is not None:
+        fac = dict(existing.get("finder_ad_config") or {})
+        if body.finder_min_cutoff_pct is not None:
+            if body.finder_min_cutoff_pct < 0:
+                fac.pop("min_cutoff_pct", None)
+            else:
+                fac["min_cutoff_pct"] = float(body.finder_min_cutoff_pct)
+        if body.finder_sponsored_n is not None:
+            if body.finder_sponsored_n < 0:
+                fac.pop("sponsored_n", None)
+            else:
+                fac["sponsored_n"] = int(body.finder_sponsored_n)
+        set_doc["finder_ad_config"] = fac
 
     await db.catalog_nodes.update_one({"node_id": node_id}, {"$set": set_doc})
     updated = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 0})

@@ -20,7 +20,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,6 +40,24 @@ import { CollabBar } from '../../src/components/CollabBar';
 import LiveSessionPill from '../../src/components/LiveSessionPill';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import { safeBack } from '../../src/utils/navigation';
+import { ACTION_STATUS_OPTS, normStatus } from '../../src/constants/actionStatus';
+import { formatDMY } from '../../src/utils/datetime';
+
+// DD-MM-YYYY input helpers (local; mirror ActionItemEditor behaviour).
+const maskDMY = (t: string) => {
+  const d = t.replace(/[^0-9]/g, '').slice(0, 8);
+  const parts = [d.slice(0, 2), d.slice(2, 4), d.slice(4, 8)].filter(Boolean);
+  return parts.join('-');
+};
+const dmyToISO = (s: string): string | null => {
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) return null;
+  const dd = +m[1], mm = +m[2];
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  return isNaN(new Date(`${iso}T00:00:00`).getTime()) ? null : iso;
+};
+import ReportShareSheet from '../../src/components/ReportShareSheet';
 
 // ============== CONSTANTS ==============
 // NOTE: Life-area list is no longer hardcoded — it now flows from the
@@ -50,12 +68,12 @@ import { safeBack } from '../../src/utils/navigation';
 // canonical `id` (la_career, la_finance, …).
 
 const STEPS = [
-  { title: 'Goal',         icon: 'flag' },
-  { title: 'Concerns',     icon: 'alert-circle' },
-  { title: 'RCA',          icon: 'git-branch' },
-  { title: 'Solutions',    icon: 'bulb' },
-  { title: 'Risks',        icon: 'shield-checkmark' },
-  { title: 'Action Plan',  icon: 'rocket' },
+  { title: 'Goal',         icon: 'flag',              desc: 'Define your SMART goal & timing' },
+  { title: 'Concerns',     icon: 'alert-circle',      desc: 'List concerns; ★ mark the primary one' },
+  { title: 'RCA',          icon: 'git-branch',        desc: 'Root-cause analysis for the primary concern' },
+  { title: 'Solutions',    icon: 'bulb',              desc: 'Generate solutions per root cause' },
+  { title: 'Risks',        icon: 'shield-checkmark',  desc: 'Risks + mitigations & contingencies' },
+  { title: 'Action Plan',  icon: 'rocket',            desc: 'Owners, timelines & final actions' },
 ];
 
 // ============== TYPES ==============
@@ -90,6 +108,23 @@ const clampPct = (n: any): number | undefined => {
   const x = parseInt(String(n ?? '').replace(/[^0-9]/g, ''), 10);
   if (isNaN(x)) return undefined;
   return Math.min(100, Math.max(0, x));
+};
+
+// Web-only hover tooltip: RN-Web drops `title` from View/Text/Touchable, so on
+// web we wrap in a real DOM node that carries the title; on native we pass the
+// children straight through (no-op).
+const WebTitle = ({ title, children }: { title: string; children: React.ReactNode }) =>
+  Platform.OS === 'web'
+    ? React.createElement('div', { title, style: { display: 'inline-flex' } }, children as any)
+    : (children as any);
+
+// Elegant, distinct accent palette for the three Action-Plan lineages so a
+// user can tell at a glance whether an action came from a Solution (Q3),
+// a Risk Mitigation (Q4b) or a Risk Contingency (Q4c).
+const AP_COLORS: Record<string, { accent: string; bg: string; tagBg: string }> = {
+  solution:    { accent: 'rgb(79, 70, 229)',  bg: 'rgb(245, 245, 255)', tagBg: 'rgb(238, 242, 255)' }, // indigo
+  mitigation:  { accent: 'rgb(5, 150, 105)',  bg: 'rgb(240, 253, 248)', tagBg: 'rgb(236, 253, 245)' }, // emerald
+  contingency: { accent: 'rgb(217, 119, 6)',  bg: 'rgb(255, 251, 240)', tagBg: 'rgb(255, 251, 235)' }, // amber
 };
 
 // ============== COMPONENT ==============
@@ -168,6 +203,20 @@ export default function SimpleSolutionFinder() {
   const [asmCounts, setAsmCounts] = useState<Record<string, number>>({});
   // AI auto-fill (metered AI-credits wallet, Gemini-first). On-demand only.
   const [aiBusy, setAiBusy] = useState<null | 'sol' | 'risk'>(null);
+  // Report export (PDF download + share sheet) — Step 5.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  // Hierarchy expand/collapse — Step 4 (risks grouped by solution) & Step 5
+  // (action items). A *collapsed* Set keeps everything expanded by default so
+  // existing users lose nothing; Expand-all clears it, Collapse-all fills it.
+  const [collapsedRiskSols, setCollapsedRiskSols] = useState<Set<string>>(new Set());
+  const [collapsedApIds, setCollapsedApIds] = useState<Set<string>>(new Set());
+  // AI generation limits pop-up (a 172-item auto-generated plan was unusable).
+  const [aiOptsOpen, setAiOptsOpen] = useState<null | 'sol' | 'risk'>(null);
+  const [maxPerRca, setMaxPerRca] = useState(2);
+  const [maxRisks, setMaxRisks] = useState(2);
+  const [maxMits, setMaxMits] = useState(2);
+  const [maxCons, setMaxCons] = useState(2);
 
   // Per-row "draft" inputs (so adding doesn't require a modal)
   const [newConcernText, setNewConcernText] = useState('');
@@ -396,18 +445,24 @@ export default function SimpleSolutionFinder() {
   };
 
   // Q3 — append AI-suggested solutions per root cause (dedup, gaps only).
-  const aiFillSolutions = async () => {
+  const aiFillSolutions = () => {
     if (aiBusy) return;
     if (rootCauses.length === 0) {
       showAlert('Add root causes first', 'Go to Q2 and add at least one root cause.');
       return;
     }
+    setAiOptsOpen('sol');
+  };
+
+  // Runs after the user picks limits in the AI options pop-up.
+  const runAiSolutions = async (limitPerRca: number) => {
     setAiBusy('sol');
     try {
       const concernText = (cid: string) => concerns.find(c => c.id === cid)?.text || '';
       const payload = {
         area_of_life: areaOfLife,
         smart_goal: smartGoal,
+        max_per_rca: limitPerRca,
         root_causes: rootCauses.map(r => ({
           rca_id: r.id,
           text: r.text,
@@ -415,7 +470,7 @@ export default function SimpleSolutionFinder() {
           existing: solsFor(r.id).map(s => s.text),
         })),
       };
-      const res = await api.post('/solution-finders/ai/suggest-solutions', payload);
+      const res = await api.post('/solution-finders/ai/suggest-solutions', payload, { timeout: 90000 });
       const sug: Record<string, string[]> = res.data?.suggestions || {};
       let added = 0;
       setSolutions(prev => {
@@ -436,28 +491,36 @@ export default function SimpleSolutionFinder() {
       showAlert('AI auto-fill', added > 0 ? `Added ${added} new solution${added === 1 ? '' : 's'}.` : 'No new solutions to add — you’re all set.');
     } catch (e: any) {
       handleAiError(e, 'Please try again.');
-    } finally { setAiBusy(null); }
+    } finally { setAiBusy(null); loadAiMeter(); }
   };
 
   // Q4 — append AI-suggested risks (+ mitigations/contingencies) per solution.
-  const aiFillRisks = async () => {
+  const aiFillRisks = () => {
     if (aiBusy) return;
     if (solutions.length === 0) {
       showAlert('Add solutions first', 'Go to Q3 and add at least one solution.');
       return;
     }
+    setAiOptsOpen('risk');
+  };
+
+  // Runs after the user picks limits in the AI options pop-up.
+  const runAiRisks = async (limitRisks: number, limitMits: number, limitCons: number) => {
     setAiBusy('risk');
     try {
       const payload = {
         area_of_life: areaOfLife,
         smart_goal: smartGoal,
+        max_risks_per_solution: limitRisks,
+        max_mitigations_per_risk: limitMits,
+        max_contingencies_per_risk: limitCons,
         solutions: solutions.map(s => ({
           sol_id: s.id,
           text: s.text,
           existing_risks: risksFor(s.id).map(r => r.name),
         })),
       };
-      const res = await api.post('/solution-finders/ai/suggest-risks', payload);
+      const res = await api.post('/solution-finders/ai/suggest-risks', payload, { timeout: 90000 });
       const sug: Record<string, any[]> = res.data?.suggestions || {};
       let addedRisks = 0, addedMits = 0, addedCons = 0;
       const newRisks: Risk[] = [];
@@ -530,7 +593,7 @@ export default function SimpleSolutionFinder() {
       showAlert('AI auto-fill', parts.length ? `Added ${parts.join(', ')}.` : 'No new items to add — you’re all set.');
     } catch (e: any) {
       handleAiError(e, 'Please try again.');
-    } finally { setAiBusy(null); }
+    } finally { setAiBusy(null); loadAiMeter(); }
   };
 
   // ── Q3: pull skills / resources from Self (Contact-Self) and other contacts ──
@@ -716,6 +779,28 @@ export default function SimpleSolutionFinder() {
   const editPlanItem = (apId: string, patch: Partial<APItem>) =>
     setActionPlan(prev => prev.map(p => p.ap_id === apId ? { ...p, ...patch } : p));
 
+  // Deadline field: keep a DD-MM-YYYY display string but persist ISO in by_when.
+  const [apDeadlineText, setApDeadlineText] = useState<Record<string, string>>({});
+  const deadlineText = (p: APItem) =>
+    apDeadlineText[p.ap_id] ?? (p.by_when ? formatDMY(p.by_when) : '');
+  const onDeadlineChange = (p: APItem, t: string) => {
+    const masked = maskDMY(t);
+    setApDeadlineText(prev => ({ ...prev, [p.ap_id]: masked }));
+    const iso = dmyToISO(masked);
+    if (iso) editPlanItem(p.ap_id, { by_when: iso });
+    else if (!masked) editPlanItem(p.ap_id, { by_when: undefined });
+  };
+
+  // Status change → update locally + (if pushed) sync the linked central action
+  // item, which fans the new status out to CTT / Lifestyle / Action Center.
+  const changePlanStatus = async (p: APItem, status: string) => {
+    editPlanItem(p.ap_id, { status });
+    if (p.action_id) {
+      try { await api.put(`/action-items/${p.action_id}`, { status }); }
+      catch { /* keep the local optimistic update; retried on next save */ }
+    }
+  };
+
   const pushAllToActionCenter = async () => {
     const id = await handleSave(true);
     if (!id) return;
@@ -837,24 +922,219 @@ export default function SimpleSolutionFinder() {
   };
   const onBack = () => setStep(s => Math.max(0, s - 1));
 
+  // ── #6 Breadcrumb: allow jumping to any already-reachable step ──
+  const reachableMax = useMemo(() => {
+    let m = 0;
+    if (areaOfLife && smartGoal.trim()) m = 1;
+    if (m >= 1 && concerns.some(c => c.is_primary)) m = 2;
+    if (m >= 2 && rootCauses.length > 0) m = 3;
+    if (m >= 3 && solutions.length > 0) m = 4;
+    if (m >= 4) m = 5;
+    return m;
+  }, [areaOfLife, smartGoal, concerns, rootCauses, solutions]);
+
+  // ── Hierarchy lookups (Q4/Q5 context) ──
+  const concernById = useMemo(() => new Map(concerns.map(c => [c.id, c])), [concerns]);
+  const rcaById = useMemo(() => new Map(rootCauses.map(r => [r.id, r])), [rootCauses]);
+  const solById = useMemo(() => new Map(solutions.map(sx => [sx.id, sx])), [solutions]);
+  const riskById = useMemo(() => new Map(risks.map(r => [r.id, r])), [risks]);
+  const chainForSol = (solId: string) => {
+    const sol = solById.get(solId);
+    const rca = sol ? rcaById.get(sol.rca_id) : undefined;
+    const concern = rca ? concernById.get(rca.concern_id) : undefined;
+    return { sol, rca, concern };
+  };
+
+  // Full lineage for any Action-Plan item so Step 5 can show WHERE each action
+  // originated. Mitigations & contingencies hang off a Risk, which hangs off a
+  // Solution → Root Cause → Concern.
+  const mitById = useMemo(() => new Map(mitigations.map(m => [m.id, m])), [mitigations]);
+  const conById = useMemo(() => new Map(contingencies.map(c => [c.id, c])), [contingencies]);
+  const lineageForAp = (p: APItem) => {
+    if (p.source_type === 'solution') {
+      const { sol, rca, concern } = chainForSol(p.source_id);
+      return { concern, rca, sol, risk: undefined as Risk | undefined };
+    }
+    const node: any = p.source_type === 'mitigation' ? mitById.get(p.source_id) : conById.get(p.source_id);
+    const risk = node ? riskById.get(node.risk_id) : undefined;
+    const { sol, rca, concern } = risk
+      ? chainForSol(risk.sol_id)
+      : { sol: undefined, rca: undefined, concern: undefined };
+    return { concern, rca, sol, risk };
+  };
+
+  // ── #3 AI credits metering (visible estimate + balance; confirm before spend) ──
+  const [aiMeter, setAiMeter] = useState<{ balance: number; sol: number; risk: number } | null>(null);
+  const loadAiMeter = useCallback(async () => {
+    try {
+      const [est, bal] = await Promise.all([api.get('/ai-wallet/estimates'), api.get('/ai-wallet')]);
+      const f = est.data?.features || {};
+      const def = Number(est.data?.default_estimate ?? 0);
+      setAiMeter({
+        balance: Number(bal.data?.balance ?? 0),
+        sol: Number(f.solution_finder_solutions ?? def),
+        risk: Number(f.solution_finder_risks ?? def),
+      });
+    } catch { /* metering is best-effort */ }
+  }, []);
+  useEffect(() => { if (authHydrated) loadAiMeter(); }, [authHydrated, loadAiMeter]);
+
+  // Triggered by the AI options pop-up's "Generate" button — guards the credit
+  // balance, then runs the generation with the user-selected limits.
+  const runFromModal = async () => {
+    const kind = aiOptsOpen;
+    if (!kind) return;
+    const est = kind === 'sol' ? (aiMeter?.sol ?? 0) : (aiMeter?.risk ?? 0);
+    let bal = aiMeter?.balance;
+    try { const b = await api.get('/ai-wallet'); bal = Number(b.data?.balance ?? bal ?? 0); } catch { /* keep cached */ }
+    if (bal !== undefined && est > 0 && bal < est) {
+      showAlert('Not enough AI credits',
+        `This uses about ${est} credits, but you have ${bal.toFixed(2)}. Top up to continue.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
+      ]);
+      return;
+    }
+    setAiOptsOpen(null);
+    if (kind === 'sol') runAiSolutions(maxPerRca);
+    else runAiRisks(maxRisks, maxMits, maxCons);
+  };
+
+  const renderStepper = (label: string, value: number, setValue: (n: number) => void, testId: string) => (
+    <View style={s.stepperRow}>
+      <Text style={s.stepperLabel}>{label}</Text>
+      <View style={s.stepperCtrl}>
+        <TouchableOpacity
+          style={[s.stepperBtn, value <= 1 && s.stepperBtnOff]}
+          disabled={value <= 1}
+          onPress={() => setValue(Math.max(1, value - 1))}
+          testID={`${testId}-minus`}
+        >
+          <Ionicons name="remove" size={16} color={value <= 1 ? '#CBD5E1' : '#7C3AED'} />
+        </TouchableOpacity>
+        <Text style={s.stepperVal} testID={`${testId}-val`}>{value}</Text>
+        <TouchableOpacity
+          style={[s.stepperBtn, value >= 10 && s.stepperBtnOff]}
+          disabled={value >= 10}
+          onPress={() => setValue(Math.min(10, value + 1))}
+          testID={`${testId}-plus`}
+        >
+          <Ionicons name="add" size={16} color={value >= 10 ? '#CBD5E1' : '#7C3AED'} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // Authenticated PDF download of the full Solution Finder worksheet. The
+  // report is a paid L1 artifact (same gate as MyDezider / Pros & Cons / SWOT);
+  // a 402 routes the user to the store to unlock instead of erroring out.
+  const downloadPdf = async () => {
+    const id = savedId || (await handleSave(true));
+    if (!id) { showAlert('Save first', 'Add a life area and SMART goal so the report can be built.'); return; }
+    setPdfBusy(true);
+    try {
+      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || '') + `/api/reports/solution_finder/${id}.pdf`;
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const token = await AsyncStorage.getItem('session_token');
+      const resp = await fetch(base, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (resp.status === 402) {
+        showAlert('Unlock report',
+          'Downloading the PDF needs a DIY Decision Report (L1) or any active plan. Open the store now?', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open store', onPress: () => router.push({ pathname: '/store', params: { highlight: 'L1', module: 'solution_finder', decision_id: id } } as any) },
+        ]);
+        return;
+      }
+      if (!resp.ok) throw new Error((await resp.text()) || 'Download failed');
+      const blob = await resp.blob();
+      if (Platform.OS === 'web') {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `jelcos_solution_finder_${String(id).slice(0, 8)}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => Linking.openURL(reader.result as string);
+        reader.readAsDataURL(blob);
+      }
+    } catch (e: any) {
+      showAlert('PDF', e?.message || 'Could not generate the PDF.');
+    } finally { setPdfBusy(false); }
+  };
+
+  // Compact AI-credits meter (balance + per-action estimate) shown above the
+  // AI auto-fill buttons in Q3 / Q4 (#3 credits visibility).
+  const renderAiMeterRow = (kind: 'sol' | 'risk') => {
+    if (!aiMeter) return null;
+    const est = kind === 'sol' ? aiMeter.sol : aiMeter.risk;
+    const low = aiMeter.balance < est;
+    return (
+      <View style={[s.meterRow, low && s.meterRowLow]}>
+        <Ionicons name="sparkles" size={13} color={low ? '#B45309' : '#7C3AED'} />
+        <Text style={[s.meterEst, low && { color: '#B45309' }]}>Est. ~{est} credit{est === 1 ? '' : 's'}</Text>
+        <View style={{ flex: 1 }} />
+        <Text style={[s.meterBal, low && { color: '#B45309' }]}>Balance {aiMeter.balance.toFixed(aiMeter.balance < 10 ? 1 : 0)}</Text>
+        <TouchableOpacity onPress={() => router.push('/ai-wallet' as any)} style={s.meterTopup} testID={`sf-meter-topup-${kind}`}>
+          <Ionicons name="add-circle" size={12} color="#FFF" />
+          <Text style={s.meterTopupText}>Top up</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // ── Clear All / Reset for a whole step (with cascade + confirmation) ──
+  const confirmClearAll = (what: string, cascades: boolean, fn: () => void) => {
+    showAlert(
+      `Clear all ${what}?`,
+      `This removes ALL ${what} on this step${cascades ? ' and everything derived from them' : ''}. You can re-add them, but this can’t be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear all', style: 'destructive', onPress: fn },
+      ],
+    );
+  };
+  const clearAllRootCauses = () => confirmClearAll('root causes', true, () => {
+    setRootCauses([]); setSolutions([]); setRisks([]); setMitigations([]); setContingencies([]);
+  });
+  const clearAllSolutions = () => confirmClearAll('solutions', true, () => {
+    setSolutions([]); setRisks([]); setMitigations([]); setContingencies([]);
+  });
+  const clearAllRisks = () => confirmClearAll('risks, mitigations & contingencies', false, () => {
+    setRisks([]); setMitigations([]); setContingencies([]);
+  });
+  const renderClearAll = (onPress: () => void, count: number, testID: string) => count > 0 ? (
+    <View style={s.clearAllRow}>
+      <TouchableOpacity style={s.clearAllBtn} onPress={onPress} testID={testID}>
+        <Ionicons name="trash-outline" size={13} color="#DC2626" />
+        <Text style={s.clearAllText}>Clear all ({count})</Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
+
   // ============ RENDER STEPS ============
   const renderStepIndicator = () => (
     <View style={s.stepIndicator}>
       {STEPS.map((st, i) => {
-        const canEdit = i <= step;                 // already reached → tappable
+        const isCurrent = i === step;
+        const isReachable = i <= reachableMax;      // unlocked → tappable (fwd + back)
         return (
           <View key={st.title} style={s.stepDotWrap}>
-            <TouchableOpacity
-              activeOpacity={canEdit ? 0.7 : 1}
-              disabled={!canEdit}
-              onPress={() => { if (canEdit) setStep(i); }}
-              accessibilityLabel={`Step ${i + 1}: ${st.title}`}
-            >
-              <View style={[s.stepDot, i <= step && s.stepDotActive]}>
-                <Ionicons name={st.icon as any} size={12} color={i <= step ? '#FFF' : '#94A3B8'} />
-              </View>
-            </TouchableOpacity>
-            {i < STEPS.length - 1 && <View style={[s.stepLine, i < step && s.stepLineActive]} />}
+            <WebTitle title={`${i + 1}. ${STEPS[i].title} — ${STEPS[i].desc}`}>
+              <TouchableOpacity
+                testID={`sf-breadcrumb-${i}`}
+                activeOpacity={isReachable ? 0.7 : 1}
+                disabled={!isReachable}
+                onPress={() => { if (isReachable) setStep(i); }}
+                accessibilityLabel={`Go to Step ${i + 1}: ${STEPS[i].title} — ${STEPS[i].desc}`}
+                hitSlop={6}
+              >
+                <View style={[s.stepDot, isReachable && s.stepDotActive, isCurrent && s.stepDotCurrent]}>
+                  <Ionicons name={st.icon as any} size={12} color={isReachable ? '#FFF' : '#94A3B8'} />
+                </View>
+              </TouchableOpacity>
+            </WebTitle>
+            {i < STEPS.length - 1 && <View style={[s.stepLine, i < reachableMax && s.stepLineActive]} />}
           </View>
         );
       })}
@@ -963,6 +1243,7 @@ export default function SimpleSolutionFinder() {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
       <Text style={s.qTitle}>Q2. Root Cause Analysis</Text>
       <Text style={s.qHint}>For each PRIMARY concern, list the root causes (1 to many).</Text>
+      {renderClearAll(clearAllRootCauses, rootCauses.length, 'sf-clear-rca')}
       {primaryConcerns.length === 0 && (
         <Text style={s.empty}>No primary concerns yet. Go back to Q1 and tap ⭐ to mark some.</Text>
       )}
@@ -1012,19 +1293,23 @@ export default function SimpleSolutionFinder() {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
       <Text style={s.qTitle}>Q3. Solutions within your Current Capabilities & Resources</Text>
       <Text style={s.qHint}>Step 3 · Solution Identification. ASM deep-dive is available at every level — Overall, per PRIMARY concern, per Root Cause, and per Solution.</Text>
+      {renderClearAll(clearAllSolutions, solutions.length, 'sf-clear-sol')}
       {rootCauses.length > 0 && (
-        <TouchableOpacity
-          style={[s.aiFillBtn, aiBusy === 'sol' && s.aiFillBtnBusy]}
-          onPress={aiFillSolutions}
-          disabled={!!aiBusy}
-          activeOpacity={0.8}
-          testID="ai-fill-solutions-btn"
-        >
-          {aiBusy === 'sol'
-            ? <ActivityIndicator size="small" color="#FFF" />
-            : <Ionicons name="sparkles" size={15} color="#FFF" />}
-          <Text style={s.aiFillBtnText}>{aiBusy === 'sol' ? 'Generating…' : 'AI auto-fill solutions'}</Text>
-        </TouchableOpacity>
+        <>
+          {renderAiMeterRow('sol')}
+          <TouchableOpacity
+            style={[s.aiFillBtn, aiBusy === 'sol' && s.aiFillBtnBusy]}
+            onPress={aiFillSolutions}
+            disabled={!!aiBusy}
+            activeOpacity={0.8}
+            testID="ai-fill-solutions-btn"
+          >
+            {aiBusy === 'sol'
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Ionicons name="sparkles" size={15} color="#FFF" />}
+            <Text style={s.aiFillBtnText}>{aiBusy === 'sol' ? 'Generating…' : 'AI auto-fill solutions'}</Text>
+          </TouchableOpacity>
+        </>
       )}
       {rootCauses.length === 0 && (
         <Text style={s.empty}>No root causes yet. Go back to Q2.</Text>
@@ -1146,24 +1431,75 @@ export default function SimpleSolutionFinder() {
         4a · Risks per solution (Impact% × Probability% = Risk Index%).{'\n'}
         4b · Mitigations (1..many) · 4c · Contingencies (1..many). Use “ASM” to deep-dive any item.
       </Text>
+      {renderClearAll(clearAllRisks, risks.length, 'sf-clear-risk')}
       {solutions.length > 0 && (
-        <TouchableOpacity
-          style={[s.aiFillBtn, aiBusy === 'risk' && s.aiFillBtnBusy]}
-          onPress={aiFillRisks}
-          disabled={!!aiBusy}
-          activeOpacity={0.8}
-          testID="ai-fill-risks-btn"
-        >
-          {aiBusy === 'risk'
-            ? <ActivityIndicator size="small" color="#FFF" />
-            : <Ionicons name="sparkles" size={15} color="#FFF" />}
-          <Text style={s.aiFillBtnText}>{aiBusy === 'risk' ? 'Generating…' : 'AI auto-fill risks, mitigations & contingencies'}</Text>
-        </TouchableOpacity>
+        <>
+          {renderAiMeterRow('risk')}
+          <TouchableOpacity
+            style={[s.aiFillBtn, aiBusy === 'risk' && s.aiFillBtnBusy]}
+            onPress={aiFillRisks}
+            disabled={!!aiBusy}
+            activeOpacity={0.8}
+            testID="ai-fill-risks-btn"
+          >
+            {aiBusy === 'risk'
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Ionicons name="sparkles" size={15} color="#FFF" />}
+            <Text style={s.aiFillBtnText}>{aiBusy === 'risk' ? 'Generating…' : 'AI auto-fill risks, mitigations & contingencies'}</Text>
+          </TouchableOpacity>
+        </>
       )}
       {solutions.length === 0 && <Text style={s.empty}>No solutions yet. Go back to Q3.</Text>}
-      {solutions.map(sol => (
-        <View key={sol.id} style={s.groupCard}>
-          <Text style={s.subGroupTitle}>Solution: {sol.text}</Text>
+      {solutions.length > 0 && (
+        <View style={s.expandBar}>
+          <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedRiskSols(new Set())} testID="sf-risk-expand-all">
+            <Ionicons name="chevron-down" size={13} color="#7C3AED" />
+            <Text style={s.expandBtnText}>Expand all</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedRiskSols(new Set(solutions.map(x => x.id)))} testID="sf-risk-collapse-all">
+            <Ionicons name="chevron-forward" size={13} color="#7C3AED" />
+            <Text style={s.expandBtnText}>Collapse all</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {solutions.map(sol => {
+        const _ch = chainForSol(sol.id);
+        const _collapsed = collapsedRiskSols.has(sol.id);
+        const _riskCount = risksFor(sol.id).length;
+        return (
+        <View key={sol.id} style={[s.groupCard, s.solHierCard]}>
+          {(_ch.concern || _ch.rca) && (
+            <View style={s.trailRow}>
+              {_ch.concern && (
+                <View style={[s.trailChip, s.trailConcern]}>
+                  <Ionicons name="alert-circle" size={9} color="#92400E" />
+                  <Text style={[s.trailChipText, { color: '#92400E' }]} numberOfLines={1}>{_ch.concern.text}</Text>
+                </View>
+              )}
+              {_ch.rca && (
+                <>
+                  <Ionicons name="chevron-forward" size={10} color="#CBD5E1" />
+                  <View style={[s.trailChip, s.trailRca]}>
+                    <Ionicons name="git-branch" size={9} color="#4338CA" />
+                    <Text style={[s.trailChipText, { color: '#4338CA' }]} numberOfLines={1}>{_ch.rca.text}</Text>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
+          <TouchableOpacity
+            style={s.solCollapseHead}
+            activeOpacity={0.7}
+            onPress={() => setCollapsedRiskSols(prev => { const n = new Set(prev); if (n.has(sol.id)) n.delete(sol.id); else n.add(sol.id); return n; })}
+            testID={`sf-risk-sol-toggle-${sol.id}`}
+          >
+            <Ionicons name={_collapsed ? 'chevron-forward' : 'chevron-down'} size={15} color="#6366F1" />
+            <Text style={[s.subGroupTitle, { flex: 1, marginBottom: 0 }]}>Solution: {sol.text}</Text>
+            {_collapsed && _riskCount > 0 && (
+              <View style={s.countPill}><Text style={s.countPillText}>{_riskCount} risk{_riskCount === 1 ? '' : 's'}</Text></View>
+            )}
+          </TouchableOpacity>
+          {!_collapsed && (<>
           {risksFor(sol.id).map(r => (
             <View key={r.id} style={s.riskCard}>
               <View style={s.riskHeader}>
@@ -1301,8 +1637,10 @@ export default function SimpleSolutionFinder() {
               <Ionicons name="add" size={18} color="#FFF" />
             </TouchableOpacity>
           </View>
+          </>)}
         </View>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 
@@ -1341,15 +1679,42 @@ export default function SimpleSolutionFinder() {
       {actionPlan.length === 0 && (
         <Text style={s.empty}>Nothing aggregated yet. Add items in Q3 / Q4 and tap re-aggregate.</Text>
       )}
-      {actionPlan.map(p => (
-        <View key={p.ap_id} style={s.apCard}>
-          <View style={s.apHeader}>
-            <View style={[s.apTag,
-              p.source_type === 'solution' && { backgroundColor: '#EEF2FF', borderColor: '#6366F1' },
-              p.source_type === 'mitigation' && { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
-              p.source_type === 'contingency' && { backgroundColor: '#FFFBEB', borderColor: '#F59E0B' },
-            ]}>
-              <Text style={s.apTagText}>{p.source_type.toUpperCase()}</Text>
+      {actionPlan.length > 0 && (
+        <View style={s.expandBar}>
+          <View style={s.legendRow}>
+            <View style={[s.legendDot, { backgroundColor: AP_COLORS.solution.accent }]} />
+            <Text style={s.legendText}>Solution</Text>
+            <View style={[s.legendDot, { backgroundColor: AP_COLORS.mitigation.accent, marginLeft: 8 }]} />
+            <Text style={s.legendText}>Mitigation</Text>
+            <View style={[s.legendDot, { backgroundColor: AP_COLORS.contingency.accent, marginLeft: 8 }]} />
+            <Text style={s.legendText}>Contingency</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedApIds(new Set())} testID="sf-ap-expand-all">
+              <Ionicons name="chevron-down" size={13} color="#7C3AED" />
+              <Text style={s.expandBtnText}>Expand all</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedApIds(new Set(actionPlan.map(x => x.ap_id)))} testID="sf-ap-collapse-all">
+              <Ionicons name="chevron-forward" size={13} color="#7C3AED" />
+              <Text style={s.expandBtnText}>Collapse all</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+      {actionPlan.map(p => {
+        const _c = AP_COLORS[p.source_type] || AP_COLORS.solution;
+        const _lin = lineageForAp(p);
+        const _apCollapsed = collapsedApIds.has(p.ap_id);
+        return (
+        <View key={p.ap_id} style={[s.apCard, { borderLeftWidth: 4, borderLeftColor: _c.accent, backgroundColor: _c.bg }]}>
+          <TouchableOpacity
+            style={s.apHeader}
+            activeOpacity={0.7}
+            onPress={() => setCollapsedApIds(prev => { const n = new Set(prev); if (n.has(p.ap_id)) n.delete(p.ap_id); else n.add(p.ap_id); return n; })}
+            testID={`sf-ap-toggle-${p.ap_id}`}
+          >
+            <View style={[s.apTag, { backgroundColor: _c.tagBg, borderColor: _c.accent }]}>
+              <Text style={[s.apTagText, { color: _c.accent }]}>{p.source_type.toUpperCase()}</Text>
             </View>
             {p.pushed_to_action_center && (
               <View style={s.apPushed}>
@@ -1357,23 +1722,61 @@ export default function SimpleSolutionFinder() {
                 <Text style={s.apPushedText}>In Action Center</Text>
               </View>
             )}
-          </View>
+            <View style={{ flex: 1 }} />
+            <Ionicons name={_apCollapsed ? 'chevron-forward' : 'chevron-down'} size={16} color="#94A3B8" />
+          </TouchableOpacity>
+          {/* Hierarchy trail — where this action came from (Concern ▸ RCA ▸ Solution ▸ Risk) */}
+          {(_lin.concern || _lin.rca || _lin.sol || _lin.risk) && (
+            <View style={s.trailRow}>
+              {_lin.concern && (
+                <View style={[s.trailChip, s.trailConcern]}>
+                  <Text style={[s.trailChipText, { color: '#92400E' }]} numberOfLines={1}>{_lin.concern.text}</Text>
+                </View>
+              )}
+              {_lin.rca && (<><Ionicons name="chevron-forward" size={9} color="#CBD5E1" /><View style={[s.trailChip, s.trailRca]}><Text style={[s.trailChipText, { color: '#4338CA' }]} numberOfLines={1}>{_lin.rca.text}</Text></View></>)}
+              {_lin.sol && (<><Ionicons name="chevron-forward" size={9} color="#CBD5E1" /><View style={[s.trailChip, s.trailSol]}><Text style={[s.trailChipText, { color: '#3730A3' }]} numberOfLines={1}>{_lin.sol.text}</Text></View></>)}
+              {_lin.risk && (<><Ionicons name="chevron-forward" size={9} color="#CBD5E1" /><View style={[s.trailChip, s.trailRisk]}><Text style={[s.trailChipText, { color: '#B91C1C' }]} numberOfLines={1}>{_lin.risk.name}</Text></View></>)}
+            </View>
+          )}
           <Text style={s.apText}>{p.text}</Text>
+          {!_apCollapsed && (<>
           <View style={s.apMetaRow}>
-            <TextInput
-              style={[s.apMetaInput, { flex: 1 }]}
-              placeholder="Owner / Who"
-              placeholderTextColor="#9CA3AF"
-              value={p.who || ''}
-              onChangeText={t => editPlanItem(p.ap_id, { who: t })}
-            />
-            <TextInput
-              style={[s.apMetaInput, { width: 110 }]}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9CA3AF"
-              value={p.by_when || ''}
-              onChangeText={t => editPlanItem(p.ap_id, { by_when: t })}
-            />
+            <View style={{ flex: 1 }}>
+              <Text style={s.apFieldLabel}>Owner / Who</Text>
+              <TextInput
+                style={s.apMetaInput}
+                placeholder="Owner / Who"
+                placeholderTextColor="#9CA3AF"
+                value={p.who || ''}
+                onChangeText={t => editPlanItem(p.ap_id, { who: t })}
+              />
+            </View>
+            <View style={{ width: 130 }}>
+              <Text style={s.apFieldLabel}>Deadline (DD-MM-YYYY)</Text>
+              <TextInput
+                style={s.apMetaInput}
+                placeholder="30-08-2026"
+                placeholderTextColor="#9CA3AF"
+                value={deadlineText(p)}
+                onChangeText={t => onDeadlineChange(p, t)}
+                keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+              />
+            </View>
+          </View>
+          <Text style={s.apFieldLabel}>Status</Text>
+          <View style={s.apStatusRow}>
+            {ACTION_STATUS_OPTS.map(opt => {
+              const active = normStatus(p.status) === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[s.apStatusChip, active && { backgroundColor: opt.color, borderColor: opt.color }]}
+                  onPress={() => changePlanStatus(p, opt.id)}
+                >
+                  <Text style={[s.apStatusChipText, active && { color: '#FFF' }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           <View style={s.apFlagRow}>
             <TouchableOpacity
@@ -1401,13 +1804,36 @@ export default function SimpleSolutionFinder() {
               </Text>
             </TouchableOpacity>
           </View>
+          </>)}
         </View>
-      ))}
+        );
+      })}
       {actionPlan.length > 0 && (
         <TouchableOpacity style={s.pushBtn} onPress={pushAllToActionCenter}>
           <Ionicons name="rocket" size={16} color="#FFF" />
           <Text style={s.pushBtnText}>Push pending items to Action Center</Text>
         </TouchableOpacity>
+      )}
+      {savedId && (
+        <View style={s.reportRow}>
+          <TouchableOpacity
+            style={[s.reportBtn, s.reportPdfBtn]}
+            onPress={downloadPdf}
+            disabled={pdfBusy}
+            testID="sf-download-pdf"
+          >
+            {pdfBusy ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="document-text" size={16} color="#7C3AED" />}
+            <Text style={s.reportPdfText}>Download PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.reportBtn, s.reportShareBtn]}
+            onPress={() => setShareOpen(true)}
+            testID="sf-share-report"
+          >
+            <Ionicons name="share-social" size={16} color="#FFF" />
+            <Text style={s.reportShareText}>Share report</Text>
+          </TouchableOpacity>
+        </View>
       )}
       {editId && (
         <TouchableOpacity
@@ -1591,6 +2017,50 @@ export default function SimpleSolutionFinder() {
         </View>
       </Modal>
       {contributionMode && <LiveSessionPill shareId={contribShareId} />}
+      {savedId && (
+        <ReportShareSheet
+          visible={shareOpen}
+          onClose={() => setShareOpen(false)}
+          module="solution_finder"
+          decisionId={savedId}
+          title={smartGoal || 'Solution Finder'}
+        />
+      )}
+
+      {/* AI generation limits pop-up — keeps the auto-generated plan practical */}
+      <Modal visible={!!aiOptsOpen} transparent animationType="fade" onRequestClose={() => setAiOptsOpen(null)}>
+        <View style={s.aiOptsOverlay}>
+          <View style={s.aiOptsCard}>
+            <View style={s.aiOptsHead}>
+              <Ionicons name="sparkles" size={18} color="#7C3AED" />
+              <Text style={s.aiOptsTitle}>{aiOptsOpen === 'sol' ? 'AI Auto — Solutions' : 'AI Auto — Risk Analysis'}</Text>
+            </View>
+            <Text style={s.aiOptsSub}>Set how many items AI generates per parent, so your action plan stays doable.</Text>
+            {aiOptsOpen === 'sol' && renderStepper('Max Solutions per Root Cause', maxPerRca, setMaxPerRca, 'sf-max-sol')}
+            {aiOptsOpen === 'risk' && (
+              <>
+                {renderStepper('Max Risks per Solution', maxRisks, setMaxRisks, 'sf-max-risk')}
+                {renderStepper('Max Mitigations per Risk', maxMits, setMaxMits, 'sf-max-mit')}
+                {renderStepper('Max Contingencies per Risk', maxCons, setMaxCons, 'sf-max-con')}
+              </>
+            )}
+            {aiMeter && (
+              <Text style={s.aiOptsEst}>
+                Uses ~{aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk} AI credit{(aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk) === 1 ? '' : 's'} · Balance {aiMeter.balance.toFixed(aiMeter.balance < 10 ? 1 : 0)}
+              </Text>
+            )}
+            <View style={s.aiOptsBtns}>
+              <TouchableOpacity style={[s.aiOptsBtn, s.aiOptsCancel]} onPress={() => setAiOptsOpen(null)} testID="sf-aiopts-cancel">
+                <Text style={s.aiOptsCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.aiOptsBtn, s.aiOptsGo]} onPress={runFromModal} testID="sf-aiopts-generate">
+                <Ionicons name="sparkles" size={15} color="#FFF" />
+                <Text style={s.aiOptsGoText}>Generate</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1607,6 +2077,7 @@ const s = StyleSheet.create({
   stepDotWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   stepDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   stepDotActive: { backgroundColor: '#7C3AED' },
+  stepDotCurrent: { borderWidth: 2.5, borderColor: '#4C1D95' },
   stepEditBadge: { position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: 7, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FFF' },
   capBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', alignSelf: 'flex-start' },
   capBtnText: { fontSize: 12, fontWeight: '600', color: '#4338CA' },
@@ -1710,8 +2181,12 @@ const s = StyleSheet.create({
   apPushed: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   apPushedText: { fontSize: 10, fontWeight: '700', color: '#10B981' },
   apText: { fontSize: 13, color: '#0F172A', marginBottom: 6 },
-  apMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  apMetaRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 6 },
   apMetaInput: { backgroundColor: '#F8FAFC', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 11, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
+  apFieldLabel: { fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3, marginTop: 4 },
+  apStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 6 },
+  apStatusChip: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFF' },
+  apStatusChipText: { fontSize: 10.5, fontWeight: '700', color: '#475569' },
   apFlagRow: { flexDirection: 'row', gap: 6 },
   apFlag: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' },
   apFlagActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
@@ -1734,4 +2209,66 @@ const s = StyleSheet.create({
   emoPrimaryText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   emoSecondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
   emoSecondaryText: { color: '#0369A1', fontSize: 13, fontWeight: '700' },
+
+  // ── AI credits meter row (Q3 / Q4) ──
+  meterRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 },
+  meterRowLow: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  meterEst: { fontSize: 11.5, fontWeight: '800', color: '#7C3AED' },
+  meterBal: { fontSize: 11.5, fontWeight: '700', color: '#6D28D9', marginRight: 8 },
+  meterTopup: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#7C3AED', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  meterTopupText: { fontSize: 10.5, fontWeight: '800', color: '#FFF' },
+
+  // ── Expand / Collapse bar (Q4 / Q5) ──
+  expandBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  expandBtnText: { fontSize: 11.5, fontWeight: '800', color: '#7C3AED' },
+  legendRow: { flexDirection: 'row', alignItems: 'center' },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { fontSize: 10.5, fontWeight: '700', color: '#64748B', marginLeft: 4 },
+
+  // ── Hierarchy trail chips ──
+  trailRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 8 },
+  trailChip: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, maxWidth: 160 },
+  trailChipText: { fontSize: 10, fontWeight: '700' },
+  trailConcern: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  trailRca: { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' },
+  trailSol: { backgroundColor: '#E0E7FF', borderColor: '#A5B4FC' },
+  trailRisk: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+  solHierCard: { borderLeftWidth: 3, borderLeftColor: '#6366F1' },
+  solCollapseHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  countPill: { backgroundColor: '#EEF2FF', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  countPillText: { fontSize: 10, fontWeight: '800', color: '#4338CA' },
+
+  // ── Report export row (Q5) ──
+  reportRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  reportBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
+  reportPdfBtn: { backgroundColor: '#F5F3FF', borderWidth: 1.5, borderColor: '#7C3AED' },
+  reportPdfText: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
+  reportShareBtn: { backgroundColor: '#7C3AED' },
+  reportShareText: { fontSize: 13, fontWeight: '800', color: '#FFF' },
+
+  // ── AI generation limits pop-up ──
+  aiOptsOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  aiOptsCard: { width: '100%', maxWidth: 420, backgroundColor: '#FFF', borderRadius: 18, padding: 20, gap: 10 },
+  aiOptsHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  aiOptsTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  aiOptsSub: { fontSize: 12.5, color: '#64748B', marginBottom: 4 },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  stepperLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: '#334155' },
+  stepperCtrl: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stepperBtn: { width: 34, height: 34, borderRadius: 9, borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' },
+  stepperBtnOff: { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  stepperVal: { minWidth: 22, textAlign: 'center', fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  aiOptsEst: { fontSize: 11.5, fontWeight: '700', color: '#7C3AED', backgroundColor: '#F5F3FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, marginTop: 4, overflow: 'hidden' },
+  aiOptsBtns: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  aiOptsBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
+  aiOptsCancel: { backgroundColor: '#F1F5F9' },
+  aiOptsCancelText: { fontSize: 13.5, fontWeight: '800', color: '#475569' },
+  aiOptsGo: { backgroundColor: '#7C3AED' },
+  aiOptsGoText: { fontSize: 13.5, fontWeight: '800', color: '#FFF' },
+
+  // ── Clear all / reset (Q2 RCA, Q3 Solutions, Q4 Risks) ──
+  clearAllRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
+  clearAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  clearAllText: { fontSize: 11.5, fontWeight: '800', color: '#DC2626' },
 });

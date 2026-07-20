@@ -1,6 +1,12 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.20.0", "updated": "2026-06-28" }
+_metadata: { "version": "3.23.1", "updated": "2026-07-19" }
+
+> **Postman parity (v3.23.1):** the committed collection `/app/docs/Postman_Collection.json` now covers **every** live endpoint — **126 folders · 1,316 requests** — regenerated via `backend/scripts/generate_postman_collection.py` (see `POSTMAN.md`).
+
+> **v3.22.0–v3.23.0 (2026-07-19) additions —** **FRAME monetization + scale**: `/admaker/*` (Sponsored-Solutions bid CRUD, AdRank×GSP auction hooks, CPC click billing, advertiser self-serve `my/*`), `/adtaker/*` (publisher CRUD with tracker IDs + API Key/Secret, public `widget.js`/`embed`/`track`, self-serve header-auth API, org portal), **Option Bank** `/decider-store/{tid}/bank*` (3 ingestion rails + stats), **async Finder jobs** `/decisions/{id}/finder/jobs` + `/finder/jobs/{job_id}` (10M-scale pipeline with % progress), Catalog-node `finder_ad_config` overrides and 4 new `ai-wallet/config` keys. Full tables in the "AdMaker · AdTaker · Option Bank (v3.22–v3.23)" section at the end.
+
+> **v3.21.0 (2026-07-13) additions —** **Stripe Payments** `/stripe/*`: `POST /stripe/checkout` `{kind: ai_wallet|subscription, currency: usd|inr, pack_id|plan_id, success_url}` → `{checkout_url, session_id}`; `GET /stripe/status/{session_id}` (polls + idempotently fulfils); `POST /stripe/webhook` (verified when `STRIPE_WEBHOOK_SECRET` set); `GET /stripe/health`. Amounts are computed server-side; fulfillment reuses `_credit_refill` (wallet) / `apply_charge` (subscription). **AI Assistant** `/ai-assistant/quick-ask` & `/ai-assistant/conversations/{id}/message` now return a `model` field and default to Claude `claude-sonnet-4-6` (metered), falling back to `gpt-4.1-mini` when wallet credits are exhausted. **Auth** `/auth/register` & `/auth/google/session` responses now reflect `effective_whatsapp_verified` (honour `skip_whatsapp_gate`).
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -129,12 +135,23 @@ Seed script: `backend/scripts/seed_time_store_services.py` — idempotent, safe 
 
 ## Admin Docs (admin auth)
 
+### Handbook viewer (`/admin-docs`) — serves the markdown files in `/app/docs/`
 | Method | Path | Description |
 |---|---|---|
-| GET | `/admin-docs` | list all 12 handbook docs with version + updated |
+| GET | `/admin-docs` | list all 16 handbook docs with version + updated |
 | GET | `/admin-docs/{slug}` | fetch one doc (markdown body + parsed metadata) |
+| GET | `/admin-docs/{slug}/pdf` | download the doc rendered as a PDF |
 
-Slugs: `INDEX, PRD, SRS, API_REFERENCE, POSTMAN, REGRESSION, UAT, ACM, WOWO, CLD, SECURITY, DEPLOYMENT`.
+Slugs: `INDEX, SYSTEM_KT, PRD, SRS, API_REFERENCE, POSTMAN, REGRESSION, UAT, ACM, WOWO, CLD, SECURITY, DEPLOYMENT, PRODUCTION_DEPLOYMENT, ADMIN_USER_GUIDE` (see `routes/admin_docs_viewer.py DOC_FILES`).
+
+### Live API tooling (`/admin/docs`) — generated from the running OpenAPI schema
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin/docs/api-catalog?channel=` | Full endpoint catalog with channel tags, categories, request/response samples |
+| GET | `/admin/docs/postman-collection` | Download the Postman v2.1 collection (identical to the committed `/app/docs/Postman_Collection.json` — regen script: `backend/scripts/generate_postman_collection.py`) |
+| GET | `/admin/docs/{doc_type}` | AI-generated doc (`prd, srs, regression_tests, uat_cases`) from Mongo |
+| POST | `/admin/docs/refresh/{doc_type}` | Regenerate one AI doc |
+| POST | `/admin/docs/refresh-all` | Regenerate all AI docs |
 
 ## Conventions
 - All dates: ISO 8601 (`2026-05-04` or `2026-05-04T14:33:00Z`).
@@ -434,3 +451,72 @@ Post-import the client offers an opt-in to run the existing plan-capped **`POST 
 - **Pros & Cons** (`POST /api/pros-cons` + `PUT /api/pros-cons/{id}`) already persists `decision_type`.
 - **Solution Finder** (`POST /api/solution-finders` + `PUT /api/solution-finders/{id}`) now accepts/persists `decision_type` (one of `problem|need|risk|aspiration`).
 
+
+---
+
+## AdMaker · AdTaker · Option Bank (v3.22–v3.23)
+
+### Finder — run & async jobs
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/decisions/{id}/finder/config` | owner | Resolved defaults + `total_options` (embedded) + **`bank_options`** (Option-Bank size — UI auto-switches to job mode when > 0) |
+| POST | `/api/decisions/{id}/finder/run` | owner | Sync run over embedded options. Response now also carries `sponsored[]` (auction winners, **no bid/price fields**), `ad_config {min_cutoff_pct, sponsored_n, region, eligible_above_cutoff}` |
+| POST | `/api/decisions/{id}/finder/jobs` | owner | **Async Option-Bank run** (indexed S1 prune → streamed heap Top-K → auction). Body `{min_options?, max_options?, top_n?, match_rule?, region?, force?}`. Returns `{job_id, cached}` — identical expectations-hash within 10 min returns the cached job |
+| GET | `/api/finder/jobs/{job_id}` | owner | Poll `{status: running|done|error, progress {pct,label}, result}`. Result: `{engine:'bank', stage, total_options, candidates, survivors, scanned, ranked(≤50), top, top_ids, sponsored, ad_config, duration_ms}` |
+
+### AdMaker Program — admin bid management
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/admaker/bids?template_id=&status=` | admin | List (joined `template_title`; counters: impressions, clicks, spent_paise, last_price_paise) |
+| POST | `/api/admaker/bids` | admin | Create. `{template_id, option_name, advertiser_name, bid_paise≥1, region('global'|cc), budget_paise(0=∞), slot_start/slot_end (ISO), daily_start_hour/daily_end_hour (0-23, overnight wrap ok), timezone(IANA), status}` |
+| PUT | `/api/admaker/bids/{bid_id}` | admin | Partial update (same fields) |
+| DELETE | `/api/admaker/bids/{bid_id}` | admin | Delete |
+| POST | `/api/admaker/track` | user | Sponsored **click → CPC charge** at the stored GSP price. `{bid_id, decision_id?, option_id?}` → `{ok, charged_paise}`; auto-`exhausted` on budget |
+| GET | `/api/admaker/resolve-config?node_id=&template_id=` | admin | Effective `{min_cutoff_pct, sponsored_n}` + the SOURCE of each value (template / CCM node / global) |
+
+### AdMaker Studio — advertiser self-serve (same user login, ACM `admaker_program`)
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/admaker/my/eligible-options?template_id=` | user¹ | Options linked to the caller's own Solution-Store listings (incl. same-org creators + bank `store_bridge` refs) |
+| GET | `/api/admaker/my/bids` | user¹ | Own bids (joined titles) |
+| POST | `/api/admaker/my/bids` | user¹ | Create — **403 unless the option is owned** (ownership invariant) |
+| PUT/DELETE | `/api/admaker/my/bids/{bid_id}` | user¹ | Own-only; `option_name` changes are stripped (needs fresh ownership check) |
+| GET | `/api/admaker/my/dashboard` | user¹ | `{totals {bids, impressions, clicks, ctr_pct, spend_paise, avg_cpc_paise}, bids[+ctr_pct, avg_cpc_paise]}` |
+
+¹ passes when: platform admin, OR `org_role ∈ {org_admin, advertiser}`, OR ACM `admaker_program` allowed (trial/paid_pro/paid_enterprise). Otherwise **403** with the ACM upgrade message.
+
+### AdTaker Program — publishers, keys, widgets
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/adtaker/publishers` | admin | List + lifetime totals per tracker. Never returns `api_secret_hash` |
+| POST | `/api/adtaker/publishers` | admin | Create → mints `tracker_id (DZ-PUB-XXXXXXXX)` + `api_key (dzk_…)` + **`api_secret (dzs_…) returned ONCE`** (stored sha256-hashed). Optional `org_id` link, `revenue_share_pct` (default 68) |
+| PUT | `/api/adtaker/publishers/{publisher_id}` | admin | Update name/site/share/status/`org_id` |
+| POST | `/api/adtaker/publishers/{publisher_id}/rotate-keys` | admin | New key+secret (old pair dies instantly; secret returned once) |
+| DELETE | `/api/adtaker/publishers/{publisher_id}` | admin | Delete |
+| GET | `/api/adtaker/publishers/{publisher_id}/stats?days=30` | admin | Totals, CTR, daily series, `earnings_estimate_paise` (= conversions × bounty × share%) |
+| GET | `/api/adtaker/self/profile` | key² | Publisher profile |
+| GET | `/api/adtaker/self/stats?days=` | key² | Same stats payload, self-serve |
+| GET | `/api/adtaker/self/apps` | key² | Live Decider Apps + a ready-to-paste `embed_snippet` per app |
+| GET | `/api/adtaker/portal/me?days=` | org session | Publishers linked to the caller's `org_id` + stats (403 for non-org users) |
+| GET | `/api/adtaker/widget.js?tracker=&app=` | public | Drop-in `<script>` loader → injects the embed iframe (cache 5 min) |
+| GET | `/api/adtaker/embed/{template_id}?tracker=` | public | Self-contained HTML card (`frame-ancestors *`), logs an **impression**; CTA beacons a click + deep-links `/decider-store/{id}?ref={tracker}` |
+| POST | `/api/adtaker/track` | public | Beacon `{tracker, template_id, event: impression|click|conversion}` (404 on unknown/paused tracker) |
+
+² headers `X-Adtaker-Key: dzk_…` + `X-Adtaker-Secret: dzs_…` (401 invalid, 403 paused).
+
+Conversion attribution: `POST /api/decider-store/{tid}/clone` accepts optional `ref` (tracker ID) → logs a `conversion` event.
+
+### Option Bank — ingestion & management (all admin)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/decider-store/{tid}/bank` | `{total, by_source}` |
+| POST | `/api/decider-store/{tid}/bank/sync-template` | Rail 1a: template's embedded options → bank (idempotent) |
+| POST | `/api/decider-store/{tid}/bank/ingest/solutions` | Rail 1b: bridged Solution-Store items (`quantitative_factors` keyed by sub-factor id) merged with ReviewNet `baseline_profile` |
+| POST | `/api/decider-store/{tid}/bank/ingest/partner` | Rail 2: external JSON API. `{api_url, items_path?, name_key, value_map {sub_id: json_key}, headers?, limit?}` |
+| POST | `/api/decider-store/{tid}/bank/ingest/bulk` | Rail 3: raw rows (Deep-Import/scripts). `{items:[{name, values:{sub_id: raw|{raw,num}}}], source}` (≤50K/call) |
+| DELETE | `/api/decider-store/{tid}/bank?source=` | Clear all or one source |
+
+### Config surfaces
+- `PUT /api/catalog/nodes/{node_id}` now accepts `finder_min_cutoff_pct` (0-100) and `finder_sponsored_n` (0-20); **-1 clears** the override. Stored as `finder_ad_config`; inherited by ALL descendants (nearest configured ancestor wins).
+- `PUT /api/admin/ai-wallet/config` new keys: `finder_min_cutoff_pct` (default 60), `finder_sponsored_n` (3), `adtaker_default_share_pct` (68), `adtaker_conversion_bounty_paise` (500).
+- Decider-Store template create/update: `catalog_node_id` (Scenario mapping) + `finder_settings.{min_cutoff_pct, sponsored_n}` per-app overrides.

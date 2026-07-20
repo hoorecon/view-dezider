@@ -246,6 +246,7 @@ const PUBLIC_SEGMENTS = new Set<string>([
   'legal',           // privacy / terms / refund / delivery
   'contact',
   'pricing',
+  'decider-store',   // public template storefront (browse without login)
   'p',               // public shared-report viewer (/p/[slug])
   'embed',           // white-label partner embed (/embed/[flow]) — iframed on partner sites
   'admin',           // self-guarded (auth + admin role)

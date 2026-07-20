@@ -1,0 +1,4194 @@
+{
+"factors": [
+{
+"id": "52e75c45-c9ca-42fb-971f-b6f34e9a54dc",
+"name": "Org Type",
+"order": 0,
+"possible_values": [
+"Solo",
+"Startup",
+"SME",
+"Corporate"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "%",
+"sub_select_type": "Suitability % for the selected value",
+"sub_ui_object": "Input Box",
+"has_sub_pct": true,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "fa8bcced-0793-463b-9352-e3433abdd499",
+"name": "Solution Category",
+"order": 1,
+"possible_values": [
+"Product",
+"Service"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "%",
+"sub_select_type": "Suitability % for the selected value",
+"sub_ui_object": "Input Box",
+"has_sub_pct": true,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "91f0e1b1-923a-40f6-ad71-c6e0e370db0d",
+"name": "Nature of Solution [From Customer Perspective]",
+"order": 2,
+"possible_values": [
+"Pain Reliever",
+"Gain Creator"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "%",
+"sub_select_type": "Suitability % for the selected value",
+"sub_ui_object": "Input Box",
+"has_sub_pct": true,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "ec1bca5c-c57a-4341-bff5-004ac2527a34",
+"name": "Intensity, Urgency & Frequency of Need Perception",
+"order": 3,
+"possible_values": [
+"Low",
+"Medium",
+"High"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "%",
+"sub_select_type": "Suitability % for the selected value",
+"sub_ui_object": "Input Box",
+"has_sub_pct": true,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "20838b3e-5145-4518-92f4-5fef68311bd4",
+"name": "Affordability",
+"order": 4,
+"possible_values": [
+"Low",
+"Medium",
+"High"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "%",
+"sub_select_type": "Suitability % for the selected value",
+"sub_ui_object": "Input Box",
+"has_sub_pct": true,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "465887d9-4d38-4d12-9536-ed393724a21d",
+"name": "Revenue Model",
+"order": 5,
+"possible_values": [
+"B2B",
+"B2C"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "NA",
+"sub_select_type": "NA",
+"sub_ui_object": "NA",
+"has_sub_pct": false,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "9848330c-785e-443a-95a2-9da43344f39f",
+"name": "Tech Orientation",
+"order": 6,
+"possible_values": [
+"Traditional",
+"High Tech"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "%",
+"sub_select_type": "Suitability % for the selected value",
+"sub_ui_object": "Input Box",
+"has_sub_pct": true,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "baf4c045-3465-4fc7-9a15-511877e221e2",
+"name": "Distribution Channels",
+"order": 7,
+"possible_values": [
+"Offline - Direct",
+"Offline - Channel",
+"Online - Direct",
+"Online - Channel"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "NA",
+"sub_select_type": "NA",
+"sub_ui_object": "NA",
+"has_sub_pct": false,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "dedb9a6b-8e6d-40dd-b5cd-52d247790d54",
+"name": "Value Creation",
+"order": 8,
+"possible_values": [
+"Single Point - Normal Solution Single Point - Deeper Solution Multiple Points - Normal Solution Multiple Points - Deeper Solution"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "%",
+"sub_select_type": "Suitability % for the selected value",
+"sub_ui_object": "Input Box",
+"has_sub_pct": true,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+},
+{
+"id": "1a0e17bb-8891-4cf5-8178-d4ed5471745c",
+"name": "Differentiation Strategy [From Org Perspective]",
+"order": 9,
+"possible_values": [
+"Premium Value Driven",
+"Delivery Cost Driven"
+],
+"data_type": "Text",
+"select_type": "Multi-Select",
+"ui_object": "Check Box",
+"sub_data_type": "NA",
+"sub_select_type": "NA",
+"sub_ui_object": "NA",
+"has_sub_pct": false,
+"factor_type": "qualitative",
+"category": "",
+"priority": 0
+}
+],
+"options": [
+{
+"id": "62d5f069-b30f-4c2f-bfc0-1db6d60c3013",
+"name": "AFFILIATION",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "Amazon Store (1995), Cybererotica (1994), CDnow (1994), Pinterest (2010)",
+"description": "The focus lies in supporting others to successfully sell products and directly benefit from successful transactions. Affiliates usually profit from some kind of pay-per-sale or pay-per-display compensation. The company, on the other hand, is able to gain access to a more diverse potential customer base without additional active sales or marketing efforts.",
+"remarks": "More abt HOW you're collecting & sharing revenues From Affiliate's Point of View. Shd not go for PPD for Product Owner Affiliates are selling his Users to the company",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo",
+"pct": 100.0
+},
+{
+"value": "Startup",
+"pct": 40.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+},
+{
+"value": "Services",
+"pct": 50.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 70.0
+},
+{
+"value": "Low",
+"pct": 40.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Normal SolutionSingle Point - Normal SolutionSingle point - Deeper solution",
+"pct": 50.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "8f879ae6-97dd-4e06-a3c7-5c01fbe42d27",
+"name": "AIKIDO",
+"product_model": "",
+"affected_components": "Who What Value",
+"exemplary_companies": "Six Flags (1961), The Body Shop (1976), Swatch (1983), Cirque du Soleil (1984), Nintendo (2006)",
+"description": "Aikido is a Japanese martial art in which the strength of an attacker is used against him or her. As a business model, Aikido allows a company to offer something diametrically opposed to the image and mindset of the competition. This new value proposition attracts customers who prefer ideas or concepts opposed to the mainstream.",
+"remarks": "Breaking the Status Quo & making that Status Quo itself as challenge NetFlix --> Shift from Video Rental (on Store) to Video Streaming (Online) E.g. IKEA - Unique Customized Furniture",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "StartupSME",
+"pct": 50.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "ProductsServices",
+"pct": 50.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "HighMediumLow",
+"pct": 70.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "HighMedium",
+"pct": 90.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High TechTraditional",
+"pct": 75.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct offline Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper SolutionMultiple point - Deeper Solution",
+"pct": 70.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "a356c655-990c-4381-afaa-e59ccad662f3",
+"name": "AUCTION",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "eBay (1995), Winebid (1996), Priceline (1997), Google (1998), Elance (2006), Zopa (2005), MyHammer (2005)",
+"description": "Auctioning means selling a product or service to the highest bidder. The final price is achieved when a particular end time of the auction is reached or when no higher offers are received. This allows the company to sell at the highest price acceptable to the customer. The customer benefits from the opportunity to influence the price of a product.",
+"remarks": "Many Products @ one place",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate Startups",
+"pct": 30.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+},
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & Low",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "3fbfd877-c9ea-4fa1-9360-2b3b7438fc66",
+"name": "BARTER",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Procter & Gamble (1970), Pepsi (1972), Lufthansa (1993), Magnolia Hotels (2007), Pay with a Tweet (2010)",
+"description": "Barter is a method of exchange in which goods are given away to customers without the transaction of actual money. In return, they provide something of value to the sponsoring organisation. The exchange does not have to show any direct connection and is valued differently by each party.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo",
+"pct": 100.0
+},
+{
+"value": "Startups",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Normal Solution Single Point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Can't say",
+"pct": 100.0
+},
+{
+"value": "as transaction is not currency",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "04610f2e-ff68-4c30-aa5f-c10aab32a61c",
+"name": "CASH MACHINE",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "American Express (1891), Dell (1984), Amazon Store (1995), PayPal (1998), Blacksocks (1999), MyFab (2008), Groupon (2008)",
+"description": "In the Cash Machine concept, the customer pays upfront for the products sold to the customer before the company is able to cover the associated expenses. This results in in- creased liquidity which can be used to amortise debt or to fund investments in other areas.",
+"remarks": "Get the Payment for the customized customer requirements E.g. Real Estate - Flat Purchase",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "StartupSME",
+"pct": 90.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "ProdcutService",
+"pct": 80.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+},
+{
+"value": "Mediuim",
+"pct": 70.0
+},
+{
+"value": "Low",
+"pct": 30.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech & Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper SolutionMultiple point - Deeper Solution",
+"pct": 90.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "9448efe0-74f6-4f75-8219-7c7f9a40988f",
+"name": "CROSS SELLING",
+"product_model": "",
+"affected_components": "How What Value",
+"exemplary_companies": "Shell (1930), IKEA(1956), Tchibo (1973), Aldi (1986), SANIFAIR (2003)",
+"description": "In this model, services or products from a formerly exclud- ed industry are added to the offerings, thus leveraging existing key skills and resources. In retail especially, com- panies can easily provide additional products and offerings that are not linked to the main industry on which they were previously focused. Thus, additional revenue can be gener- ated with relatively few changes to the existing infrastruc- ture and assets, since more potential customer needs are met.",
+"remarks": "To increase the LTV",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "ProductService",
+"pct": 90.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever & Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C & B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple point deeper Solutions",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven & Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "4f6e9ab3-342c-445f-b91e-cf28bcfee4ce",
+"name": "CROWD- FUNDING",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "Marillion (1997), Cassava Films (1998), Diaspora (2010), Brainpool (2011), Pebble Technology (2012)",
+"description": "A product, project or entire start-up is financed by a crowd of investors who wish to support the underlying idea, typi- cally via the Internet. If the critical mass is achieved, the idea will be realized and investors receive special benefits, usually proportionate to the amount of money they provid- ed.",
+"remarks": "Mostly for Tech Businesses (Online) - with online POC",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startups & Solo",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Being a Platform",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator & Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & Low",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution Multiple points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven & Premium Value Driver",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "a4d1d3de-9f09-4ae4-8b21-25223c19b432",
+"name": "CROWD- SOURCING",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "Threadless (2000), Procter & Gamble (2001), InnoCentive (2001), Cisco (2007), MyFab (2008)",
+"description": "The solution of a task or problem is adopted by an anony- mous crowd, typically via the Internet. Contributors receive a small reward or have the chance to win a prize if their solution is chosen for production or sale. Customer interac- tion and inclusion can foster a positive relationship with a company, and subsequently increase sales and revenue.",
+"remarks": "Sourcing of Vendors (freelancers)",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startups & Solo",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Being a Platform",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever & Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution Multiple points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven & Premium Value Driver",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "e62c1ccf-3663-475b-a60d-f3ad71519b9c",
+"name": "CUSTOMER LOYALTY",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Sperry & Hutchinson (1897), American Airlines (1981), Safeway Club Card (1995), Payback (2000)",
+"description": "Customers are retained and loyalty assured by providing value beyond the actual product or service itself, i.e., through incentive-based programs. The goal is to increase loyalty by creating an emotional connection or simply rewarding it with special offers. Customers are voluntarily bound to the company, which protects future revenue.",
+"remarks": "From Company side LTV increase (HOW) From Customer side LTV increase (WHAT / WHO)",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Product & Service",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever & Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C & B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Tradotional & High Ticket",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "896af35b-7dad-4f40-ba9f-efa5b7a90380",
+"name": "DIGITIZA- TION",
+"product_model": "",
+"affected_components": "What How",
+"exemplary_companies": "Spiegel Online (1994), WXYC (1994), Hotmail (1996), Jones Internation- al University (1996), CEWE Color (1997), SurveyMonkey (1998), Napster (1999), Wikipe- dia (2001), Facebook (2004), Dropbox (2007), Netflix (2008), Next Issue Media (2011)",
+"description": "This pattern relies on the ability to turn existing products or services into digital variants, and thus offer advantages over tangible products, e.g., easier and faster distribution. Ideally, the digitization of a product or service is realized without harnessing the value proposition which is offered to the customer. In other words: efficiency and multiplica- tion by means of digitization does not reduce the perceived customer value.",
+"remarks": "Especially for SERVICES",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever & Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B & B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Online - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Deeper Solution Muliple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Drivem",
+"pct": 100.0
+},
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "c5a4529b-1fea-41b3-b32d-a2b8e88de21f",
+"name": "DIRECT SELLING",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Vorwerk (1930), Tupper- ware (1946), Amway (1959), The Body Shop (1976), Dell (1984), Nestle Nespresso (1986), First Direct (1989), Nestl\u00e9 Special.T (2010), Dollar Shave Club (2012), Nestl\u00e9 BabyNes (2012)",
+"description": "Direct selling refers to a scenario whereby a company's products are not sold through intermediary channels, but are available directly from the manufacturer or service provider. In this way, the company skips the retail margin or any additional costs associated with the intermediates. These savings can be forwarded to the customer and a standardized sales experience established. Additionally, such close contact can improve customer relationships.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startup & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & ServiceS",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever & Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+},
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Norma Solution Single Point - Deeper Solution Multiple Points - Normal Solution Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driver",
+"pct": 100.0
+},
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "89d58150-a121-4e9d-addb-ea49e0a4e429",
+"name": "E- COMMERCE",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Dell (1984), Asos (2000), Zappos (1999), Amazon Store (1995), Flyeralarm (2002), Blacksocks (1999), Dollar Shave Club (2012), Winebid (1996), Zopa (2005)",
+"description": "Traditional products or services are delivered through online channels only, thus removing costs associated with running a physical branch infrastructure. Customers benefit from higher availability and conven- ience, while the company is able to integrate its sales and distribution with other internal processes.",
+"remarks": "Especially for PRODUCTS",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "StartUp & Solo",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "ProdcutService",
+"pct": 80.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever & Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Normal Solution Single Point - Deeper solution Multiple Points - Normal Solution Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "4a86285d-96bd-482a-853e-766562cec136",
+"name": "EXPERIENCE SELLING",
+"product_model": "",
+"affected_components": "What Who Value",
+"exemplary_companies": "Harley Davidson (1903), IKEA (1956), Trader Joe's (1958), Starbucks (1971), Swatch (1983), Nestl\u00e9 Nespresso (1986), Red Bull (1987), Barnes & Noble (1993), Nestl\u00e9 Special.T (2010)",
+"description": "The value of a product or service is increased with the customer experience offered with it. This opens the door for higher customer demand and commensurate increase in prices charged. This means that the customer experience must be adapted accordingly, e.g., by attuning promotion or shop fittings.",
+"remarks": "Exp Sell thru promo (Saravana Elite Ad)",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "StartUp",
+"pct": 100.0
+},
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High & Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct Offline - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Deeper Solution Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "b52eed71-6b06-470d-a886-4589be38c58d",
+"name": "FLAT RATE",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "SBB (1898), Buckaroo Buffet (1946), Sandals Resorts (1981), Netflix (1999), Next Issue Media (2011)",
+"description": "In this model, a single fixed fee for a product or service is charged, regardless of actual usage or time restrictions on it. The user benefits from a simple cost structure while the company benefits from a constant revenue stream.",
+"remarks": "E.g. Buffet Lunch",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo & StartUp",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & Low",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Oflline - Direct Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Normal Solution Single Point - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "8c4e2f23-fb6f-4015-a88f-fc2d382471cf",
+"name": "FRAC- TIONAL OWNERSHIP",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Hapimag (1963), Netjets (1964), Mobility Carshar- ing (1997), \u00e9curie25 (2005), HomeBuy (2009)",
+"description": "Fractional ownership describes the sharing of a certain asset class amongst a group of owners. Typically, the asset is capital intensive but only required on an occasional basis. While the customer benefits from the rights as an owner, the entire capital does not have to be provided alone.",
+"remarks": "Leasing House",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & Low",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B & B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional with tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "offline - Direct",
+"pct": 100.0
+},
+{
+"value": "offline- Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single ponint - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "84d03d9a-7c79-4915-acbf-3051774abf7c",
+"name": "FRAN- CHISING",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Singer Sewing Machine (1860), McDonald's (1948), Marriott Interna- tional (1967), Starbucks (1971), Subway (1974), Fressnapf (1992), Naturhouse (1992), McFit (1997), BackWerk (2001)",
+"description": "The franchisor owns the brand name, products, and corpo- rate identity, and these are licensed to independent fran- chisees who carry the risk of local operations. Revenue is generated as part of the franchisees\u2019 revenue and orders. The franchisees benefit from the usage of well known brands, know-how, and support.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME",
+"pct": 100.0
+},
+{
+"value": "Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Product",
+"pct": 100.0
+},
+{
+"value": "Service",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+},
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+},
+{
+"value": "offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "4ac8b2f0-714d-4320-8e9f-4bf466d102c4",
+"name": "FREEMIUM",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Hotmail (1996), Survey- Monkey (1998), LinkedIn (2003), Skype (2003), Spotify (2006), Dropbox (2007)",
+"description": "The basic version of an offering is given away for free in the hope of eventually persuading the customers to pay for the premium version. The free offering is able to attract the highest volume of customers possible for the company. The generally smaller volume of paying \u2018premium customers\u2019 generate the revenue, which also cross-finances the free offering.",
+"remarks": "Our Current Matchmaking Soln",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo",
+"pct": 100.0
+},
+{
+"value": "Startup",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution",
+"pct": 100.0
+},
+{
+"value": "Multiple point - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "f52c010a-d66d-4fd9-b659-e76ed0b371ef",
+"name": "FROM PUSH- TO-PULL",
+"product_model": "Especially suitable Credit Rich Countries (Not for Credit Crunch countries)",
+"affected_components": "What How",
+"exemplary_companies": "Toyota (1975), Zara (1975), Dell (1984), Geberit (2000)",
+"description": "This pattern describes the strategy of a company to decen- tralize and thus add flexibility to the company's processes in order to be more customer focused. To quickly and flexibly respond to new customer needs, any part of the value chain - including production or even research and development - can be affected.",
+"remarks": "E.g. Astro ERP",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Product",
+"pct": 100.0
+},
+{
+"value": "Service",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium and high",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low and Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+},
+{
+"value": "B2c",
+"pct": 100.0
+},
+{
+"value": "D2c",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - channel",
+"pct": 100.0
+},
+{
+"value": "Online Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "2ec655de-9e9b-4030-b32e-7c21cdec36f8",
+"name": "GUARAN- TEED AVAIL- ABILITY",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "NetJets (1964), PHH Corporation (1986), IBM (1995), Hilti (2000), MachineryLink (2000), ABB Turbo Systems (2010)",
+"description": "Within this model, the availability of a product or service is guaranteed, resulting in almost zero downtime. The cus- tomer can use the offering as required, which minimizes losses resulting from downtime. The company uses exper- tise and economies of scale to lower operation costs and achieve these availability levels.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium and High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple points - Normal & Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "901c29ba-eccd-40d1-a1f3-ca634353018e",
+"name": "HIDDEN REVENUE",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "JCDecaux (1964), Sat.1 (1984), Metro Newspaper (1995), Google (1998), Facebook (2004), Spotify (2006), Zattoo (2007)",
+"description": "The logic that the user is responsible for the income of the business is abandoned. Instead, the main source of revenue comes from a third party, which cross-finances whatever free or low-priced offering attracts the users. A very com- mon case of this model is financing through advertisement, where attracted customers are of value to the advertisers who fund the offering. This concept facilitates the idea of 'separation between revenue and customer'.",
+"remarks": "Ads Data Selling Inferred Analytics Insights The way we bundle the offerings",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startup & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium and High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "1ff09889-6f97-4682-a986-7e67597f0a71",
+"name": "INGREDIENT BRANDING",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "DuPont Teflon (1964), W.L. Gore & Associates (1976), Intel (1991), Carl Zeiss (1995), Shimano (1995), Bosch(2000)",
+"description": "Ingredient branding describes the specific selection of an ingredient, component, and brand originating from a specif- ic supplier, which will be included in another product. This product is then additionally branded and advertised with the ingredient product, collectively adding value for the cus- tomer. This projects the positive brand associations and properties on the product, and can increase the attractive- ness of the end product.",
+"remarks": "E.g. KP / ALP --> VYP Majorly for Products, but also can be for Services",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startups",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Channel & Online - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "f2be3ded-16a4-4294-bf21-737cfee2f821",
+"name": "INTEGRATOR",
+"product_model": "",
+"affected_components": "What How",
+"exemplary_companies": "Carnegie Steel (1870), Ford (1908), Zara (1975), Exxon Mobil (1999), BYD Auto (1995)",
+"description": "An integrator is in command of the bulk of the steps in a value-adding process. The control of all resources and capabilities in terms of value creation lies with the compa- ny. Efficiency gains, economies of scope, and lower de- pendencies from suppliers result in a decrease in costs and can increase the stability of value creation.",
+"remarks": "Can be for both Services & Products",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Product",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper solution & Multiple points Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "65d84683-2245-489a-8843-a74be2193421",
+"name": "LAYER PLAYER",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "Dennemeyer (1962), Wipro Technologies (1980), TRUSTe (1997), PayPal (1998), Amazon Web Services (2002)",
+"description": "A layer player is a specialized company limited to the provision of one value-adding step for different value chains. This step is typically offered within a variety of independent markets and industries. The company benefits from economies of scale and often produces more efficient- ly. Further, the established special expertise can result in a higher quality process.",
+"remarks": "E.g. Payment Gateway",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startups",
+"pct": 100.0
+},
+{
+"value": "SMEs & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct & Offline _ Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "067cb71f-2274-41df-b4ee-979e1e6c9a97",
+"name": "LEVERAGE CUSTOMER DATA",
+"product_model": "",
+"affected_components": "What How",
+"exemplary_companies": "Amazon Store (1995), Google (1998), Payback (2000), Facebook (2004), PatientsLikeMe (2004), 23andMe (2006), Twitter (2006), Verizon Commu- nications (2011)",
+"description": "New value is created by collecting customer data and pre- paring it in beneficial ways for internal usage or interested third-parties. Revenues are generated by either selling this data directly to others or leveraging it for own purposes, i.e., to increase the effectiveness of advertising.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startups &SMEs",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct & Online - Channels",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper solution & Multiple points Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "e6847713-980f-4e89-a7b1-5db3d88683ff",
+"name": "LICENSE",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "BUSCH (1870), IBM (1920), DIC 2 (1973), ARM (1989), Duales System Deutschland (1991), Max Havelaar (1992)",
+"description": "Efforts are focused on developing intellectual property that can be licensed to other manufacturers. This model, there- fore, relies not on the realization and utilization of knowledge in the form of products, but attempts to trans- form these intangible goods into money. This allows a company to focus on research and development. It also allows the provision of knowledge, which would otherwise be left unused and potentially be valuable to third parties.",
+"remarks": "Maybe, one of the most suited for our Astro ERP, especially as APIs",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporates & SMEs",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Ponint - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "a027aecb-59b8-42a9-9ec9-95cfa4a6b3a4",
+"name": "LOCK-IN",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Gillette(1904), Lego (1949), Microsoft (1975), Hewlett-Packard (1984), Nestl\u00e9 Nespresso (1986), Nestl\u00e9 BabyNes (2012), Nestl\u00e9 Special.T (2010)",
+"description": "Customers are locked into a vendor's world of products and services. Using another vendor is impossible without incur- ring substantial switching costs, and thus protecting the company from losing customers. This lock-in is either generated by technological mechanisms or substantial interdependencies of products or services.",
+"remarks": "Similar to Razor & Blade For Matchmaking Soln ???",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SMEs & Startups",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Relievers",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct & Offline _ Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "9d59b047-cfdc-4969-b2f8-891d844f285a",
+"name": "LONG TAIL",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "Amazon Store (1995), eBay (1995), Netflix (1999), Apple iPod/iTunes (2003), YouTube (2005),",
+"description": "Instead of concentrating on blockbusters, the main bulk of revenues is generated through a 'long tail' of niche prod- ucts. Individually, these neither demand high volumes, nor allow for a high margin. If a vast variety of these products are offered in sufficient amounts, the profits from resultant small sales can add up to a significant amount.",
+"remarks": "Especially for Digital Products Even for our Astro ERP E.g. AppStore, PlayStore Challenge here is BRINGING & SUSTAINING TRAFFIC",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SMEs & Corporates",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Normal Soltuion",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "57b229d6-a270-47a9-8276-21e6a9863275",
+"name": "MAKE MO- RE OF IT",
+"product_model": "",
+"affected_components": "Who What How Value",
+"exemplary_companies": "Porsche (1931), Festo Didactic (1970), BASF (1998), Amazon Web Services (2002), Senn- heiser Sound Academy (2009)",
+"description": "Know-how and other available assets existing in the com- pany are not only used to build own products, but also offered to other companies. Slack resources, therefore, can be used to create additional revenue besides those generat- ed directly from the core value proposition of the company.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct Online - Direce",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "b5be1520-a06b-4727-82fb-584e240d88ee",
+"name": "MASS CUSTOM- IZATION",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Dell (1984), Levi's (1990), Miadidas (2000), PersonalNOVEL (2003), Factory121 (2006), mymuesli (2007), My Unique Bag (2010)",
+"description": "Customizing products through mass production once seemed to be an impossible endeavor. The approach of modular products and production systems has enabled the efficient individualization of products. As a consequence, individual customer needs can be met within mass produc- tion circumstances and at competitive prices.",
+"remarks": "Group the list of cusomizations and Produce them together with cost effectiveness",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Low & medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct Offline- Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "ab92aad9-1812-4ea8-9640-79cb82b9bdf3",
+"name": "NO FRILLS",
+"product_model": "",
+"affected_components": "How What Value",
+"exemplary_companies": "Ford (1908), Aldi (1913), McDonald's (1948), Southwest Airlines (1971), Aravind Eye care System (1976), Accor (1985), McFit (1997), Dow Corning (2002)",
+"description": "Value creation focuses on what is necessary to deliver the core value proposition of a product or service, typically as basic as possible. Cost savings are shared with the custom- er, usually resulting in a customer base with lower purchas- ing power or purchasing willingness.",
+"remarks": "E.g. Arvind Eye care",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startups & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "daa8b058-98fc-4f17-a8ab-aa53359c8f89",
+"name": "OPEN BUSI- NESS MODEL",
+"product_model": "",
+"affected_components": "What Who Value",
+"exemplary_companies": "Valve Corporation (1998), Abril (2008)",
+"description": "In open business models, collaboration with partners in the ecosystem becomes a central source of value creation. Companies pursuing an open business model actively search for novel ways of working together with suppliers, customers, or complementors to open and extend their business.",
+"remarks": "Only for the Initial Charges, the affordable Organizer will pay. E.g. Success Gyan, SR",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Prodcut & Service",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C & B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Channel & Online - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple points - Normal Solution Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "531a60eb-615c-4193-a472-4be923ad226d",
+"name": "OPEN SOURCE",
+"product_model": "",
+"affected_components": "Who What How Value",
+"exemplary_companies": "IBM (1955), Mozilla (1992), Red Hat (1993), mondoBIOTECH (2000), Wikipedia (2001), Local Motors (2008)",
+"description": "In software engineering, the source code of a software product is not kept proprietary, but is freely accessible for anyone. Generally, this could be applied to any technology details of any product. Others can contribute to the product, but also use it free as a sole user. Money is typically earned with services that are complimentary to the product, such as consulting and support.",
+"remarks": "How can we use it for Astro ERP?",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startups & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Relievers",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech & Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "2704a8cb-3bbd-4fbd-a713-5cb0f932020c",
+"name": "ORCHE- STRATOR",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "Procter & Gamble (1970), Li & Fung (1971), Nike (1978), Bharti Airtel (1995)",
+"description": "Within this model, the company's focus is on the core competencies in the value chain. The other value chain segments are outsourced and actively coordinated. This allows the company to reduce costs and benefit from the suppliers' economies of scale. Furthermore, the focus on core competencies can increase performance.",
+"remarks": "E.g. Product Companies like Google outsources to Service companies like Wipro Economies of Scale - Unit Economics (Mass Parota Production with Machine --> Cost of producing unit is drastically reduced)",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B & B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech & Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Channel Offline - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "ef7dd050-b040-41f3-a47e-8c1cf70dfae0",
+"name": "PAY PER USE",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Hot Choice (1988), Google (1998), Ally Financial (2004), Better Place (2007), Car2Go (2008)",
+"description": "In this model, the actual usage of a service or product is metered. The customer pays on the basis of what he or she effectively consumes. The company is able to attract cus- tomers who wish to benefit from the additional flexibility, which might be priced higher.",
+"remarks": "E.g. SaaS",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo",
+"pct": 100.0
+},
+{
+"value": "Startup",
+"pct": 100.0
+},
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B & B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech & Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Online - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "2ca7ee2a-fc88-414b-acbf-150c7f7c84d3",
+"name": "PAY WHAT YOU WANT",
+"product_model": "",
+"affected_components": "How Value",
+"exemplary_companies": "One World Everbody Eats (2003), NoiseTrade (2006), Radiohead (2007), Humble Bundle (2010), Panera Bread Bakery (2010)",
+"description": "The buyer pays any desired amount for a given commodity, sometimes even zero. In some cases, a minimum floor price may be set, and/or a suggested price may be indicated as guidance for the buyer. The customer is allowed to influ- ence the price, while the seller benefits from higher num- bers of attracted customers, since individuals\u2019 willingness to pay is met. Based on the existence of social norms and morals, this is only rarely exploited, which makes it suita- ble to attract new customers.",
+"remarks": "Culture wise (Me culture vs We culture)",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo & StartUp",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C & B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech & Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct Offline - Direct Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Normal Soltuion",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "0578eb7d-770a-452f-802c-838ecb454497",
+"name": "PEER-TO- PEER",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "eBay (1995), Craigslist (1996), Napster (1999), Couchsurfing (2003), LinkedIn (2003), Skype (2003), Zopa (2005), SlideShare (2006), Twit- ter (2006), Dropbox (2007), Airbnb (2008), TaskRabbit (2008), Re- layRides (2010), Gidsy (2011)",
+"description": "This model is based on a cooperation that specializes in mediating between individuals belonging to an homogene- ous group. It is often abbreviated as P2P. The company offers a meeting point, i.e., an online database and commu- nication service that connects these individuals (these could include offering personal objects for rent, providing certain products or services, or the sharing of information and experiences).",
+"remarks": "For Homogeneous (Skill or Problem should be common) Platform based P2P model",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startup & SMEs",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "68aebfec-7f7e-4dd5-aee6-d4186d1f0b75",
+"name": "PERFOR- MANCE- BASED CONTRAC- TING",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Rolls-Royce (1980), Smartville (1997), BASF (1998), Xerox (2002)",
+"description": "A product's price is not based upon the physical value, but on the performance or valuable outcome it delivers in the form of a service. Performance based contractors are often strongly integrated into the value creation process of their customers. Special expertise and economies of scale result in lower production and maintenance costs of a product, which can be forwarded to the customer. Extreme variants of this model are represented by different operation schemes in which the product remains the property of the company and is operated by it.",
+"remarks": "May not be suitable for Our Nation Luxury clients in 5 star hotels, Airport Lounges",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Product & Service",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech",
+"pct": 100.0
+},
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "f954e6cb-2e7a-40b7-bc17-5d0d8a62a962",
+"name": "RAZOR AND BLADE",
+"product_model": "",
+"affected_components": "What How Who",
+"exemplary_companies": "Standard Oil Company (1880), Gillette (1904), Hewlett-Packard (1984), Nestl\u00e9 Nespresso (1986), Apple iPod/iTunes (2003), Amazon Kindle (2007), Better Place (2007), Nestl\u00e9 Special.T (2010), Nestl\u00e9 BabyNes (2012)",
+"description": "The basic product is cheap or given away for free. The consumables that are needed to use or operate it, on the other hand, are expensive and sold at high margins. The initial product's price lowers customers\u2019 barriers to pur- chase, while the subsequent recurring sales cross-finance it. Usually, these products are technologically bound to each other to further enhance this effect.",
+"remarks": "Add On is wider range of products/services - need not be recurring",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Product",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech",
+"pct": 100.0
+},
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Deeper Solution Multiple Points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "390a2502-eeb7-42bc-913f-a69c50b4b680",
+"name": "RENT INSTEAD OF BUY",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Saunders System (1916), Xerox (1959), Block- buster (1985), Rent a Bike (1987), Mobility Carshar- ing (1997), MachineryL- ink (2000), CWS-boco (2001), Luxusbabe (2006), Flexpetz (2007), Car2Go(2008)",
+"description": "The customer does not buy a product, but instead rents it. This lowers the capital typically needed to gain access to the product. The company itself benefits from higher prof- its on each product, as it is paid for the duration of the rental period. Both parties benefit from higher efficiency in product utilization as time of non-usage, which unneces- sarily binds capital, is reduced on each product.",
+"remarks": "E.g. Xerox",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Product & Service",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Low & medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+},
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution Multiple Points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "12ac8f21-c670-4e17-b95e-741c711d07e1",
+"name": "REVENUE SHARING",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "CDnow (1994), HubPag- es(2006), Apple iPh- one/AppStore(2008), Groupon (2008)",
+"description": "Revenue sharing refers to firms\u2019 practice of sharing reve- nues with their stakeholders, such as complementors or even rivals. Thus, in this business model, advantageous properties are merged to create symbiotic effects in which additional profits are shared with partners participating in the extended value creation. One party is able to obtain a share of revenue from another that benefits from increased value for its customer base.",
+"remarks": "E.g. Windows Office Suite in Apple laptops Travels Collaboration @ Mylapore -- but with Systemization",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Hightech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "fb06c52a-fb31-4a29-b05f-b709ed3a7a49",
+"name": "REVERSE ENGINEER- ING",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Bayer (1897), Pelikan (1994), Brilliance China Auto (2003), Denner (2010)",
+"description": "This pattern refers to obtaining a competitor's product, taking it apart, and using this information to produce a similar or compatible product. Because no huge investment in research or development is necessary, these products can be offered at a lower price than the original product.",
+"remarks": "E.g. App Clones --> Uber & Ola",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "e532cb41-caec-4e92-bc41-305c5c401a55",
+"name": "REVERSE INNOVATION",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Logitech (1981), Haier (1999), Nokia (2003), Renault (2004), General Electric (2007)",
+"description": "Simple and inexpensive products, that were developed within and for emerging markets, are also sold in industrial countries. The term \u2018reverse\u2019 refers to the process by which new products are typically developed in industrial countries and then adapted to fit emerging market needs.",
+"remarks": "Addition targeting into (different usecases and) different regions - to other markets, for leveraging the High Volume. Hyundai Power Window usage in earlier India",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "SIngle point - Deeper solution Multiple points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "a043261a-6ad1-40d6-80a4-13bbb284edb2",
+"name": "ROBIN HOOD",
+"product_model": "",
+"affected_components": "How What",
+"exemplary_companies": "Aravind Eye Care System (1976), One Laptop per Child (2005), TOMS Shoes (2006), Warby Parker (2008)",
+"description": "The same product or service is provided to \u2018the rich\u2019 at a much higher price than to \u2018the poor\u2019. Thus, the main bulk of profits are generated from the wealthy customer base. Serving \u2018the poor\u2019 is not profitable per se, but creates econ- omies of scale, which other providers cannot achieve. Additionally, it has a positive effect on the company's image.",
+"remarks": "Mainly by Brand Loyalty, Exclusivity, Perceived Value E.g. Isha Maha Shivatrathri",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "96eeb232-a420-4ffe-ab0e-32eb0cc17a03",
+"name": "SELF- SERVICE",
+"product_model": "",
+"affected_components": "What How",
+"exemplary_companies": "McDonald's (1948), IKEA (1956), Accor (1985), Mobility Carshar- ing (1997), BackWerk (2001), Car2Go (2008)",
+"description": "A part of the value creation is transferred to the customer in exchange for a lower price of the service or product. This is particularly suited for process steps that add relatively little perceived value for the customer, but incur high costs. Customers benefit from efficiency and time savings, while putting in their own effort. This can also increase efficien- cy, since in some cases, the customer can execute a value- adding step more quickly and in a more target-oriented manner than the company.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Deeper Solution Multiple Points - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "1b8cc52a-1cef-42a0-81b9-0277f108a8eb",
+"name": "SHOP-IN- SHOP",
+"product_model": "",
+"affected_components": "Who Value",
+"exemplary_companies": "Tim Hortons (1964), Tchibo (1987), Deutsche Post (1995), Bosch (2000), MinuteClinic (2000)",
+"description": "Instead of opening new branches, a partner is chosen whose branches can profit from integrating the company's offer- ings in a way that imitates a small shop within another shop (a win-win situation). The hosting store can benefit from more attracted customers and is able to gain constant reve- nue from the hosted shop in the form of rent. The hosted company gains access to cheaper resources such as space, location, or workforce.",
+"remarks": "E.g. ICICI Insurance Kiosk inside IndusInd Bank Depends on Rapport Building with the Host n Also, may attract multiple such sub-hosts competition",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creator",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "098d15d5-8f6b-41d9-aca3-9680bcc53806",
+"name": "SOLUTION PROVIDER",
+"product_model": "",
+"affected_components": "What How",
+"exemplary_companies": "Lantal Textiles (1954), Heidelberger Druckmaschinen (1980), Tetra Pak (1993), Geek Squad (1994), CWS-boco (2001), Apple iPod/iTunes (2003), 3M Services (2010)",
+"description": "A full service provider offers total coverage of products and services in a particular domain, consolidated via a single point of contact. Special know-how is given to the customer in order to increase his or her efficiency and performance. By becoming a full service provider, a com- pany can prevent revenue losses by extending their service and adding it to the product. Additionally, close contact with the customer allows great insight into customer habits and needs which can be used to improve the products and services.",
+"remarks": "iPod --> Device Track Library Payment NOT similar to Super Market (there customer just explores, not gain expertise)",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+},
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "49a8ed4e-381a-4882-8483-bbe3f97ea267",
+"name": "SUBSCRIPTION",
+"product_model": "",
+"affected_components": "How What",
+"exemplary_companies": "Blacksocks (1999), Net- flix (1999), Salesforce (1999), Jamba (2004), Spotify (2006), Next Issue Media (2011), Dollar Shave Club (2012)",
+"description": "The customer pays a regular fee, typically on a monthly or an annual basis, in order to gain access to a product or service. While customers mostly benefit from lower usage costs and general service availability, the company gener- ates a more steady income stream.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo",
+"pct": 100.0
+},
+{
+"value": "Startup",
+"pct": 100.0
+},
+{
+"value": "SME",
+"pct": 35.0
+},
+{
+"value": "Corporate",
+"pct": 10.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Service",
+"pct": 100.0
+},
+{
+"value": "Combo of Product & Service",
+"pct": 35.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 50.0
+},
+{
+"value": "Gain Creator",
+"pct": 80.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Low",
+"pct": 35.0
+},
+{
+"value": "Medium",
+"pct": 90.0
+},
+{
+"value": "High",
+"pct": 5.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low",
+"pct": 100.0
+},
+{
+"value": "Medium",
+"pct": 50.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B (Preferred for more Profitability)",
+"pct": 100.0
+},
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+},
+{
+"value": "Online - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Normal Solution (Lock-in benefit due to multiple points, else user may get easy alternates if its single point)",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "01966d60-9860-4675-a976-7c5d70f0af08",
+"name": "SUPER MARKET",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "King Kullen Grocery Company (1930), Merrill Lynch (1930), Toys\u201cR\u201dUs (1948), The Home Depot (1978), Best Buy (1983), Fressnapf (1985), Staples (1986)",
+"description": "A company sells a large variety of readily available prod- ucts and accessories under one roof. Generally, the assort- ment of products is large but the prices are kept low. More customers are attracted due to the great range on offer, while economies of scope yield advantages for the compa- ny.",
+"remarks": "Huge Purchase - due to cheaper and wider range of Products Have to invest the capital & purchase from Suppliers Suggested : All in One Chain of Super Market --> Cheaper Buy --> Higher Profitability NOT eCommerce (as procurement is not done & only a transit warehouse)",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct online - Channel",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Points - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "20d865dc-eb33-4271-8ad2-287b7218f4b5",
+"name": "TARGET THE POOR",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Grameen Bank (1983), Arvind Mills (1995), Bharti Airtel (1995), Hindustan Unilever (2000), Tata Nano (2009), Walmart (2012)",
+"description": "The product or service offering does not target the premium customer, but rather, the customer positioned at the base of the pyramid. Customers with lower purchasing power benefit from affordable products. The company generates small profits with each product sold, but benefits from the higher sales numbers that usually come with the scale of the customer base.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Solo",
+"pct": 100.0
+},
+{
+"value": "Startup & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services & Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Reliever",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Low & Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "1113b975-ec00-496c-b48e-bdeb99871897",
+"name": "TRASH-TO- CASH",
+"product_model": "",
+"affected_components": "Who What How Value",
+"exemplary_companies": "Duales System Deutsch- land (1991), Freitag lab.ag (1993), Greenwire (2001), Emeco (2010), H&M (2012)",
+"description": "Used products are collected and either sold in other parts of the world or transformed into new products. The profit scheme is essentially based on low-to-no purchase prices. Resource costs for the company are practically eliminated, whilst the supplier's waste disposal is either provided, or associated costs are reduced. This also addresses custo- mers\u2019 potential environmental awareness ideals.",
+"remarks": "Mostly for Products",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single point - Normal Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Delivery Cost Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "ee0595fc-a29d-4fa3-9c3c-07224852b9e7",
+"name": "TWO-SIDED MARKET",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Diners Club (1950), JCDecaux (1964), Sat.1 (1984), Amazon Store (1995), eBay (1995), Metro Newspaper (1995), Priceline (1997), Google (1998), Facebook (2004), MyHammer(2005), Elance (2006), Zattoo (2007), Groupon (2008)",
+"description": "A two-sided market facilitates interactions between multi- ple interdependent groups of customers. The value of the platform increases as more groups or as more individual members of each group are using it. The two sides usually come from disparate groups, e.g., businesses and private interest groups.",
+"remarks": "W.r.t Platform Business model, can gain revenues from both side In 2 side, only from any one of the side E.g. Metro Newspaper @ Europe (Low Population) -- from Advertisers FREE Ads (yellow magazine) @ India (High Population) -- from Job Seekers",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "Startup & SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct Online - Channel Online - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "d2ab6ccc-38d7-41a7-8128-68cfb19eef7d",
+"name": "ULTIMATE LUXURY",
+"product_model": "",
+"affected_components": "What Value",
+"exemplary_companies": "Lamborghini (1962), Jumeirah Group (1994), MirCorp (2000), The World (2002), Abbot Downing (2011)",
+"description": "This pattern describes the strategy of a company to focus on the upper side of society's pyramid. This allows a com- pany to distinguish its products or services greatly from others. High standards of quality or exclusive privileges are the main focus to attract these kinds of customers. The necessary investments for these differentiations are met by the relatively high prices that can be achieved - which usually allow for very high margins.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME & Corporate",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "High",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Pont - Deepere Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "a7c0dba9-3833-40fb-90cc-958f2209cb1d",
+"name": "USER DE- SIGNED",
+"product_model": "",
+"affected_components": "What How Value",
+"exemplary_companies": "Spreadshirt (2001), Lulu (2002), Lego Factory (2005), Amazon Kindle (2007), Ponoko (2007), Apple iPhone/AppStore (2008), Createmytattoo (2009), Quirky (2009)",
+"description": "Within user manufacturing, a customer is both the manu- facturer and the consumer. As an example, an online plat- form provides the customer with the necessary support in order to design and merchandise the product, e.g., product design software, manufacturing services, or an online shop to sell the product. Thus, the company only supports the customers in their undertakings and benefits from their creativity. The customer benefits from the potential to realize entrepreneurial ideas without having to provide the required infrastructure. Revenue is then generated as part of the actual sales.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Gain Creators",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2C",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Multiple Point - Deeper Solution",
+"pct": 100.0
+}
+],
+"1a0e17bb-8891-4cf5-8178-d4ed5471745c": [
+{
+"value": "Premium Value Driven",
+"pct": 100.0
+}
+]
+}
+},
+{
+"id": "a4e85379-8b39-4f06-839d-c82af24ad055",
+"name": "WHITE LABEL",
+"product_model": "",
+"affected_components": "What How",
+"exemplary_companies": "Foxconn (1974), Riche- lieu Foods (1994), Print- ing-In-A-Box (2005)",
+"description": "A white label producer allows other companies to distribute its goods under their brands, so that it appears as if they are made by them. The same product or service is often sold by multiple marketers and under different brands. This way, various customer segments can be satisfied with the same product.",
+"remarks": "",
+"values": {
+"52e75c45-c9ca-42fb-971f-b6f34e9a54dc": [
+{
+"value": "SME",
+"pct": 100.0
+}
+],
+"fa8bcced-0793-463b-9352-e3433abdd499": [
+{
+"value": "Products & Services",
+"pct": 100.0
+}
+],
+"91f0e1b1-923a-40f6-ad71-c6e0e370db0d": [
+{
+"value": "Pain Relievers",
+"pct": 100.0
+}
+],
+"ec1bca5c-c57a-4341-bff5-004ac2527a34": [
+{
+"value": "Medium & High",
+"pct": 100.0
+}
+],
+"20838b3e-5145-4518-92f4-5fef68311bd4": [
+{
+"value": "Medium",
+"pct": 100.0
+}
+],
+"465887d9-4d38-4d12-9536-ed393724a21d": [
+{
+"value": "B2B",
+"pct": 100.0
+}
+],
+"9848330c-785e-443a-95a2-9da43344f39f": [
+{
+"value": "Traditional & High Tech",
+"pct": 100.0
+}
+],
+"baf4c045-3465-4fc7-9a15-511877e221e2": [
+{
+"value": "Online - Direct Offline - Direct",
+"pct": 100.0
+}
+],
+"dedb9a6b-8e6d-40dd-b5cd-52d247790d54": [
+{
+"value": "Single Point - Deeper Solution",
+"pct": 100.0
+}
+]
+}
+}
+],
+"warnings": []
+}

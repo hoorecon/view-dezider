@@ -7,7 +7,7 @@ export interface Factor {
   is_duplicate?: boolean;   // Step 4 — soft de-dup flag (audit history)
   display_name?: string | null;  // Step 5+ rename override; `name` stays as the original
   notation: 'mandatory' | 'optional'; priority_rank: number; std_rating: number;
-  factor_type: 'subjective' | 'objective'; improvable: 'y' | 'y_bf' | 'n';
+  factor_type: 'subjective' | 'objective'; improvable: 'y' | 'y_bf' | 'y_both' | 'n';
   my_expectation?: string | null; others_expectations?: string | null; market_standard?: string | null;
   realistic_gap_pct: number; realistic_gap_value: number; realistic_rating?: number | null;
   weight?: number | null;   // Step 5 — sub-factor weightage (% split under its main factor)

@@ -7,11 +7,14 @@
  */
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../../src/constants/colors';
 import api from '../../../src/utils/api';
 import { safeBack } from '../../../src/utils/navigation';
@@ -70,6 +73,21 @@ function renderMarkdown(text: string) {
       continue;
     }
     if (inCode) { codeBuf.push(line); i++; continue; }
+
+    const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+    if (imgMatch) {
+      flushList();
+      out.push(
+        <Image
+          key={i}
+          source={{ uri: imgMatch[2] }}
+          style={styles.docImage}
+          resizeMode="contain"
+          accessibilityLabel={imgMatch[1]}
+        />
+      );
+      i++; continue;
+    }
 
     if (/^#{1,6}\s/.test(line)) {
       flushList();
@@ -146,6 +164,39 @@ export default function AdminDocDetailScreen() {
     })();
   }, [slug]);
 
+  const [downloading, setDownloading] = useState(false);
+  const downloadPdf = async () => {
+    if (!slug) return;
+    const fname = `${String(slug).toUpperCase()}.pdf`;
+    setDownloading(true);
+    try {
+      if (Platform.OS === 'web') {
+        const res = await api.get(`/admin-docs/${slug}/pdf`, { responseType: 'blob' });
+        const url = window.URL.createObjectURL(res.data as Blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        const token = await AsyncStorage.getItem('session_token');
+        const base = `${process.env.EXPO_PUBLIC_BACKEND_URL || ''}/api`;
+        const fileUri = `${FileSystem.documentDirectory}${fname}`;
+        const dl = await FileSystem.downloadAsync(
+          `${base}/admin-docs/${slug}/pdf`, fileUri,
+          { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+        );
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(dl.uri, { mimeType: 'application/pdf', dialogTitle: fname, UTI: 'com.adobe.pdf' });
+        }
+      }
+    } catch {
+      const msg = 'Could not download the PDF. Please try again.';
+      if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Download failed', msg);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -158,6 +209,13 @@ export default function AdminDocDetailScreen() {
             <Text style={styles.headerSub}>v{doc.version}{doc.updated ? ` · ${doc.updated}` : ''}</Text>
           )}
         </View>
+        {doc && (
+          <TouchableOpacity onPress={downloadPdf} style={styles.pdfBtn} disabled={downloading} accessibilityLabel="Download PDF">
+            {downloading
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : <><Ionicons name="download-outline" size={16} color={COLORS.primary} /><Text style={styles.pdfBtnText}> PDF</Text></>}
+          </TouchableOpacity>
+        )}
       </View>
       {loading ? (
         <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 60 }} />
@@ -182,6 +240,8 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.textPrimary },
   headerSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  pdfBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, minWidth: 64, backgroundColor: COLORS.background },
+  pdfBtnText: { color: COLORS.primary, fontWeight: '800', fontSize: 13 },
   h: { color: COLORS.textPrimary, fontWeight: '700', marginTop: 16, marginBottom: 8 },
   h1: { fontSize: 22 },
   h2: { fontSize: 18 },
@@ -192,6 +252,7 @@ const styles = StyleSheet.create({
   inlineCode: { fontFamily: 'Courier', fontSize: 13, backgroundColor: '#F3F4F6', paddingHorizontal: 4, borderRadius: 3 },
   codeBlock: { backgroundColor: '#0F172A', borderRadius: 8, padding: 12, marginVertical: 8 },
   codeText: { color: '#E2E8F0', fontFamily: 'Courier', fontSize: 11, lineHeight: 16 },
+  docImage: { width: '100%', height: 220, borderRadius: 8, marginVertical: 8, backgroundColor: '#0F172A' },
   listBlock: { marginVertical: 4 },
   listRow: { flexDirection: 'row', gap: 6, paddingVertical: 1 },
   bullet: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },

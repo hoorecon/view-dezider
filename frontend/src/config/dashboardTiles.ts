@@ -73,6 +73,7 @@ export const TILE_META: Record<string, TileMeta> = {
   karma_fame: { title: 'Karma & Fame', subtitle: 'Karma points · leaderboard', icon: 'trophy', route: '/leaderboard', variant: 'action', gradient: ['#F59E0B', '#FBBF24'] },
 
   // §8 Solution Space
+  decider_store: { title: 'The Decider Store', subtitle: 'Clone expert decision templates', icon: 'grid', route: '/decider-store', variant: 'action', gradient: ['#4338CA', '#6366F1'], alwaysOn: true },
   solution_store: { title: 'Solution Store', subtitle: 'Products & services', icon: 'storefront', route: '/tools/solutions-store', variant: 'action', gradient: ['#7C3AED', '#A855F7'] },
   review_net: { title: 'Review Net', subtitle: 'Factor-wise ratings', icon: 'star', route: '/tools/review-net', variant: 'action', gradient: ['#F59E0B', '#FBBF24'] },
   deo: { title: 'DEO', subtitle: 'Import & API', icon: 'git-network', route: '/tools/deo', variant: 'action', gradient: ['#059669', '#10B981'] },
@@ -106,7 +107,7 @@ export const DEFAULT_LAYOUT: LayoutSection[] = [
   { id: 'execute_track', emoji: '✅', name: 'Execute & Track', tiles: ['orgs', 'values', 'action_tracker', 'atex', 'ctt', 'lifestyle_dezider'] },
   { id: 'reflection_awareness', emoji: '🪞', name: 'Reflection & Awareness', tiles: ['public_pulse', 'outlet_analyzer', 'aim_manager', 'capabilities_index', 'lifestyle_designer', 'lifestyle_analyzer', 'consciousness_diary', 'unconditional_happiness'] },
   { id: 'collaboration_mgmt', emoji: '👥', name: 'Collaboration & Management', tiles: ['collaboration_hub', 'aala', 'time_dezider', 'gem_flight', 'knowledge_marketplace', 'my_earnings', 'karma_fame'] },
-  { id: 'solution_space', emoji: '🧩', name: 'Solution Space', tiles: ['solution_store', 'review_net', 'deo', 'time_store'] },
+  { id: 'solution_space', emoji: '🧩', name: 'Solution Space', tiles: ['decider_store', 'solution_store', 'review_net', 'deo', 'time_store'] },
   { id: 'more_tools', emoji: '🧰', name: 'More Tools', tiles: ['inbox', 'notifications', 'analytics', 'contacts', 'calendar', 'ai_assistant', 'social_learning', 'cld_engine', 'subscription'] },
 ];
 

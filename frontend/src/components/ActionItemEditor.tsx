@@ -23,6 +23,7 @@ import { useRouter } from 'expo-router';
 import api from '../utils/api';
 import { showAlert } from '../utils/alert';
 import { formatDMY } from '../utils/datetime';
+import { ACTION_STATUS_OPTS, normStatus } from '../constants/actionStatus';
 
 /** Mask free text into a DD-MM-YYYY shape as the user types. */
 function maskDMY(text: string): string {
@@ -88,12 +89,7 @@ const PRIORITY_OPTS: Array<{ id: ActionItem['priority']; label: string; color: s
   { id: 'urgent', label: 'Urgent', color: '#EF4444' },
 ];
 
-const STATUS_OPTS: Array<{ id: string; label: string; color: string }> = [
-  { id: 'pending',     label: 'Pending',     color: '#94A3B8' },
-  { id: 'in_progress', label: 'In Progress', color: '#3B82F6' },
-  { id: 'done',        label: 'Done',        color: '#10B981' },
-  { id: 'blocked',     label: 'Blocked',     color: '#EF4444' },
-];
+const STATUS_OPTS = ACTION_STATUS_OPTS;
 
 const FREQ_OPTS = ['daily','weekly','biweekly','monthly','quarterly','yearly'];
 
@@ -239,7 +235,6 @@ export default function ActionItemEditor(props: Props) {
         <Text style={s.empty}>No action items yet. Capture concrete next steps here.</Text>
       ) : items.map((it, idx) => {
         const pri = PRIORITY_OPTS.find(p => p.id === it.priority) || PRIORITY_OPTS[1];
-        const st  = STATUS_OPTS.find(p => p.id === it.status) || STATUS_OPTS[0];
         return (
           <View key={it.action_id} style={s.row}>
             <View style={[s.priDot, { backgroundColor: pri.color }]} />
@@ -254,7 +249,7 @@ export default function ActionItemEditor(props: Props) {
               </View>
               <View style={s.chipsRow}>
                 {STATUS_OPTS.map(opt => {
-                  const active = it.status === opt.id;
+                  const active = normStatus(it.status) === opt.id;
                   return (
                     <TouchableOpacity key={opt.id} style={[s.chip, active && { backgroundColor: opt.color, borderColor: opt.color }]} onPress={() => updateStatus(it, opt.id)}>
                       <Text style={[s.chipText, active && { color: '#FFF' }]}>{opt.label}</Text>
@@ -320,7 +315,7 @@ export default function ActionItemEditor(props: Props) {
               <Text style={s.label}>Who <Text style={s.hint}>(assignee name)</Text></Text>
               <TextInput style={s.input} value={fWho} onChangeText={setFWho} placeholder="Self / Jane Doe / Team A" placeholderTextColor="#9CA3AF" />
 
-              <Text style={s.label}>By When <Text style={s.hint}>(DD-MM-YYYY)</Text></Text>
+              <Text style={s.label}>Deadline <Text style={s.hint}>(DD-MM-YYYY)</Text></Text>
               <TextInput style={s.input} value={fByWhen} onChangeText={t => setFByWhen(maskDMY(t))} placeholder="30-08-2026" placeholderTextColor="#9CA3AF" keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'} />
 
               <Text style={s.label}>Priority</Text>

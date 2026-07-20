@@ -1,8 +1,17 @@
 # Postman / Insomnia collection — Dezider API
 
-_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.23.1", "updated": "2026-07-19" }
 
-Collection JSON: `/app/docs/Postman_Collection.json` (auto-regenerated 2026-06-12 from live OpenAPI — **53 folders, 979 endpoints**). New v3.16 folders include URL Analyse, AI Wallet (+ Admin Pricing Config), Admin Revenue Recon, Analytics (PostHog server-side). v3.18 adds the **Notification Engine (Admin)** folder (7 requests: registry, trigger CRUD, test-send, dispatch log — use a `{{triggerId}}` env var).
+Collection JSON: `/app/docs/Postman_Collection.json` — **fully regenerated 2026-07-19 from the live OpenAPI: 126 folders, 1,316 requests, 100% endpoint coverage** (every route in the codebase; no "Other" bucket). Folder names come from the module taxonomy in `backend/prompts/admin_docs_taxonomy.py`.
+
+**Regenerate any time (keeps the collection in lock-step with the code):**
+```bash
+cd /app/backend && python scripts/generate_postman_collection.py
+```
+or download the identical output from `GET /api/admin/docs/postman-collection` (admin Bearer token).
+> Adding a new route module? Add its path prefix to `CATEGORY_MAP` in
+> `backend/prompts/admin_docs_taxonomy.py` so its requests land in a named folder,
+> then re-run the script. The script warns if anything falls into "Other".
 
 ## Environments
 - **Local Dev** (`baseUrl` = http://localhost:8001)
@@ -93,3 +102,32 @@ GET  /admin/recon/summary                    (super-admin)
 POST /admin/recon/sync                       (super-admin)
 GET  /admin/recon/transactions.csv?month=2026-06
 ```
+
+## v3.23.0 additions (2026-07-19)
+New FRAME monetization folders:
+1. **AdMaker Program (Sponsored Auction)** — 12 requests: admin bid CRUD, CPC click track,
+   resolve-config, and the advertiser self-serve `my/*` set (eligible-options, bids CRUD, dashboard).
+2. **AdTaker Program (Publisher Widgets)** — 13 requests: publisher CRUD + rotate-keys + stats,
+   self-serve trio (auto-populated `{{adtakerKey}}` / `{{adtakerSecret}}` collection vars in
+   `X-Adtaker-Key/-Secret` headers), org portal, and the public widget.js / embed / track endpoints.
+3. **Option Bank & Finder Jobs** — 10 requests: bank stats, the 3 ingestion rails (+ sync-template,
+   clear), finder config/run, async job start + poll (uses `{{decisionId}}` / `{{finderJobId}}`).
+Env-var tips: set `{{templateId}}` = `bmp-55-patterns` for smoke runs; `{{trackerId}}` comes from
+the create-publisher response (the API **secret is returned only once** — save it to the env immediately).
+
+## v3.23.1 — Full regeneration + taxonomy overhaul (2026-07-19)
+The collection was previously auto-generated on 2026-06-12 and only hand-patched
+since, leaving ~300 newer endpoints missing and 419 requests in a generic "Other"
+folder. Fixed permanently:
+- **`backend/prompts/admin_docs_taxonomy.py`** now maps ALL ~130 route prefixes to
+  named module folders (incl. subpath overrides: `/decider-store/*/bank` → Option Bank,
+  `/decisions/*/finder` → Finder Jobs, `/decisions/*/deep-import` → Deep Import; admin
+  sub-areas like Recon, Notification Engine, Import Analytics, PII Lookup split out of
+  the "Admin Management" catch-all).
+- **`backend/scripts/generate_postman_collection.py`** (NEW) — one command rebuilds the
+  committed JSON from the live OpenAPI; prints folder/request counts and warns on "Other".
+- Builder extracted to `core/openapi_helpers.build_postman_collection` — the admin
+  download endpoint and the script share the exact same code path.
+- Collection-level variables now include `BASE_URL, AUTH_TOKEN, adtakerKey, adtakerSecret,
+  trackerId, templateId, decisionId, finderJobId`. Path params use `{{SAMPLE_<NAME>}}`.
+- **Current stats: 126 folders · 1,316 requests · 0 uncategorized.**

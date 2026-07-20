@@ -14,6 +14,7 @@ import { showAlert } from '../../src/utils/alert';
 import TimestampLine from '../../src/components/TimestampLine';
 import { formatDMY } from '../../src/utils/datetime';
 import { safeBack } from '../../src/utils/navigation';
+import { ACTION_STATUS_OPTS, statusColor, statusLabel, normStatus } from '../../src/constants/actionStatus';
 
 type ActionItem = {
   action_id: string; title: string; who: string; by_when?: string|null;
@@ -24,12 +25,12 @@ type ActionItem = {
   ported_to?: 'CTT'|'LIFESTYLE'|null;
 };
 
-const STATUS_FILTERS = ['all','pending','in_progress','done','blocked'];
+const STATUS_FILTERS = ['all', ...ACTION_STATUS_OPTS.map(o => o.id)];
 const SOURCE_FILTERS = ['all','MYDEZIDER_MPPS','PROS_CONS','SWOT','PNA','CONFLICT_BREAKER','AIM','MANUAL'];
 const PORTED_FILTERS = ['all','not_ported','CTT','LIFESTYLE'];
 
 const PRIORITY_COLOR: Record<string,string> = { low:'#94A3B8', medium:'#3B82F6', high:'#F59E0B', urgent:'#EF4444' };
-const STATUS_COLOR:   Record<string,string> = { pending:'#94A3B8', in_progress:'#3B82F6', done:'#10B981', blocked:'#EF4444', cancelled:'#A1A1AA' };
+const STATUS_LABEL_MAP: Record<string,string> = ACTION_STATUS_OPTS.reduce((m,o)=>{m[o.id]=o.label;return m;},{} as Record<string,string>);
 const SOURCE_LABEL:   Record<string,string> = {
   MYDEZIDER_MPPS:'My Dezider · MPPS', PROS_CONS:'Pros & Cons', SWOT:'SWOT',
   PNA:'PNA', CONFLICT_BREAKER:'Conflict Breaker', CLD:'CLD', GEM:'GEM',
@@ -177,7 +178,7 @@ export default function ActionCenter() {
         {summary && (
           <View style={s.statsRow}>
             <View style={s.statCard}><Text style={s.statN}>{summary.total || 0}</Text><Text style={s.statL}>Total</Text></View>
-            <View style={s.statCard}><Text style={[s.statN,{color:'#3B82F6'}]}>{summary.by_status?.in_progress || 0}</Text><Text style={s.statL}>In Progress</Text></View>
+            <View style={s.statCard}><Text style={[s.statN,{color:'#3B82F6'}]}>{(summary.by_status?.wip_25||0)+(summary.by_status?.wip_50||0)+(summary.by_status?.wip_75||0)}</Text><Text style={s.statL}>WIP</Text></View>
             <View style={s.statCard}><Text style={[s.statN,{color:'#10B981'}]}>{summary.by_status?.done || 0}</Text><Text style={s.statL}>Done</Text></View>
             <View style={s.statCard}><Text style={[s.statN,{color:'#1D4ED8'}]}>{summary.by_ported?.CTT || 0}</Text><Text style={s.statL}>In CTT</Text></View>
             <View style={s.statCard}><Text style={[s.statN,{color:'#B45309'}]}>{summary.by_ported?.LIFESTYLE || 0}</Text><Text style={s.statL}>LifeStyle</Text></View>
@@ -210,7 +211,7 @@ export default function ActionCenter() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipsRow}>
           {STATUS_FILTERS.map(f => (
             <TouchableOpacity key={f} style={[s.chip, fStatus === f && s.chipActive]} onPress={() => setFStatus(f)}>
-              <Text style={[s.chipText, fStatus === f && { color: '#FFF' }]}>{f === 'all' ? 'All' : f.replace('_',' ')}</Text>
+              <Text style={[s.chipText, fStatus === f && { color: '#FFF' }]}>{f === 'all' ? 'All' : (STATUS_LABEL_MAP[f] || f)}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -257,8 +258,8 @@ export default function ActionCenter() {
                     <Text style={s.metaText}>{it.recurrence_type === 'recurring' ? `🔁 ${it.recurrence_frequency}` : '⚡ one-time'}</Text>
                   </View>
                   <View style={s.tagRow}>
-                    <View style={[s.tag, { backgroundColor: (STATUS_COLOR[it.status]||'#94A3B8') + '22' }]}>
-                      <Text style={[s.tagText, { color: STATUS_COLOR[it.status] || '#94A3B8' }]}>{it.status}</Text>
+                    <View style={[s.tag, { backgroundColor: statusColor(it.status) + '22' }]}>
+                      <Text style={[s.tagText, { color: statusColor(it.status) }]}>{statusLabel(it.status)}</Text>
                     </View>
                     {it.ported_to ? (
                       <View style={[s.tag, { backgroundColor: it.ported_to === 'CTT' ? '#DBEAFE' : '#FEF3C7' }]}>
@@ -334,11 +335,14 @@ export default function ActionCenter() {
             </View>
             <Text style={s.mLabel}>Status</Text>
             <View style={s.mChips}>
-              {['pending','in_progress','done','blocked'].map(st => (
-                <TouchableOpacity key={st} style={[s.mChip, eStatus === st && { backgroundColor: '#0D9488', borderColor: '#0D9488' }]} onPress={() => setEStatus(st)}>
-                  <Text style={[s.mChipTxt, eStatus === st && { color: '#FFF' }]}>{st.replace('_',' ')}</Text>
-                </TouchableOpacity>
-              ))}
+              {ACTION_STATUS_OPTS.map(opt => {
+                const active = normStatus(eStatus) === opt.id;
+                return (
+                  <TouchableOpacity key={opt.id} style={[s.mChip, active && { backgroundColor: opt.color, borderColor: opt.color }]} onPress={() => setEStatus(opt.id)}>
+                    <Text style={[s.mChipTxt, active && { color: '#FFF' }]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <Text style={s.mNote}>Internal dependency, task duration & start/end dates live in CTT — port this item to CTT to edit those.</Text>
             <TouchableOpacity style={s.mSave} onPress={saveEdit} disabled={eSaving}>

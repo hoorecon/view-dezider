@@ -1,6 +1,8 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.20.0", "updated": "2026-06-28", "author": "engineering" }
+_metadata: { "version": "3.23.0", "updated": "2026-07-19", "author": "engineering" }
+
+> **v3.21.0 (2026-07-13):** Added **Stripe checkout** (USD/INR) for AI-wallet top-ups + subscriptions alongside Razorpay. **AI Assistant** now defaults to **Anthropic Claude** with automatic fallback to a cheaper model when the user's AI quota is exhausted. WhatsApp-gate skip now applies at registration. MyDezider expectation operators are common to both factor types (value-driven default). See `SYSTEM_KT` for the full block diagram & flow charts.
 
 ## 1. Vision
 
@@ -465,3 +467,38 @@ The 4 sub-types now appear as a **Type** chip selector in the Initial-Info step 
 
 _Status: shipped & tested (27/27 backend pytest + frontend flows). Build v3.176 / 2026.06.28.003._
 
+
+---
+
+## Appendix — v3.22–v3.23 (2026-07-19): DeciderApp monetization & scale
+
+### Sponsored Solutions (AdMaker Program)
+Decider Apps now carry a Google-AdWords-grade monetization layer that never
+compromises trust: the organic Top-N stays purely quality-ranked, and up to N
+clearly-labelled **Sponsored Solutions** render BELOW it. Only options that
+clear a **Min Cutoff %** (how well the option matches *that user's own
+expectations*) may be sponsored — a big budget can never push a bad match.
+Among eligible bids, ranking is AdRank = bid × quality, and winners pay the
+fair second price per click. Cutoff % and slot count are managed globally and
+per LifeArea/SubArea/Scenario in the Central Catalog (nearest setting wins).
+Advertisers = solution owners: with a Premium plan (or an Org advertiser
+role) they self-serve in **AdMaker Studio** — placing bids only on their own
+Solution-Store listings and tracking impressions, clicks, CTR, spend, avg CPC.
+
+### Embeddable Decider Apps (AdTaker Program)
+Any Decider App can be embedded on third-party websites with one `<script>`
+tag carrying a **tracker ID** (like AdSense). Impressions, clicks and
+attributed installs are measured per tracker; publishers earn a revenue share.
+Publisher identity runs on two rails: **API Key + Secret** (no login; secret
+shown once, stored hashed, rotatable) and an **Org-login Publisher Portal**
+with snippets and 30-day earnings.
+
+### Finder at 10-million-option scale (Option Bank)
+Decider Apps can now search an **Option Bank** — a pre-normalized, indexed
+store fed from three rails: internal (Solution Store + ReviewNet), partner
+APIs, and Deep-Import/bulk. Runs execute as background jobs with a live
+progress bar and loader music; mandatory expectations are pruned inside the
+database before scoring, so even huge banks return the Top-N in seconds
+(measured: 200K options in 2.65s; ≤60s SLA at scale).
+
+_Status: shipped & tested (27/27 backend pytest across iter193+194 + 11 frontend flows). Build v3.110 / 2026.07.19.002._

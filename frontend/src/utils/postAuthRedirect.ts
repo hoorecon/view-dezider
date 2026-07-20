@@ -13,6 +13,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  */
 export async function getPostAuthRoute(): Promise<string> {
   try {
+    // A logged-out visitor tapped "Use this template" in The Decider Store.
+    const clone = await AsyncStorage.getItem('pending_decider_clone');
+    if (clone) {
+      await AsyncStorage.removeItem('pending_decider_clone');
+      const [tid, mode] = clone.split('::');
+      if (tid) return `/decider-store/${tid}?use=${mode || 'full'}`;
+    }
     const contribute = await AsyncStorage.getItem('pending_contribute_share');
     if (contribute) {
       await AsyncStorage.removeItem('pending_contribute_share');

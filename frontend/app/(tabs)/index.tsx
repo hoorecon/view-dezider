@@ -283,7 +283,19 @@ export default function HomeScreen() {
     try {
       const r = await api.get('/dashboard-layout');
       if (Array.isArray(r.data?.sections) && r.data.sections.length) {
-        setLayout(r.data.sections);
+        // Merge saved layout with the registry so newly-added always-on tiles
+        // (e.g. The Decider Store) still appear even when the DB layout predates
+        // them. Admin removals of non-always-on tiles are still respected.
+        const saved: LayoutSection[] = r.data.sections;
+        const savedIds = new Set(saved.map((s) => s.id));
+        const merged: LayoutSection[] = saved.map((s) => {
+          const def = DEFAULT_LAYOUT.find((d) => d.id === s.id);
+          if (!def) return s;
+          const missing = def.tiles.filter((t) => !s.tiles.includes(t) && TILE_META[t]?.alwaysOn);
+          return missing.length ? { ...s, tiles: [...s.tiles, ...missing] } : s;
+        });
+        DEFAULT_LAYOUT.forEach((d) => { if (!savedIds.has(d.id)) merged.push(d); });
+        setLayout(merged);
       }
       if (r.data?.tile_titles && typeof r.data.tile_titles === 'object') {
         setTileTitles(r.data.tile_titles);

@@ -130,6 +130,7 @@ from routes.analytics import router as analytics_router
 from routes.ai_tools import router as ai_tools_router
 from routes.video_calls import router as video_calls_router
 from routes.decision_templates import router as decision_templates_router
+from routes.decider_store import router as decider_store_router
 
 # -- Pre-existing modular routes --
 from routes.tools import router as tools_router
@@ -140,6 +141,9 @@ from routes.decision_intake import router as decision_intake_router
 from routes.org_auth import router as org_auth_router
 from routes.partner_embed import router as partner_embed_router
 from routes.partner_embed_widget import router as partner_embed_widget_router
+from routes.admaker import router as admaker_router
+from routes.adtaker import router as adtaker_router
+from routes.option_bank import router as option_bank_router
 from routes.screener import router as screener_router
 from routes.url_analyze import router as url_analyze_router
 from routes.matrix_import import router as matrix_import_router
@@ -242,6 +246,7 @@ api_router.include_router(analytics_router)
 api_router.include_router(ai_tools_router)
 api_router.include_router(video_calls_router)
 api_router.include_router(decision_templates_router)
+api_router.include_router(decider_store_router)
 
 # Pre-existing modular routes
 api_router.include_router(tools_router)
@@ -252,6 +257,9 @@ api_router.include_router(decision_intake_router)
 api_router.include_router(org_auth_router)
 api_router.include_router(partner_embed_router)
 api_router.include_router(partner_embed_widget_router)
+api_router.include_router(admaker_router)
+api_router.include_router(adtaker_router)
+api_router.include_router(option_bank_router)
 api_router.include_router(screener_router)
 api_router.include_router(url_analyze_router)
 api_router.include_router(matrix_import_router)
@@ -345,6 +353,8 @@ api_router.include_router(deep_import_router)
 # Wave 2 (#8b) — Deep-Import auto-assess & rank top-N options endpoint.
 from routes.deep_import_rank import router as deep_import_rank_router  # noqa: E402
 api_router.include_router(deep_import_rank_router)
+from routes.finder import router as finder_router  # noqa: E402
+api_router.include_router(finder_router)
 from routes.regression import router as regression_router  # noqa: E402
 api_router.include_router(regression_router)
 

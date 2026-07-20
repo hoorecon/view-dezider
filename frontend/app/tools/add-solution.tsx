@@ -25,6 +25,7 @@ const TYPES = [
   { id: 'EVENT', icon: 'calendar', label: 'Event', color: '#F59E0B' },
   { id: 'PROJECT', icon: 'rocket', label: 'Project', color: '#8B5CF6' },
   { id: 'PERSON_CONTACT', icon: 'person', label: 'Person', color: '#EC4899' },
+  { id: 'STRATEGY', icon: 'bulb', label: 'Strategy', color: '#4F46E5' },
 ];
 
 // Taxonomy v2 — Org Types are DYNAMIC (Admin → Masters → Org Types), fetched
@@ -112,6 +113,7 @@ export default function AddSolutionScreen() {
     EVENT: ['event_date', 'location', 'venue', 'capacity'],
     PROJECT: ['timeline_months', 'team_size', 'budget'],
     PERSON_CONTACT: ['phone', 'email', 'designation', 'organization', 'expertise'],
+    STRATEGY: ['strategy_type', 'time_horizon', 'risk_level', 'affected_components'],
   };
 
   const submit = async () => {

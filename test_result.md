@@ -11080,3 +11080,268 @@ test_plan:
     - "Verify: admin dashboard loads with NO /api/acm/health 404 (poll returns 200); landing Sign in navigates to login; malformed POST /api/ai/prioritize-factors -> 400/422; POST /api/shares valid module 'dezider' works and invalid module -> 422 with enum"
   test_all: false
   test_priority: "high_first"
+
+# ITER 184 — Solution Finder UX finish + Pros & Cons Step 4/7/8 polish (June 2026)
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 184 (fork continuation of the Solution Finder 6-point feedback + new Pros & Cons asks).
+
+      SOLUTION FINDER (app/tools/solution-finder.tsx):
+      1. Clickable breadcrumbs — step dots now tappable up to `reachableMax` (forward + back),
+         current step ringed. testID sf-breadcrumb-{i}.
+      2. Visible AI credits meter row above the AI auto-fill buttons in Q3 & Q4 (balance +
+         per-action estimate + Top up). Uses /api/ai-wallet + /api/ai-wallet/estimates.
+      3. Hierarchy in UI:
+         - Step 4 (Risks): each Solution card shows Concern > RCA trail chips; card is
+           collapsible; Expand-all / Collapse-all bar (testID sf-risk-expand-all / -collapse-all).
+         - Step 5 (Action Plan): each action item shows full lineage trail (Concern > RCA >
+           Solution > Risk), colour-coded by source (solution=indigo, mitigation=emerald,
+           contingency=amber) with a legend; per-item + Expand-all/Collapse-all collapse.
+      4. Report export (Step 5, only when savedId): "Download PDF" (GET /api/reports/solution_finder/{id}.pdf;
+         402 -> prompt to open /store highlight=L1) + "Share report" (ReportShareSheet, module=solution_finder).
+         NOTE: PDF is a paid L1 artifact (same gate as dezider/pros_cons/swot). 402 -> store is EXPECTED.
+
+      PROS & CONS WIZARD (app/tools/pros-cons-wizard.tsx + src/features/pros-cons/*):
+      5. Step 7 — new 3rd toggle "Show/Hide Realistic Gap" (testID pc-toggle-gaps) hides/shows all
+         gap connectors; when hidden, each factor gets a per-factor "Realistic gap" reveal
+         (testID pc-gap-toggle-{id}).
+      6. Step 7 — option names now wrap full-width (assessOpt width:'100%'), no more truncation.
+      7. Step 4 — "pick existing top-level factor" chips now carry a web hover tooltip (title=full name).
+      8. Step 8 — per-option "Case-1 vs Case-2" comparison table: Overall %, Score, Mandatory %,
+         Optional % with a Change (delta) column; A%/B% relabeled to Mandatory %/Optional %.
+
+      Backend unchanged this iter (all report/PDF/estimates endpoints already existed & verified).
+      Creds: super@test.com / SuperPass2026!. Sample SF entry (super): 11cf0bc0-8086-40c3-a679-6da1ea10fdab.
+test_plan:
+  current_focus:
+    - "Iter184 — Solution Finder: breadcrumb jump, AI meter row, Step4/Step5 hierarchy + collapse, PDF/Share buttons"
+    - "Iter184 — Pros&Cons Step7 gap toggle + option wrap; Step4 chip tooltip; Step8 Case1-vs-Case2 table + Mandatory/Optional labels"
+  test_all: false
+  test_priority: "high_first"
+
+# ITER 187 — Canonical Action Status (8 states) + Bi-directional Sync + PDF fixes (June 2026)
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 187 (fork). User's 5-point request implemented.
+
+      CANONICAL STATUS SET (one source of truth):
+        pending · wip_25 · wip_50 · wip_75 · done · deferred · blocked · cancelled
+        Backend: core/action_status.py (normalize_status/status_label/progress_for; aliases
+        open->pending, in_progress->wip_50, completed->done). Frontend: src/constants/actionStatus.ts.
+        WIP states carry progress % (pending0/wip25/wip50/wip75/done100) kept in lockstep.
+        Applied consistently in: ActionItemEditor (Pros&Cons + SWOT + MyDezider Step10 Action Plans),
+        Action Center (filters+edit dropdown+tags), CTT (ctt.tsx status filters/quick buttons/pills,
+        ctt-task.tsx status chips default pending), and Solution Finder Action Plan step.
+
+      BI-DIRECTIONAL STATUS SYNC (true two-way, verified via scripts/test_status_sync.py):
+        Hub = action_items collection. 
+        - PUT /action-items/{id} -> _sync_ported_status fans status to ported CTT task
+          (current_status) / Lifestyle routine (status) AND to any record carrying
+          linked_action_id (Solution-Finder / Matrix push path).
+        - PUT /ctt/tasks/{id} (current_status) -> back-writes parent action item
+          (source_id when source_type=ACTION_ITEM, else linked_action_id).
+        - PUT /lifestyle/routines/{id} (status now allowed) -> back-writes parent action item.
+        - GET /solution-finders/{id} reconciles each pushed action_plan_item.status from its
+          linked central action item (central->SF), so SF Action Plan never goes stale.
+
+      PDF (routes/decision_reports.py):
+        1. Solution Finder title no longer truncated at 80 chars (shows full smart_goal).
+        2. Action Plan groups now prefixed + suffixed:
+           "I. Solution Actions (n) - Mandatory", "II. Risk Mitigation Actions (n) - Most Recommended",
+           "III. Risk Contingency Actions (n) - Recommended", "IV. Other Actions (n)".
+        3. Action-plan Status column renders canonical labels (wip_25 -> "WIP 25%") via _fmt_status.
+
+      UI LABEL: Action Plan date field label = "Deadline (DD-MM-YYYY)" (ActionItemEditor + Solution
+      Finder); SF deadline input masks DD-MM-YYYY and persists ISO in by_when.
+
+      Creds: super@test.com / SuperPass2026!.
+test_plan:
+  current_focus:
+    - "Iter187 — Action item status: 8 canonical states everywhere (Action Center, CTT, Pros&Cons/MyDezider/SWOT Action Plan, Solution Finder)"
+    - "Iter187 — Bi-directional status sync: change in Action Center/CTT/Lifestyle reflects in Pros&Cons/MyDezider/SolutionFinder and vice-versa"
+    - "Iter187 — PDF: SF title untruncated; Action Plan group prefixes I/II/III + suffixes Mandatory/Most Recommended/Recommended; canonical status labels"
+  test_all: false
+  test_priority: "high_first"
+
+# ITER 188 — The Decider Store (Phase 1: Admin authoring + Excel/GSheet import + clone→MyDezider)
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 188 (fork). New feature "The Decider Store" — public storefront for Admin-Authorized
+      Decision Templates. Phase 1 delivered (Phase 2 = public storefront UI + login-gated launch, next).
+
+      PARSED the user's Business_Model_Assessments.xlsx: 10 factors (Org Type, Solution Category,
+      Nature of Solution, Intensity/Urgency, Affordability, Revenue Model, Tech Orientation,
+      Distribution Channels, Value Creation, Differentiation Strategy) × 54 business-model options.
+      Cell "Solo, Startup (40%)" => Solo 100%, Startup 40% (per-value suitability, NOT the scoring %).
+
+      BACKEND (all verified via scripts/test_decider_store.py — PASS):
+      - core/decider_import.py: robust parser (col-A row-labels: Factor Name / Possible Values /
+        Main+Sub Factor Data/Select/UI / Factor Group / Classification / Priority; option rows below
+        a header row). parse_value_cell handles per-value %. build_import_template_xlsx() generates the
+        downloadable authoring template (round-trips through the parser). gsheet_to_csv_url().
+      - routes/decider_store.py (prefix /api/decider-store):
+        PUBLIC (no auth): GET "" (list authorized+public cards), GET /meta, GET /{id} (detail),
+          GET /import-template.xlsx (download).
+        ADMIN: GET /admin/all, POST /import/excel {file_b64}, POST /import/gsheet {sheet_url},
+          POST "" (create; admin=authorized+public, user=pending), PUT /{id}, POST /{id}/authorize,
+          POST /{id}/unpublish, DELETE /{id}.
+        AUTH clone: POST /{id}/clone {mode: full|values_only} -> inserts a MyDezider decision in
+          db.decisions prefilled; returns decision_id. full => factor.category=mandatory + priority;
+          values_only => category='' + rating=0 (user classifies). Option values carried as
+          assessment.unit_value ("Solo, Startup (40%)") + suitability_values; percentage left None.
+          Paid templates -> 402 with price (fulfillment = Phase 2).
+      - Seeded "The 55 Business Model Patterns" (template_id=bmp-55-patterns) via
+        scripts/seed_decider_store_bmp.py (idempotent) — LIVE, free, both clone modes.
+
+      FRONTEND (admin, verified via screenshot login):
+      - app/admin/decider-store.tsx: Download Excel template, Import Excel (filePick->base64),
+        Import Google Sheet (URL), Create modal (title/subtitle/desc/category/decision_type/
+        clone-modes/paid+price+creator split), Classify-factors modal (Mandatory/Optional + priority
+        1-10 per factor), per-template Authorize/Unpublish/Delete. Tile added to /admin (Content group).
+
+      Creds: super@test.com / SuperPass2026! (admin portal at /admin uses its OWN login form).
+test_plan:
+  current_focus:
+    - "Iter188 BE — Decider Store public browse (no auth): GET /api/decider-store, /meta, /{id}, /import-template.xlsx"
+    - "Iter188 BE — Admin import/excel (base64) + create + authorize + clone (full & values_only) prefill a MyDezider decision"
+    - "Iter188 FE — /admin/decider-store renders, shows seeded template LIVE with Classify/Authorize/Delete; Create & Classify modals work"
+  test_all: false
+  test_priority: "high_first"
+
+# ITER 189 — Decider Store Phase 2A: public storefront + login-gated clone launch + Quant/Qual classification
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 189 (fork). Phase 2A of The Decider Store + factor Quant/Qual classification.
+
+      PUBLIC STOREFRONT (browse WITHOUT login — 'decider-store' added to PUBLIC_SEGMENTS in app/_layout.tsx):
+      - app/decider-store/index.tsx: hero + tagline, search, category chips (from /meta), template cards.
+      - app/decider-store/[id].tsx: detail (cover, stats, description), clone-mode chooser (Full / Values-only
+        per allowed_clone_modes), factors preview (with Quant/Qual tag + possible values), options preview,
+        sticky CTA.
+      LOGIN-GATED CLONE:
+      - Logged-out "Use" -> stores AsyncStorage 'pending_decider_clone'=`${id}::${mode}` then /auth/login.
+      - getPostAuthRoute() (src/utils/postAuthRedirect.ts) now returns `/decider-store/{id}?use={mode}` after
+        auth; register.tsx also routes via getPostAuthRoute now.
+      - Detail screen auto-resumes: when ?use=<mode> present + authenticated -> POST /decider-store/{id}/clone
+        -> router.replace(`/prr/{decision_id}`) (opens the prefilled MyDezider decision).
+      - Authenticated direct "Use this template" clones immediately. Paid template -> 402 -> alert (checkout TBD).
+
+      QUANT/QUAL CLASSIFICATION (admin):
+      - app/admin/decider-store.tsx Classify modal now has a per-factor Type toggle:
+        Quantitative → Solution Store  /  Qualitative → ReviewNet (persists factor_type via PUT /decider-store/{id}).
+
+      Verified via screenshot (logged-out): storefront + detail render; factor shows 'Qual' tag; CTA 'Sign in to use'.
+      Creds: super@test.com / SuperPass2026!.  NOTE: seeded template bmp-55-patterns (free).
+test_plan:
+  current_focus:
+    - "Iter189 FE — /decider-store loads WITHOUT login; card -> /decider-store/[id] detail renders"
+    - "Iter189 FE — logged-out 'Sign in to use' -> login -> AUTO-RESUME clone -> lands on /prr/<decision_id> (prefilled decision)"
+    - "Iter189 FE — authenticated 'Use this template' (mode Full & Values-only) clones and opens /prr/<id>"
+    - "Iter189 FE — admin Classify modal Quant/Qual toggle persists (PUT), factor_type reflected in public detail tag"
+  test_all: false
+  test_priority: "high_first"
+
+# ITER 190 — Decider Store ⇄ Solution Store ⇄ ReviewNet bridge + STRATEGY solution type
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 190 (fork). Full Store↔ReviewNet bridge (user confirmed: 1c both categorical+★, 2 new
+      STRATEGY type in master + admin UI, 3c manual button + optional auto-push-on-authorize, 4c both
+      cross-link + build-from-store, 5a all now). Backend verified via scripts/test_bridge.py (all pass).
+
+      NEW SOLUTION TYPE "STRATEGY": added to models/solutions_store_data.py SOLUTION_TYPES +
+      TYPE_SPECIFIC_FIELDS, routes/catalog_explorer.py, and frontend app/tools/add-solution.tsx (CRUDible).
+
+      BRIDGE (routes/decider_store.py):
+      - POST /decider-store/{id}/push-to-stores (admin): each option → upsert Solution Store solution
+        (type STRATEGY) carrying its QUANTITATIVE factor values + decider_template_id/decider_option_id
+        cross-link + linked_solution_id back on the option (non-duplication). Qualitative factors →
+        ensure review_factors catalog + upsert a ReviewNet baseline doc (review_net, review_id=
+        rv_baseline_<sid>, reviewer_segment='authoritative', is_baseline=true) storing BOTH categorical
+        baseline_profile {factor:[{value,pct}]} AND factor_ratings ★ (pct/20, 1-5).
+      - POST /decider-store/{id}/sync-from-stores (admin): pull quant (solution) + qual (baseline) back
+        into template options.
+      - POST /decider-store/from-solutions (admin): build a NEW template from selected Strategy solutions'
+        quant factors + ReviewNet baselines.
+      - auto_push_on_authorize flag: create/update; authorize_template auto-pushes when set.
+      Verified: push=54 solutions+54 baselines; STRATEGY solution has quant values + decider_template_id;
+      ReviewNet baseline has factor_ratings + baseline_profile; sync=54; from-solutions builds template;
+      STRATEGY accepted by POST /solutions-store/solutions.
+
+      FRONTEND:
+      - app/admin/decider-store.tsx: toolbar "Build from Solution Store" (solution picker modal),
+        per-template "Push to Stores" + "Sync" buttons, "Auto-push … on Authorize" switch in create,
+        Quant/Qual toggle already in Classify modal (iter189).
+      - app/tools/solution-detail.tsx: "Use as decision template · Open in The Decider Store" cross-link
+        when solution.decider_template_id present.
+      Seeded bmp-55-patterns reset to all-qualitative + re-pushed (faithful). Creds: super@test.com / SuperPass2026!.
+test_plan:
+  current_focus:
+    - "Iter190 BE — push-to-stores creates STRATEGY solutions (quant) + ReviewNet baselines (qual, categorical+star); sync-from-stores; from-solutions; auto_push_on_authorize"
+    - "Iter190 BE — STRATEGY accepted by POST /solutions-store/solutions"
+    - "Iter190 FE — admin Push to Stores / Sync / Build from Solution Store actions work; solution-detail shows 'Open in The Decider Store' cross-link"
+  test_all: false
+  test_priority: "high_first"
+
+  - agent: "main"
+    message: |
+      ITER 193. FRAME (Finder Ranking & Monetization Engine) shipped + specced in docs/SRS.md v3.22.0.
+      AdMaker: admaker_bids CRUD, AdRank=bid×QS auction, GSP CPC pricing, region+time-slot targeting,
+      hierarchical Min-Cutoff%/Sponsored-N (template → CCM node chain → ai-wallet globals). Finder run
+      returns sponsored[] BELOW organic (organic order untouched). AdTaker: adtaker_publishers w/ tracker
+      IDs, public widget.js + embed card + track beacon, clone?ref=conversion, stats+earnings.
+      FE: /admin/ad-programs (Bids/Publishers/Cutoffs), decider-store Catalog mapping + Sponsored globals,
+      finder sponsored card. BE 13/13 pytest (tests/test_iter193_admaker_adtaker.py); FE testing agent all
+      5 flows + regression PASS (iteration_193.json). No open bugs.
+
+  - agent: "main"
+    message: |
+      ITER 194. FRAME @ scale shipped + SRS v3.23.0. Option Bank (decider_option_bank, wildcard-indexed,
+      ingest rails: template sync / solution-store+reviewnet bridge / partner API / bulk-deep-import),
+      async finder_jobs (indexed S1 prune -> heap Top-K -> auction; spec-hash cache; 200K->25K->2.65s,
+      full 200K scan ~10s), finder UI job mode w/ progress + 'finder' loader-music slot. AdMaker Studio
+      (/admaker-studio, ACM admaker_program ga_paid, /admaker/my/* w/ ownership guard + metrics dashboard).
+      AdTaker keys (dzk_/dzs_ minted once, sha256, rotate, /adtaker/self/* header auth) + org portal
+      (/adtaker-portal, publisher.org_id). Factor.source_sub_id persisted for bank join. BE 14/14
+      (test_iter194_bank_studio_keys.py) + 13/13 iter193 regression; FE testing agent 6/6 flows PASS
+      (iteration_194.json). Orphan test publishers cleaned. No open bugs.
+
+  - agent: "main"
+    message: |
+      ITER 195. (a) Docs comprehensiveness: Postman_Collection.json fully regenerated from live OpenAPI
+      (126 folders / 1,316 requests / 0 "Other"), taxonomy CATEGORY_MAP overhauled, new script
+      backend/scripts/generate_postman_collection.py, builder shared via core/openapi_helpers.
+      INDEX/API_REFERENCE/POSTMAN metadata fixed. Backend verified: /api/admin/docs/postman-collection +
+      /api/admin/docs/api-catalog (1316 ops, 0 Other) + /api/admin-docs (15 docs w/ metadata); 27/27 pytest.
+      (b) NEW LoadErrorState retry guard (src/components/LoadErrorState.tsx, testID load-error-state /
+      load-error-retry) wired into (tabs)/prr.tsx (Solution Box ListEmptyComponent), tools/pros-cons-list.tsx,
+      tools/solution-finder-list.tsx — transient fetch failures now show Retry instead of "empty account".
+      NEEDS FE TESTING: 3 list screens normal load + simulated API failure -> retry panel -> retry recovers;
+      /admin/handbook renders updated docs (INDEX v3.23.1).
+
+  - agent: "main"
+    message: |
+      ITER 196. Import Template v2 (Column Roles + Dynamic UI Objects) shipped end-to-end.
+      Backend: decider_import.py v2 label rows (Main UI Object row 6 / Column Role row 8 / Linked Value
+      row 9 / Default Operator row 12 / Default Expected row 13; header row 10->15; all optional =
+      backward compatible); split-100 rule now applies to role='sub' columns only. Factor pydantic model
+      += ui_object/role/linked_value/default_operator/default_expected. Clone carries them. Finder:
+      checkbox/listbox factors match ANY ticked value (bank compile_prefilter per-spec match override +
+      finder_engine factor_matches); unticked value/dependent leaves excluded from filter AND score.
+      BMC reseeded v2 (10 checkbox factors x 28 Value cols, defaults >=60). BE suites green:
+      subfactor_v2+iter188 23 passed, iter193 13, iter194 14 (retargeted from deleted bmp-55-patterns
+      to live "Business Model Chooser" via dynamic title lookup).
+      Frontend: NEW src/components/steps/FactorValueUI.tsx (checkbox/radio/dropdown value pickers,
+      per-tick Suitability refiner w/ numeric operator chips + % input prefilled from defaults,
+      dependent blocks gated on linked value, config-mode add/remove values). Step2.tsx: value-mode
+      branch (no split bar / "n selected" badge), "Configure UI objects" toggle only when
+      decision.decider_kind==='app' (testID step2-config-ui-toggle; per-factor picker testIDs
+      ui-obj-{input|checkbox|radio|dropdown}-{factorId}; value rows fv-value-{subId}; refiner input
+      fv-refiner-{subId}).
+      NEEDS FE TESTING: clone BMC -> Step 2 checkbox render/tick/refiner/untick; finder job run with
+      ticked values; Configure UI objects toggle (switch factor widget types incl. back to Text input);
+      regression: classic split sub-factor factors on a NON-app decision unchanged (no toggle shown).
