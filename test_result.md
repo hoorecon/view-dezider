@@ -11345,3 +11345,20 @@ test_plan:
       NEEDS FE TESTING: clone BMC -> Step 2 checkbox render/tick/refiner/untick; finder job run with
       ticked values; Configure UI objects toggle (switch factor widget types incl. back to Text input);
       regression: classic split sub-factor factors on a NON-app decision unchanged (no toggle shown).
+
+# PROD SYNC MERGE — origin/emergent-v3 e3e48df0 into workspace (2026-07-20)
+agent_communication:
+  - agent: "main"
+    message: |
+      Merged 64 incoming prod commits (merge 3513f74a). New: Decider Store
+      (routes/decider_store.py + /decider-store frontend), Template Format v2,
+      ACM seed 2026-07-19-01 auto-applied on boot -> 34 modules / 153 features.
+      1 conflict (test_result.md, union-resolved). All migration changes + 4 fixes
+      verified intact. No dep changes. API self-checks green: /api/decider-store
+      returns Business Model Chooser (snapshot data present), /api/acm/health
+      {modules:34, features_loaded:153}, prioritize-factors 422 on malformed.
+test_plan:
+  current_focus:
+    - "Post-merge UI verify: /decider-store renders Business Model Chooser; admin dashboard Active Modules=34, no console errors; login + one tool still works"
+  test_all: false
+  test_priority: "high_first"

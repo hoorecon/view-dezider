@@ -6,6 +6,19 @@
 
 ## 🧭 Migration log (what a future agent MUST know)
 
+### Prod sync merge (2026-07-20, later same day)
+- Workspace was forked BEFORE the latest prod commits. Merged `origin/emergent-v3`
+  @ `e3e48df0` (64 commits) into `emergent-v3-e3` — merge commit `3513f74a`.
+- Incoming features: **The Decider Store** (`routes/decider_store.py`, `/decider-store`
+  frontend route, Business Model Chooser with 54-pattern option bank), **Template
+  Format v2 + Dynamic UI Objects** (BUILD 2026.07.19.007), ACM seed 2026-07-19-01
+  (auto-applied on boot → **34 modules / 153 features**, matching prod).
+- Only 1 conflict (`test_result.md`) — resolved by union. `server.py` and
+  `decision_reports.py` auto-merged; ALL migration changes + 4 bug fixes verified
+  intact post-merge. No new pip/yarn dependencies.
+- Backport patch `backport_4fixes_for_emergent-v3.patch` was built against `e3e48df0`
+  (still prod head) — remains valid.
+
 ### Environment (Phase 1)
 - **DB**: local MongoDB, `DB_NAME=dezider` — restored snapshot of prod Atlas
   (198 collections / 3,875 docs, per-collection parity verified 2026-07-20).
