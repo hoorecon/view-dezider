@@ -64,6 +64,18 @@
 - Local fixture users created (see `memory/test_credentials.md`): admin@test.com,
   super@test.com, migration.tester@test.com, harden_1777921741@example.com.
 
+### Code-review triage + 3 real-defect fixes (2026-07-20, evening)
+- Publish-flow scanner claims triaged: 71 "high-severity" not reproducible (bandit
+  high-sev live backend = 0); 91 "undefined" = 6 real F821s; circular import
+  admin_docs<->server is intentional (deferred imports); complexity/type-hints =
+  advisory, skipped. F821 now 0.
+- 3 REAL defects fixed (all were live in prod too): ai_wallet.py restored missing
+  @router.put /ai-wallet/provider-consent endpoint; ai_tools.py except _aw.InsufficientCredits
+  (was NameError->500, now 402); financial_model.py added import logging.
+- Prod backport: 5-fix patch APPLIED to prod (emergent-v3 @ 28e749c2) and removed
+  from repo; NEW `backport_3defects_for_emergent-v3.patch` at repo root, verified
+  apply --check clean vs 28e749c2 (instructions in DEPLOYMENT_EMERGENT.md section 8).
+
 ### Known pre-existing issues — FIXED in post-migration fix pass (2026-07-20)
 - ~~`/api/acm/health` 404~~ → endpoint added in `routes/acm.py` (admin-gated, returns features_loaded)
 - ~~`/api/ai/prioritize-factors` 500 on malformed body~~ → input validation added (400/422)

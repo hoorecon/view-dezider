@@ -275,7 +275,8 @@ async def set_free_tier_one_shot(user: dict = Depends(get_current_user)):
     return {"success": True, "one_shot": True}
 
 
-
+@router.put("/ai-wallet/provider-consent")
+async def set_provider_consent(body: dict, user: dict = Depends(get_current_user)):
     """Save OpenAI fallback consent. Body: {
         allow_openai: bool,
         mode?: 'ask'|'always',

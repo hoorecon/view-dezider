@@ -9,6 +9,7 @@ forecast + ratios + DCF valuation are computed on the fly by core.fin_model.
 import asyncio
 import base64
 import json
+import logging
 import re
 import uuid
 from datetime import datetime, timezone

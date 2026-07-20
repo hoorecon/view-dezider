@@ -1,0 +1,75 @@
+BACKPORT: 3 real-defect fixes for emergent-v3 (EC2 + Cloudflare prod)
+=========================================================================
+From the code-review triage (fix-real-red-only). Verified with
+`git apply --check` against origin/emergent-v3 @ 28e749c2 (2026-07-20,
+i.e. AFTER the earlier 5-fix backport was pushed). Backend-only; contains
+ONLY these 3 fixes — no migration-specific changes.
+
+  1. backend/routes/ai_wallet.py      — restore the MISSING @router.put
+                                        decorator + function signature for
+                                        PUT /api/ai-wallet/provider-consent
+                                        (endpoint body existed as unreachable
+                                        orphan code; frontend calls it from
+                                        aiErrors.ts and Step7.tsx and was
+                                        silently getting 405)
+  2. backend/routes/ai_tools.py       — except clause referenced undefined
+                                        name `ai_wallet` (local import is
+                                        `_aw`): credit exhaustion in
+                                        prioritize-factors raised NameError
+                                        -> 500 instead of the intended 402
+  3. backend/routes/financial_model.py — add missing `import logging`
+                                        (Zoho-snapshot failure path raised
+                                        NameError -> 500 instead of the
+                                        intended graceful degrade)
+
+HOW TO APPLY (on your machine / EC2 checkout):
+  git checkout emergent-v3
+  git pull origin emergent-v3
+  # get the patch from the e3 branch (it lives at the repo root there):
+  git show origin/emergent-v3-e3:backport_3defects_for_emergent-v3.patch > /tmp/backport_3defects.patch
+  git apply --check /tmp/backport_3defects.patch    # dry-run, must be silent
+  git apply /tmp/backport_3defects.patch
+  git add backend/routes/ai_wallet.py backend/routes/ai_tools.py backend/routes/financial_model.py
+  git commit -m "fix: restore provider-consent PUT endpoint, 402 on credit exhaustion, financial_model logging import (backport)"
+  git push origin emergent-v3
+
+THEN DEPLOY (backend-only change):
+  ssh EC2 && cd /opt/dezider && ./deploy/sync.sh
+  (No Cloudflare/frontend build needed — all 3 fixes are backend.)
+
+`git apply` ignores this header text; the diff starts at the first "---" line.
+=========================================================================
+
+--- a/backend/routes/ai_wallet.py
++++ b/backend/routes/ai_wallet.py
+@@ -275,7 +275,8 @@
+     return {"success": True, "one_shot": True}
+ 
+ 
+-
++@router.put("/ai-wallet/provider-consent")
++async def set_provider_consent(body: dict, user: dict = Depends(get_current_user)):
+     """Save OpenAI fallback consent. Body: {
+         allow_openai: bool,
+         mode?: 'ask'|'always',
+--- a/backend/routes/ai_tools.py
++++ b/backend/routes/ai_tools.py
+@@ -885,7 +885,7 @@
+             user["user_id"], system_message=system_message, prompt=prompt,
+             feature="factor_prioritize", session_prefix="factorprio",
+             tier=ai_tier, meta=meta)
+-    except ai_wallet.InsufficientCredits:
++    except _aw.InsufficientCredits:
+         raise HTTPException(status_code=402, detail="Out of AI credits. Top up your AI Wallet to use AI prioritisation.")
+     except Exception as e:  # noqa: BLE001 — every provider failed
+         logger.warning(f"prioritize-factors LLM failed: {e}")
+--- a/backend/routes/financial_model.py
++++ b/backend/routes/financial_model.py
+@@ -9,6 +9,7 @@
+ import asyncio
+ import base64
+ import json
++import logging
+ import re
+ import uuid
+ from datetime import datetime, timezone

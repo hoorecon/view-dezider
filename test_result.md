@@ -11383,3 +11383,22 @@ test_plan:
     - "Verify /tools/pros-cons deep-link renders (no splash hang), logged-in wizard works + entry can be created; spot-check /tools/swot and /tools/goal-setter"
   test_all: false
   test_priority: "high_first"
+
+# FIX PASS 2 — 3 real defects from code-review triage (2026-07-20)
+agent_communication:
+  - agent: "main"
+    message: |
+      (1) routes/ai_wallet.py: restored missing @router.put("/ai-wallet/provider-consent")
+      + async def set_provider_consent(body: dict, user=Depends(get_current_user)) above
+      the orphaned body. Live-verified: PUT -> 200 {allow_openai,mode,openai_free_tier,
+      openai_available}, GET round-trip consistent. (2) routes/ai_tools.py:888:
+      except ai_wallet.InsufficientCredits -> except _aw.InsufficientCredits (_aw bound
+      at line 826 inside same function; credit exhaustion now 402 not NameError/500).
+      (3) routes/financial_model.py: added import logging. ruff F821 backend = 0.
+      Backport patch backport_3defects_for_emergent-v3.patch built vs prod 28e749c2,
+      apply --check clean; obsolete 5-fix patch removed (already merged into prod).
+test_plan:
+  current_focus:
+    - "Verify PUT /api/ai-wallet/provider-consent 200 + persists; regression: login, one tool screen, /api/health, /api/acm/health"
+  test_all: false
+  test_priority: "high_first"

@@ -885,7 +885,7 @@ Return ONLY valid JSON, no markdown:
             user["user_id"], system_message=system_message, prompt=prompt,
             feature="factor_prioritize", session_prefix="factorprio",
             tier=ai_tier, meta=meta)
-    except ai_wallet.InsufficientCredits:
+    except _aw.InsufficientCredits:
         raise HTTPException(status_code=402, detail="Out of AI credits. Top up your AI Wallet to use AI prioritisation.")
     except Exception as e:  # noqa: BLE001 — every provider failed
         logger.warning(f"prioritize-factors LLM failed: {e}")
