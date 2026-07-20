@@ -11021,3 +11021,14 @@ test_plan:
     - "Phase2 verify: /api/health + /api/openapi.json 200 external; login works; landing page canonical <link> points to preview URL not jelcos.ai; one authenticated screen loads real data"
   test_all: false
   test_priority: "high_first"
+
+# MIGRATION PHASE 2b — preview host correction (2026-07-20)
+agent_communication:
+  - agent: "main"
+    message: |
+      Stale preview host e069d3a0-... replaced with https://repo-blueprint-1.preview.emergentagent.com
+      in backend/.env (PUBLIC_APP_URL, ALLOWED_ORIGINS) and frontend/.env
+      (EXPO_PUBLIC_BACKEND_URL, EXPO_PUBLIC_APP_URL). Backend+frontend restarted.
+      SELF-CHECKS PASS: (a) canonical + og:url = repo-blueprint-1 origin (playwright-verified);
+      (b) POST /api/shared-steps/create -> link https://repo-blueprint-1.preview.emergentagent.com/contribute?share=...
+      No code changes in this step. Known warnings left as-is per user (prioritize-factors 500 on malformed body; /api/shares module enum).
