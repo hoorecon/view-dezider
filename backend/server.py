@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="View Dezider API",
     description="Decision Intelligence by Venture Buddha",
+    # MIGRATION NOTE (Emergent hosting): ingress only routes /api/* to the
+    # backend, so the OpenAPI schema must live under /api to stay reachable.
+    openapi_url="/api/openapi.json",
 )
 api_router = APIRouter(prefix="/api")
 

@@ -1,16 +1,21 @@
-# Test Credentials (auto-updated 2026-06-22)
+# Test Credentials (Emergent migration environment — updated 2026-07-20)
 
-## Super Admin (role: super_admin — can write AI Wallet config / touchpoints)
-- Email: super@test.com
-- Password: SuperPass2026!
+Auth type: email + password → POST /api/auth/login returns `session_token`
+(Bearer token, 7-day expiry). Send as `Authorization: Bearer <token>`.
+DB: local MongoDB, DB_NAME=dezider (restored snapshot of prod Atlas, 198 collections / 3875 docs).
 
-## Admin (role: admin — can READ admin screens, cannot write wallet config)
-- Email: admin@test.com
-- Password: AdminPass2026!
+## Super Admin (prod account from restored Atlas snapshot — WORKS)
+- Email: veales.vedic.decisions@gmail.com
+- Password: Jelcos@Admin2026
+- role: super_admin, is_admin: true
 
-## Testing User
-- Email: veales.testing@gmail.com
+## Regular test user (created in local DB during migration — WORKS)
+- Email: migration.tester@test.com
+- Password: MigTest2026!
+- role: user
 
-## ACM user-type assignment (iter 166)
-- Lookup TARGET user: acmtarget@test.com / WhatsApp +919900112233 / uid user_0f76e1bfb3b7 (user_type starts 'free')
-  Use in Admin > User Lookup (purpose 'Support service', tick NDA) to reach the "User Type & Access" card.
+## ⚠️ Stale credentials (do NOT use — existed only in old preview DB, absent from prod snapshot)
+- super@test.com / SuperPass2026! → "Invalid email or password"
+- admin@test.com / AdminPass2026! → "Invalid email or password"
+
+## Rate limits (active): RATE_LIMIT_AUTH=10/minute — space out login attempts during testing.

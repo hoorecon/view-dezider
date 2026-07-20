@@ -10976,3 +10976,24 @@ test_plan:
     - "Iter183 — POST /financial-models/zoho-sync returns mapped patch from live Zoho Books; fm-zoho-sync button merges + recalcs"
   test_all: false
   test_priority: "high_first"
+
+# MIGRATION PHASE 1 — Emergent-native hosting bring-up (2026-07-20)
+agent_communication:
+  - agent: "main"
+    message: |
+      PURE MIGRATION (no feature changes). Atlas snapshot -> local Mongo (DB dezider,
+      198 collections / 3875 docs, per-collection parity verified). backend/.env +
+      frontend/.env recreated for this environment (local MONGO_URL, preview URLs,
+      all prod 3rd-party keys carried over, LLM_PROVIDER_MODE=auto with Gemini direct
+      primary + Emergent fallback). All Python deps installed. Backend green:
+      /api/health + /api/openapi.json 200 (minimal fix: openapi_url moved under /api
+      in server.py; second minimal fix: frontend package.json start -> --port 3000
+      because Metro web must serve on 3000 for Emergent ingress).
+      WORKING CREDS (see /app/memory/test_credentials.md): super_admin
+      veales.vedic.decisions@gmail.com / Jelcos@Admin2026; user migration.tester@test.com / MigTest2026!.
+      NOTE: RATE_LIMIT_AUTH=10/minute is ACTIVE — space out login attempts.
+test_plan:
+  current_focus:
+    - "Migration smoke: UI login with restored prod super_admin -> dashboard/tools screen renders with real data"
+  test_all: false
+  test_priority: "high_first"
