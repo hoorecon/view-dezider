@@ -11,6 +11,9 @@ import logging
 from datetime import datetime, timezone
 
 import httpx
+
+# Public app origin for links in generated emails (env-first; brand-site fallback)
+PUBLIC_APP_URL = (os.getenv("PUBLIC_APP_URL") or "https://jelcos.ai").rstrip("/")
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -149,7 +152,7 @@ def _outlet_email_html(owner: str, title: str) -> str:
      energy breakdown and the suggested healthier swaps.</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
   <p style="color:#475569;font-size:13px">Best Wishes from
-     <a href="https://jelcos.ai" style="color:#1E40AF">JELCOS AI</a></p>
+     <a href="{PUBLIC_APP_URL}" style="color:#1E40AF">JELCOS AI</a></p>
 </div>
 """.strip()
 

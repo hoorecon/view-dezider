@@ -22,6 +22,7 @@ Anyone without entitlement gets HTTP 402 "Payment Required".
 
 import io
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
@@ -296,7 +297,8 @@ def _build_pdf(payload: Dict[str, Any], logo_data_url=None) -> bytes:
         textColor=colors.HexColor("#475569"), alignment=1,
     )
 
-    _BRAND_LINK = ('<a href="https://jelcos.ai"><font color="#1E40AF">'
+    _brand_url = (os.getenv("PUBLIC_APP_URL") or "https://jelcos.ai").rstrip("/")
+    _BRAND_LINK = (f'<a href="{_brand_url}"><font color="#1E40AF">'
                    '<u>JELCOS AI</u></font></a>')
 
     story = []

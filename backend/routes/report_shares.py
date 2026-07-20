@@ -147,7 +147,7 @@ def _email_html(owner: str, title: str, module_label: str, link: str) -> str:
   <p style="color:#94a3b8;font-size:12px">If the button doesn't work, paste this link: {link}</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
   <p style="color:#475569;font-size:13px">Best Wishes from
-     <a href="https://jelcos.ai" style="color:#1E40AF">JELCOS AI</a></p>
+     <a href="{PUBLIC_APP_URL}" style="color:#1E40AF">JELCOS AI</a></p>
 </div>
 """.strip()
 

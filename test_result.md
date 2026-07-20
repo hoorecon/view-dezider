@@ -10997,3 +10997,27 @@ test_plan:
     - "Migration smoke: UI login with restored prod super_admin -> dashboard/tools screen renders with real data"
   test_all: false
   test_priority: "high_first"
+
+# MIGRATION PHASE 2 — URL portability + LLM shim verification (2026-07-20)
+agent_communication:
+  - agent: "main"
+    message: |
+      PURE MIGRATION Phase 2 complete. Files changed (all env-first, jelcos.ai only as
+      last-resort fallback): backend routes/decisions/sharing.py (2 email footers ->
+      {PUBLIC_APP_URL}), routes/report_shares.py (footer -> {PUBLIC_APP_URL}),
+      routes/emotional_gatekeeper/outlet_report_routes.py (added env-first PUBLIC_APP_URL
+      + footer), routes/decision_reports.py (PDF _BRAND_LINK env-driven, added os import);
+      frontend src/components/Seo.tsx (SITE_URL env-first via EXPO_PUBLIC_APP_URL ||
+      EXPO_PUBLIC_BACKEND_URL), frontend/.env (+EXPO_PUBLIC_APP_URL). BRANDING left
+      untouched (company.ts, brandingStore domain, placeholders, support@jelcos.ai).
+      LLM VERIFIED: primary via POST /api/ai/prioritize-factors -> {"provider":"gemini"}
+      (log: LiteLLM model=gemini-2.5-flash provider=gemini); Emergent path via
+      provider_override hook ("FALLBACK-OK") AND real feature ai-assistant message ->
+      model claude-sonnet-4-6 via EMERGENT_LLM_KEY. All email/share templates render
+      preview URL, zero jelcos.ai in generated output. Creds unchanged
+      (see /app/memory/test_credentials.md). RATE_LIMIT_AUTH=10/minute still active.
+test_plan:
+  current_focus:
+    - "Phase2 verify: /api/health + /api/openapi.json 200 external; login works; landing page canonical <link> points to preview URL not jelcos.ai; one authenticated screen loads real data"
+  test_all: false
+  test_priority: "high_first"
