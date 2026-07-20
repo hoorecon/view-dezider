@@ -11060,3 +11060,23 @@ test_plan:
     - "Phase3 verify: environment still healthy post-regression-run; admin@test.com + prod super_admin login OK; sample module APIs respond; no new console/API errors"
   test_all: false
   test_priority: "high_first"
+
+# FIX PASS — 4 pre-existing issues (2026-07-20, post-migration, user-approved)
+agent_communication:
+  - agent: "main"
+    message: |
+      Surgical fixes: (1) NEW GET /api/acm/health in routes/acm.py (admin-gated,
+      returns status/seeded/modules/features_loaded — shape the admin dashboard reads).
+      (2) frontend app/share/invite/[id].tsx: 2x router.replace('/login?next=...') ->
+      '/auth/login?next=...' (only broken /login hrefs found; landing + MarketingHeader
+      already used /auth/login). (3) routes/ai_tools.py prioritize_factors: JSON-parse
+      guard (400), non-object body (422), non-dict factors (422), factor missing id (422);
+      valid requests unchanged (verified 200 via Gemini). (4) routes/report_shares.py
+      ShareCreate: module -> Literal[dezider,pros_cons,swot,solution_finder,assessment],
+      channel -> Literal[email,whatsapp]; enum now in OpenAPI; valid share verified 200.
+      Self-checks all green. RATE_LIMIT_AUTH=10/minute active.
+test_plan:
+  current_focus:
+    - "Verify: admin dashboard loads with NO /api/acm/health 404 (poll returns 200); landing Sign in navigates to login; malformed POST /api/ai/prioritize-factors -> 400/422; POST /api/shares valid module 'dezider' works and invalid module -> 422 with enum"
+  test_all: false
+  test_priority: "high_first"

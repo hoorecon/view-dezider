@@ -828,7 +828,13 @@ async def prioritize_factors(request: Request, user: dict = Depends(get_current_
     if not await _aw.touchpoint_enabled("tp_prioritize_factors"):
         raise HTTPException(status_code=403, detail="‘Prioritize with AI’ is currently disabled by the administrator.")
 
-    body = await request.json()
+    # Input validation — malformed bodies must fail with 400/422, not 500.
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — invalid/empty JSON payload
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON.")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="Request body must be a JSON object.")
     decision_id = body.get("decision_id")
     ai_tier = "precise" if str(body.get("ai_tier") or "").lower() == "precise" else "fast"
 
@@ -847,10 +853,14 @@ async def prioritize_factors(request: Request, user: dict = Depends(get_current_
         factors = dec.get("factors") or factors
 
     # Only the TOP-LEVEL factors are prioritised in Step 4.
+    if not isinstance(factors, list) or not all(isinstance(f, dict) for f in factors):
+        raise HTTPException(status_code=422, detail="'factors' must be a list of factor objects ({id, name, ...}).")
     top = [f for f in factors if not f.get("parent_id")]
     names = [(f.get("name") or "").strip() for f in top if (f.get("name") or "").strip()]
     if len(names) < 2:
         raise HTTPException(status_code=422, detail="Add at least 2 factors before prioritising with AI.")
+    if any((f.get("name") or "").strip() and not f.get("id") for f in top):
+        raise HTTPException(status_code=422, detail="Each factor must include both 'id' and 'name'.")
 
     factor_list = "\n".join(f"- {n}" for n in names)
     system_message = "You are a decision-prioritisation strategist. Return only valid JSON."

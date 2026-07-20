@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Invitee landing page for `/share/invite/[id]`.
  *
  * Flow:
- *   1. If not logged in → redirect to /login?next=/share/invite/[id]
+ *   1. If not logged in → redirect to /auth/login?next=/share/invite/[id]
  *      (login page will return here after auth; new users go through normal
  *      signup with WhatsApp OTP verification then come back).
  *   2. Fetch invite, verify ownership / linkage.
@@ -32,7 +32,7 @@ export default function ShareInvitePage() {
     setErr(null); setLoading(true);
     try {
       const token = await AsyncStorage.getItem('token');
-      if (!token) { router.replace(`/login?next=${encodeURIComponent('/share/invite/' + id)}` as any); return; }
+      if (!token) { router.replace(`/auth/login?next=${encodeURIComponent('/share/invite/' + id)}` as any); return; }
       const { data } = await api.get(`/collab/invite/${id}`);
       setInvite(data.invite);
       const seed: Record<string, string> = {};
@@ -40,7 +40,7 @@ export default function ShareInvitePage() {
       setResponses(seed);
     } catch (e: any) {
       if (e?.response?.status === 401) {
-        router.replace(`/login?next=${encodeURIComponent('/share/invite/' + id)}` as any); return;
+        router.replace(`/auth/login?next=${encodeURIComponent('/share/invite/' + id)}` as any); return;
       }
       setErr(e?.response?.data?.detail || 'Failed to load invite');
     } finally { setLoading(false); }

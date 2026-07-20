@@ -45,6 +45,27 @@ async def api_refresh_cache(user: dict = Depends(get_current_user)):
     return {"message": "Cache refreshed", "features_loaded": count}
 
 
+@router.get("/health")
+async def acm_health(user: dict = Depends(get_current_user)):
+    """Lightweight ACM health/status for the admin dashboard poll.
+
+    Returns module/feature counts loaded from the seeded ACM collections —
+    same `features_loaded` shape as /acm/refresh-cache. Admin only
+    (consistent with the other ACM admin endpoints).
+    """
+    role = get_user_role(user)
+    if role not in ADMIN_ROLES:
+        raise HTTPException(403, "Admin access required")
+    modules = await db.acm_modules.find({}, {"_id": 0, "features": 1}).to_list(100)
+    features_loaded = sum(len(m.get("features", [])) for m in modules)
+    return {
+        "status": "ok",
+        "seeded": len(modules) > 0,
+        "modules": len(modules),
+        "features_loaded": features_loaded,
+    }
+
+
 # ============================================================
 # FULL MATRIX VIEW (Admin)
 # ============================================================

@@ -13,7 +13,7 @@ import uuid
 import logging
 import secrets
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 import httpx
 from dotenv import load_dotenv
@@ -186,9 +186,11 @@ def _user_can_access(user: dict, share: dict, phone: Optional[str]) -> bool:
 
 # ──────────────────────────── models ────────────────────────────
 class ShareCreate(BaseModel):
-    module: str
+    # Valid modules (must match MODULE_LABELS above). Documented as a Literal
+    # so the OpenAPI schema advertises the accepted values.
+    module: Literal["dezider", "pros_cons", "swot", "solution_finder", "assessment"]
     decision_id: str
-    channel: str  # 'email' | 'whatsapp'
+    channel: Literal["email", "whatsapp"]
     recipient_email: Optional[str] = None
     recipient_phone: Optional[str] = None
     recipient_name: Optional[str] = None
