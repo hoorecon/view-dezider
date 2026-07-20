@@ -16,8 +16,11 @@
 - Only 1 conflict (`test_result.md`) — resolved by union. `server.py` and
   `decision_reports.py` auto-merged; ALL migration changes + 4 bug fixes verified
   intact post-merge. No new pip/yarn dependencies.
-- Backport patch `backport_4fixes_for_emergent-v3.patch` was built against `e3e48df0`
-  (still prod head) — remains valid.
+- Backport patch REGENERATED as `backport_5fixes_for_emergent-v3.patch` (old 4-fix
+  file deleted): the original 4 fixes + the pros-cons declarative <Redirect> fix.
+  Verified `git apply --check` clean against origin/emergent-v3 @ e3e48df0
+  (prod head unmoved as of 2026-07-20 15:35). Apply instructions in patch header
+  and DEPLOYMENT_EMERGENT.md §8.
 - Post-merge regression fixed: `/tools/pros-cons` deep-link crashed to the
   NavErrorBoundary "Updating to the latest version…" splash (expo-router "navigate
   before mounting Root Layout" — imperative replace in child useEffect). Fixed with
