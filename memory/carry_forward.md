@@ -18,6 +18,11 @@
   intact post-merge. No new pip/yarn dependencies.
 - Backport patch `backport_4fixes_for_emergent-v3.patch` was built against `e3e48df0`
   (still prod head) — remains valid.
+- Post-merge regression fixed: `/tools/pros-cons` deep-link crashed to the
+  NavErrorBoundary "Updating to the latest version…" splash (expo-router "navigate
+  before mounting Root Layout" — imperative replace in child useEffect). Fixed with
+  declarative `<Redirect>` in `frontend/app/tools/pros-cons.tsx`. Latent race exposed
+  by dev-Metro timing; prod static export masked it — consider backporting too.
 
 ### Environment (Phase 1)
 - **DB**: local MongoDB, `DB_NAME=dezider` — restored snapshot of prod Atlas
