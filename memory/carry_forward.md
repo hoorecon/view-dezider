@@ -43,11 +43,12 @@
 - Local fixture users created (see `memory/test_credentials.md`): admin@test.com,
   super@test.com, migration.tester@test.com, harden_1777921741@example.com.
 
-### Known pre-existing issues (NOT migration bugs — do not "fix" blindly)
-- `/api/acm/health` 404 (frontend admin dashboard polls a non-existent endpoint)
-- `/api/ai/prioritize-factors` 500 on malformed body
-- Landing "Sign in" link points to `/login` (unmatched); real route is `/auth/login`
-- Supervisor `mobile` service FATAL (base-image artifact, no `/app/mobile` dir — harmless)
+### Known pre-existing issues — FIXED in post-migration fix pass (2026-07-20)
+- ~~`/api/acm/health` 404~~ → endpoint added in `routes/acm.py` (admin-gated, returns features_loaded)
+- ~~`/api/ai/prioritize-factors` 500 on malformed body~~ → input validation added (400/422)
+- ~~broken `/login` hrefs~~ → fixed in `app/share/invite/[id].tsx` (→ `/auth/login?next=…`)
+- ~~`/api/shares` module enum undocumented~~ → `ShareCreate` uses Literal (module + channel), enum in OpenAPI
+- Still open (harmless): supervisor `mobile` service FATAL (base-image artifact, no `/app/mobile` dir)
 
 ### Rules that keep prod safe
 - `deploy/sync.sh`, `DEPLOY.md`, deployment docs, `emergent-v3` branch: DO NOT TOUCH.
