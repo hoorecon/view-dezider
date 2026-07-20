@@ -182,4 +182,31 @@ Test credentials: `memory/test_credentials.md` · Regression results: Phase 3 lo
 `test_result.md` (329 pass / 15 fail, zero migration-caused) · Migration history:
 `memory/carry_forward.md`.
 
+---
+
+## 8. BACKPORT_README — applying the 4 bug fixes to prod (emergent-v3)
+
+`backport_4fixes_for_emergent-v3.patch` (repo root) contains ONLY the 4 post-migration
+bug fixes, isolated from all migration changes, and is verified to apply cleanly
+against `origin/emergent-v3` @ `e3e48df0` (checked 2026-07-20 with `git apply --check`).
+
+Included: (1) new `GET /api/acm/health` (`backend/routes/acm.py`) · (2) 400/422 input
+validation on `POST /api/ai/prioritize-factors` (`backend/routes/ai_tools.py`) ·
+(3) `ShareCreate` module/channel Literal enums (`backend/routes/report_shares.py`) ·
+(4) `/login` → `/auth/login` redirect (`frontend/app/share/invite/[id].tsx`).
+NOT included: PUBLIC_APP_URL de-hardcoding or any other migration-specific change.
+
+```bash
+git checkout emergent-v3 && git pull origin emergent-v3
+git apply --check backport_4fixes_for_emergent-v3.patch   # dry-run — must print nothing
+git apply backport_4fixes_for_emergent-v3.patch
+git commit -am "fix: acm/health endpoint, prioritize-factors validation, shares module enum, share-invite login redirect (backport)"
+git push origin emergent-v3
+```
+
+Deploy with your NORMAL prod flow (both pipelines needed): backend via
+`./deploy/sync.sh` on EC2 (fixes 1–3), frontend via the Cloudflare Pages auto-build
+triggered by the push (fix 4). If prod's `emergent-v3` moves ahead before you apply and
+`--check` complains, re-request a regenerated patch.
+
 > An Earth Dezider product · Powered by VEALES
