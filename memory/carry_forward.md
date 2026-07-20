@@ -1,3 +1,62 @@
+# Carry-forward — checkpoint 2026-07-20 (Emergent-native migration, Phases 1–4)
+
+> **This session:** Full migration of the app into Emergent-native hosting (parallel to
+> EC2/Cloudflare prod, which is UNTOUCHED). See `DEPLOYMENT_EMERGENT.md` for the new
+> deploy runbook. Branch: `emergent-v3-e3`.
+
+## 🧭 Migration log (what a future agent MUST know)
+
+### Environment (Phase 1)
+- **DB**: local MongoDB, `DB_NAME=dezider` — restored snapshot of prod Atlas
+  (198 collections / 3,875 docs, per-collection parity verified 2026-07-20).
+  **Snapshot is FROZEN at that date; re-sync from Atlas required before real cutover.
+  NEVER write to Atlas from this stack.**
+- **`backend/.env` + `frontend/.env` recreated** (gitignored — not in the repo): local
+  Mongo, preview-origin URLs, all LIVE prod third-party keys (Razorpay/Resend/UltraMsg/
+  Zoho/PostHog/Gemini/Groq/OpenAI — side effects are REAL), `LLM_PROVIDER_MODE=auto`
+  (Gemini direct primary → EMERGENT_LLM_KEY fallback via `core/llm_compat.py`).
+- Rate limits active from prod config: `RATE_LIMIT_AUTH=10/minute` — space out logins.
+
+### The ONLY 2 app-code boot fixes (Phase 1)
+1. `backend/server.py`: `FastAPI(openapi_url="/api/openapi.json")` — Emergent ingress
+   only routes `/api/*` to the backend (old NGINX forwarded everything).
+2. `frontend/package.json`: `"start": "expo start --port 3000"` — ingress expects the
+   web app on 3000; Metro defaults to 8081.
+
+### URL de-hardcoding (Phase 2) — all env-first, jelcos.ai only as last-resort fallback
+- `backend/routes/decisions/sharing.py` (2 email footers → `{PUBLIC_APP_URL}`)
+- `backend/routes/report_shares.py` (email footer → `{PUBLIC_APP_URL}`)
+- `backend/routes/emotional_gatekeeper/outlet_report_routes.py` (added env-first constant)
+- `backend/routes/decision_reports.py` (PDF brand link → `os.getenv("PUBLIC_APP_URL")`)
+- `frontend/src/components/Seo.tsx` (`SITE_URL` = `EXPO_PUBLIC_APP_URL || EXPO_PUBLIC_BACKEND_URL || fallback`)
+- BRANDING intentionally untouched (company.ts, brandingStore domain, support@jelcos.ai).
+- **Env var scheme**: `PUBLIC_APP_URL` (backend) + `EXPO_PUBLIC_APP_URL` /
+  `EXPO_PUBLIC_BACKEND_URL` (frontend, baked at build time) = the 4 values to re-point
+  at deploy/cutover (→ `https://app.jelcos.ai`).
+
+### Regression (Phase 3)
+- All repo suites run: **329 pass / 15 fail — ZERO migration-caused.** Failures are
+  stale expectations vs evolved prod data (ACM 31/32→33 modules, seed_version, 6→15
+  decision modes) or fixtures absent from prod DB (org sub-portal, embed partner slug).
+- Test-file config pointers patched: `test_database` → `dezider` in `backend_test_v2.py`,
+  `backend_test_public_pulse.py`, `backend_test_public_pulse_phase2.py`.
+- Local fixture users created (see `memory/test_credentials.md`): admin@test.com,
+  super@test.com, migration.tester@test.com, harden_1777921741@example.com.
+
+### Known pre-existing issues (NOT migration bugs — do not "fix" blindly)
+- `/api/acm/health` 404 (frontend admin dashboard polls a non-existent endpoint)
+- `/api/ai/prioritize-factors` 500 on malformed body
+- Landing "Sign in" link points to `/login` (unmatched); real route is `/auth/login`
+- Supervisor `mobile` service FATAL (base-image artifact, no `/app/mobile` dir — harmless)
+
+### Rules that keep prod safe
+- `deploy/sync.sh`, `DEPLOY.md`, deployment docs, `emergent-v3` branch: DO NOT TOUCH.
+- Atlas: read-only, and only during planned re-sync windows.
+- www.jelcos.ai / api.jelcos.ai / EC2 / Cloudflare / GoDaddy records stay as-is until
+  the explicit `app.jelcos.ai` cutover (runbook in `DEPLOYMENT_EMERGENT.md` §5).
+
+---
+
 # Carry-forward — checkpoint 2026-05-19 (post-EC2 prod launch)
 
 > **Last session ended:** Backend FULLY LIVE in production on AWS EC2 + MongoDB Atlas + HTTPS.
