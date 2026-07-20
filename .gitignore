@@ -381,3 +381,7 @@ credentials.json
 !backend/.env.example
 !backend/.env.llm.example
 
+
+# Exception: deployer-compatibility stub (comment-only, no secrets) — the
+# Emergent deploy pipeline requires mobile/.env in the build context.
+!mobile/.env
