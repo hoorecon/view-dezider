@@ -1734,6 +1734,61 @@ export default function ProsConsWizard() {
                   Default gap is 100% (+10); change any one to tighten (50%) or widen (200%) just that pair.
                 </Text>
 
+                {/* ── Equal Weightage toggle (June 2026) ────────────────────
+                    Flat mode: all Mandatory (A) = 20, all Optional (B) = 10.
+                    Realistic-Gap ladder is auto-disabled. Reorder arrows
+                    remain (they change the section order visually) but do
+                    not affect std_rating while this mode is on. */}
+                {(() => {
+                  const eqOn = !!(analysis as any).equal_weightage;
+                  const toggleEq = async () => {
+                    try {
+                      await api.put(`${base}/${id}`, { equal_weightage: !eqOn });
+                      // If we're turning ON, also hide the realistic-gap ladder for clarity.
+                      if (!eqOn) setShowGaps(false);
+                      // Recompute std_rating on the server in the new mode.
+                      await api.post(`${base}/${id}/factors/recalc-ladder`);
+                      await reload();
+                    } catch (e: any) {
+                      showAlert('Error', e?.response?.data?.detail || 'Could not toggle Equal Weightage');
+                    }
+                  };
+                  return (
+                    <TouchableOpacity
+                      onPress={toggleEq}
+                      testID="pc-toggle-equal-weightage"
+                      activeOpacity={0.85}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: eqOn }}
+                      accessibilityLabel="Equal Weightage — Mandatory 20, Optional 10, disables Realistic Gap"
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 12,
+                        backgroundColor: eqOn ? '#EDE7F6' : '#F8FAFC',
+                        borderWidth: 1.5, borderColor: eqOn ? COLORS.primary : COLORS.border,
+                        borderRadius: 12, padding: 12, marginBottom: 10,
+                      }}
+                    >
+                      <View style={{
+                        width: 44, height: 26, borderRadius: 13,
+                        backgroundColor: eqOn ? COLORS.primary : '#D1D5DB',
+                        padding: 3, alignItems: eqOn ? 'flex-end' : 'flex-start',
+                      }}>
+                        <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>
+                          Equal Weightage {eqOn ? 'ON' : 'OFF'}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: COLORS.textDim, marginTop: 2, lineHeight: 15 }}>
+                          {eqOn
+                            ? 'All Mandatory factors get std_rating 20 · All Optional 10. Realistic Gap is disabled.'
+                            : 'Ladder mode: bottom = 10, +10 per rung (customisable per pair). Realistic Gap available.'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })()}
+
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
                   <TouchableOpacity
                     onPress={() => setStep7ExpandedIds(new Set([...mandatoryFactors, ...optionalFactors].map(ff => ff.id)))}
@@ -1754,11 +1809,14 @@ export default function ProsConsWizard() {
                   <TouchableOpacity
                     onPress={() => setShowGaps(v => !v)}
                     testID="pc-toggle-gaps"
-                    style={{ flex: 1, minWidth: 130, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: showGaps ? COLORS.primary : COLORS.border, backgroundColor: showGaps ? '#EDE7F6' : '#fff', borderRadius: 10, paddingVertical: 10 }}
+                    disabled={!!(analysis as any).equal_weightage}
+                    style={{ flex: 1, minWidth: 130, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: showGaps ? COLORS.primary : COLORS.border, backgroundColor: (analysis as any).equal_weightage ? '#F1F5F9' : (showGaps ? '#EDE7F6' : '#fff'), borderRadius: 10, paddingVertical: 10, opacity: (analysis as any).equal_weightage ? 0.55 : 1 }}
                     accessibilityLabel={showGaps ? 'Hide Realistic Gap connectors' : 'Show Realistic Gap connectors'}
                   >
                     <Ionicons name={showGaps ? 'eye-off-outline' : 'eye-outline'} size={16} color={showGaps ? COLORS.primary : COLORS.textDim} />
-                    <Text style={{ color: showGaps ? COLORS.primary : COLORS.textDim, fontWeight: '800', fontSize: 13 }}>{showGaps ? 'Hide Realistic Gap' : 'Show Realistic Gap'}</Text>
+                    <Text style={{ color: showGaps ? COLORS.primary : COLORS.textDim, fontWeight: '800', fontSize: 13 }}>
+                      {(analysis as any).equal_weightage ? 'Realistic Gap (off)' : (showGaps ? 'Hide Realistic Gap' : 'Show Realistic Gap')}
+                    </Text>
                   </TouchableOpacity>
                 </View>
                 <Text style={{ fontSize: 11.5, color: COLORS.textDim, marginBottom: 12, lineHeight: 17 }}>

@@ -130,10 +130,28 @@ export const parseCountInput = (raw: string | undefined | null): number | undefi
 // Standard gap for rating calculation
 export const STANDARD_GAP = 10;
 
-// Calculate ratings from priority order
-export const calculateRatingsFromOrder = (factors: Factor[], _unused?: number): Factor[] => {
+// Calculate ratings from priority order.
+//
+// • When `equalWeightage` is true (June 2026 mode), all Primary (Mandatory/A)
+//   factors get a flat rating of 20 and all Secondary (Optional/B) factors a
+//   flat rating of 10 — the gap_multiplier is ignored.
+// • Otherwise, we ladder bottom-up from STANDARD_GAP using each factor's
+//   individual gap_multiplier (the classic behaviour).
+export const calculateRatingsFromOrder = (
+  factors: Factor[],
+  equalWeightageOrLegacyMultiplier?: boolean | number,
+): Factor[] => {
+  const equalWeightage = equalWeightageOrLegacyMultiplier === true;
   const topLevel = factors.filter(f => !f.parent_id);
   const subFactors = factors.filter(f => !!f.parent_id);
+
+  if (equalWeightage) {
+    const updatedTopLevel = topLevel.map(f => ({
+      ...f,
+      rating: f.category === 'primary' ? 20 : 10,
+    }));
+    return [...updatedTopLevel, ...subFactors];
+  }
 
   const primaryFactors = topLevel.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
   const secondaryFactors = topLevel.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
@@ -158,6 +176,35 @@ export const calculateRatingsFromOrder = (factors: Factor[], _unused?: number): 
   });
 
   return [...updatedTopLevel, ...subFactors];
+};
+
+// ── Standard variable ids (f1, f2, ...) ────────────────────────
+// Assigns `variable_id = fN` to every TOP-LEVEL factor in `order` sequence.
+// - Preserves ids that are already assigned (so formulas keep referencing the
+//   right factor after a reorder / new factor is added at the end).
+// - Sub-factors are left untouched (formulas operate at the main-factor tier).
+// - Returns a new factors array; safe to pass straight into saveDecision.
+export const assignVariableIds = (factors: Factor[]): Factor[] => {
+  const topLevel = factors.filter(f => !f.parent_id).sort((a, b) => a.order - b.order);
+  const used = new Set<string>();
+  topLevel.forEach(f => { if (f.variable_id) used.add(f.variable_id); });
+
+  let next = 1;
+  const takeNext = (): string => {
+    // Find the smallest fN not already taken
+    while (used.has(`f${next}`)) next += 1;
+    const id = `f${next}`;
+    used.add(id);
+    next += 1;
+    return id;
+  };
+
+  const patched: Factor[] = factors.map(f => {
+    if (f.parent_id) return f;
+    if (f.variable_id && /^f\d+$/.test(f.variable_id)) return f;
+    return { ...f, variable_id: takeNext() };
+  });
+  return patched;
 };
 
 // Calculate dynamic worth percentage with sub-factor weighted averages

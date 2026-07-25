@@ -22,6 +22,15 @@ export default function Step4() {
   const topLevel = decision.factors.filter(f => !f.parent_id);
   const primaryFactors = topLevel.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
   const secondaryFactors = topLevel.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
+  const equalWeightage = !!(decision as any).equal_weightage;
+
+  const toggleEqualWeightage = async () => {
+    const next = !equalWeightage;
+    // Recompute ratings under the new mode so the numbers users see are
+    // immediately correct — Mandatory=20 / Optional=10 when ON, ladder when OFF.
+    const withRatings = calculateRatingsFromOrder(decision.factors, next);
+    await saveDecision({ equal_weightage: next, factors: withRatings } as any);
+  };
 
   // "Prioritize with AI" — one metered LLM call ranks every top-level factor.
   // We apply the suggested order (preserving each factor's category) and
@@ -39,7 +48,7 @@ export default function Step4() {
       const orderById = new Map(ranked.map(r => [r.id, r.rank]));
       const updated = decision.factors.map(f =>
         orderById.has(f.id) ? { ...f, order: orderById.get(f.id) as number } : f);
-      const withRatings = calculateRatingsFromOrder(updated, (decision as any).rating_gap_multiplier || 1.0);
+      const withRatings = calculateRatingsFromOrder(updated, !!(decision as any).equal_weightage);
       await saveDecision({ factors: withRatings });
       showAlert('Factors prioritised', 'AI ordered your factors by importance. Review and fine-tune with the arrows, then continue.');
     } catch (e: any) {
@@ -62,21 +71,48 @@ export default function Step4() {
         <View style={styles.reorderRank}>
           <Text style={styles.rankNumber}>{index + 1}</Text>
         </View>
-        <Text style={styles.reorderName}>{factor.name}</Text>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {factor.variable_id && (
+            <View style={{
+              backgroundColor: '#EDE7F6', borderRadius: 6, paddingHorizontal: 6,
+              paddingVertical: 2, borderWidth: 1, borderColor: '#D1C4E9',
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.primary }}>
+                {factor.variable_id}
+              </Text>
+            </View>
+          )}
+          <Text style={styles.reorderName}>{factor.name}</Text>
+          <View style={{
+            backgroundColor: equalWeightage
+              ? (factor.category === 'primary' ? '#DCFCE7' : '#FEF3C7')
+              : '#F3F4F6',
+            paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
+          }}>
+            <Text style={{
+              fontSize: 11, fontWeight: '700',
+              color: equalWeightage
+                ? (factor.category === 'primary' ? '#166534' : '#92400E')
+                : COLORS.textSecondary,
+            }}>
+              {factor.rating || (equalWeightage ? (factor.category === 'primary' ? 20 : 10) : 10)}
+            </Text>
+          </View>
+        </View>
         <View style={styles.reorderButtons}>
           <TouchableOpacity
-            style={[styles.arrowButton, index === 0 && styles.arrowButtonDisabled]}
+            style={[styles.arrowButton, (index === 0 || equalWeightage) && styles.arrowButtonDisabled]}
             onPress={() => moveFactorUp(factor.id)}
-            disabled={index === 0}
+            disabled={index === 0 || equalWeightage}
           >
-            <Ionicons name="chevron-up" size={20} color={index === 0 ? COLORS.textMuted : COLORS.primary} />
+            <Ionicons name="chevron-up" size={20} color={(index === 0 || equalWeightage) ? COLORS.textMuted : COLORS.primary} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.arrowButton, index === total - 1 && styles.arrowButtonDisabled]}
+            style={[styles.arrowButton, (index === total - 1 || equalWeightage) && styles.arrowButtonDisabled]}
             onPress={() => moveFactorDown(factor.id)}
-            disabled={index === total - 1}
+            disabled={index === total - 1 || equalWeightage}
           >
-            <Ionicons name="chevron-down" size={20} color={index === total - 1 ? COLORS.textMuted : COLORS.primary} />
+            <Ionicons name="chevron-down" size={20} color={(index === total - 1 || equalWeightage) ? COLORS.textMuted : COLORS.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -89,6 +125,43 @@ export default function Step4() {
       <Text style={styles.stepDescription}>
         Order factors by importance within each category. Use arrows to move factors up or down. The system will automatically calculate ratings based on your ordering.
       </Text>
+
+      {/* ── Equal Weightage toggle (June 2026) ─────────────────────
+          When ON: Mandatory/A → 20, Optional/B → 10 (flat), Realistic
+          Gap is auto-disabled downstream. Reorder arrows are locked
+          since order no longer influences the rating. */}
+      <TouchableOpacity
+        onPress={toggleEqualWeightage}
+        activeOpacity={0.85}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: equalWeightage }}
+        accessibilityLabel="Equal Weightage — flat 20 / 10 for Mandatory / Optional"
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 12,
+          backgroundColor: equalWeightage ? '#EDE7F6' : '#F8FAFC',
+          borderWidth: 1.5,
+          borderColor: equalWeightage ? COLORS.primary : COLORS.border,
+          borderRadius: 12, padding: 12, marginBottom: 14,
+        }}
+      >
+        <View style={{
+          width: 44, height: 26, borderRadius: 13,
+          backgroundColor: equalWeightage ? COLORS.primary : '#D1D5DB',
+          padding: 3, alignItems: equalWeightage ? 'flex-end' : 'flex-start',
+        }}>
+          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>
+            Equal Weightage {equalWeightage ? 'ON' : 'OFF'}
+          </Text>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2, lineHeight: 15 }}>
+            {equalWeightage
+              ? 'All Mandatory factors get rating 20 · All Optional factors get rating 10. Realistic Gap is disabled.'
+              : 'Ladder mode: bottom factor = 10, +10 per rung (customisable per pair).'}
+          </Text>
+        </View>
+      </TouchableOpacity>
 
       {aiEnabled && topLevel.length >= 2 && (
         <>

@@ -76,6 +76,8 @@ class FrameworkFactor(BaseModel):
     # priority_gap_pct=200 sits 20 points above B5; B3 with 150 sits 15
     # points above B4. Cumulative bottom-up.
     priority_gap_pct: float = 100.0
+    # ── Standard variable id (June 2026) ──
+    variable_id: Optional[str] = None
     # Step #8 — assessment metadata
     factor_type: Literal["subjective", "objective"] = "subjective"
     improvable: Literal["y", "y_bf", "n"] = "n"

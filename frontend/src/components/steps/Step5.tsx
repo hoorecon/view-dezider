@@ -24,7 +24,7 @@ export default function Step5() {
     if (aiLoading) return;
     setAiLoading(true);
     try {
-      const factorsWithRatings = calculateRatingsFromOrder(decision.factors, decision.rating_gap_multiplier || 1.0);
+      const factorsWithRatings = calculateRatingsFromOrder(decision.factors, !!decision.equal_weightage);
       await saveDecision({ factors: factorsWithRatings });
       const res = await api.post('/ai/find-best-options', { decision_id: decision.id });
       const opts = res.data?.options || [];
@@ -48,7 +48,7 @@ export default function Step5() {
     }
   };
 
-  const recalculated = calculateRatingsFromOrder(decision.factors);
+  const recalculated = calculateRatingsFromOrder(decision.factors, !!decision.equal_weightage);
   const topLevelRecalc = recalculated.filter(f => !f.parent_id);
   const sortedFactors = [...topLevelRecalc].sort((a, b) => b.rating - a.rating);
   const highestRating = sortedFactors.length > 0 ? sortedFactors[0].rating : 100;
@@ -64,7 +64,7 @@ export default function Step5() {
     const updatedFactors = decision.factors.map(f =>
       f.id === factorId ? { ...f, gap_multiplier: multiplier } : f
     );
-    const recalced = calculateRatingsFromOrder(updatedFactors);
+    const recalced = calculateRatingsFromOrder(updatedFactors, !!decision.equal_weightage);
     saveDecision({ factors: recalced });
   };
 

@@ -20,6 +20,10 @@ class Factor(BaseModel):
     category: str = "primary"
     rating: int = 0
     order: int = 0
+    # ── Standard variable identifier (June 2026) ──
+    # Auto-assigned label like "f1", "f2" for top-level factors in order.
+    # Referenced by editable dependency formulas (see Decision.formulas).
+    variable_id: Optional[str] = None
     unit: Optional[str] = None
     expected_value: Optional[Any] = None
     data_type: Optional[str] = None
@@ -111,6 +115,19 @@ class PRRDecision(BaseModel):
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
     rating_gap_multiplier: float = 1.0
+    # ── Equal Weightage mode (June 2026) ──
+    # When True, the Prioritize step (Step 4) assigns a FLAT rating to every
+    # top-level factor: Primary (Mandatory/A) → 20, Secondary (Optional/B) → 10.
+    # `rating_gap_multiplier` and the per-factor Realistic Gap uplift are
+    # ignored while this flag is on. Classification (primary/secondary) is
+    # unaffected.
+    equal_weightage: bool = False
+    # ── Editable dependency formulas (June 2026) ──
+    # Users can declare computed factors via math expressions over `fN`
+    # variable ids. Each entry: {id, target, expression, scope, description}.
+    # Evaluated safely on the backend by core.formula_engine; per-option by
+    # default, or as a scalar constant when scope="constant".
+    formulas: List[Dict[str, Any]] = []
     mpps_option_id: Optional[str] = None
     mpps_improvements: List[MPPSImprovement] = []
     mpps_projected_worth: Optional[float] = None
@@ -176,6 +193,8 @@ class PRRDecisionUpdate(BaseModel):
     final_notes: Optional[str] = None
     folder: Optional[str] = None
     rating_gap_multiplier: Optional[float] = None
+    equal_weightage: Optional[bool] = None
+    formulas: Optional[List[Dict[str, Any]]] = None
     mpps_option_id: Optional[str] = None
     mpps_improvements: Optional[List[MPPSImprovement]] = None
     mpps_projected_worth: Optional[float] = None

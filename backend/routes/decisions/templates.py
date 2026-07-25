@@ -123,8 +123,23 @@ async def use_template(template_id: str, data: UseTemplateRequest, user: dict = 
     for f in template.get("factors", []):
         new_factor_id = str(uuid.uuid4())
         factor_id_map[f["id"]] = new_factor_id
-        new_factors.append({"id": new_factor_id, "name": f["name"], "category": f.get("category", "primary"),
-                            "rating": f.get("rating", 0), "order": f.get("order", 0)})
+        # Copy the rich Step-2 metadata a template can carry (variable_id,
+        # expected_value, unit, operator, factor_type, gap_multiplier). The
+        # legacy min-schema is preserved for old templates that don't have
+        # these fields.
+        new_factors.append({
+            "id": new_factor_id,
+            "name": f["name"],
+            "category": f.get("category", "primary"),
+            "rating": f.get("rating", 0),
+            "order": f.get("order", 0),
+            "variable_id": f.get("variable_id"),
+            "expected_value": f.get("expected_value"),
+            "unit": f.get("unit"),
+            "operator": f.get("operator"),
+            "factor_type": f.get("factor_type"),
+            "gap_multiplier": f.get("gap_multiplier", 1.0),
+        })
     new_options = []
     for opt in template.get("options", []):
         new_opt = {"id": str(uuid.uuid4()), "name": opt["name"], "assessments": [], "worth_percentage": 0.0}
@@ -139,6 +154,9 @@ async def use_template(template_id: str, data: UseTemplateRequest, user: dict = 
         "id": new_id, "user_id": user["user_id"], "title": data.title,
         "context": template.get("context", ""), "factors": new_factors, "options": new_options,
         "chosen_option_id": None, "decision_case": None, "notes": "", "status": "draft",
+        # Carry over dependency formulas + equal_weightage from the template.
+        "formulas": template.get("formulas", []),
+        "equal_weightage": bool(template.get("equal_weightage", False)),
         "created_at": now, "updated_at": now,
     }
     await db.decisions.insert_one(decision)

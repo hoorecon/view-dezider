@@ -539,6 +539,17 @@ async def _run_boot_work(boot_owner: bool):
             await migrate_decision_mode_awareness_to_consciousness()
     except Exception as e:
         logger.error(f"Decision-mode awareness→consciousness migration failed: {e}")
+
+    # Idempotent — seed the Viral Marketing Campaign Planner template
+    # (16 factors + 5 dependency formulas). Safe on every boot.
+    try:
+        if boot_owner:
+            from core.migrations.viral_marketing_template import (
+                migrate_viral_marketing_template,
+            )
+            await migrate_viral_marketing_template()
+    except Exception as e:
+        logger.error(f"Viral-marketing template seed failed: {e}")
     try:
         # If tier_matrix smart-seed was previously applied with stale module ids
         # (where root tier ended up with < 5 modules), auto-reset to apply the

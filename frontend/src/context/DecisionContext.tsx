@@ -436,7 +436,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (f.id === sameCategory[currentIndex - 1].id) return { ...f, order: factor.order };
       return f;
     });
-    const factorsWithRatings = calculateRatingsFromOrder(updatedFactors, decision!.rating_gap_multiplier || 1.0);
+    const factorsWithRatings = calculateRatingsFromOrder(updatedFactors, !!decision!.equal_weightage);
     saveDecision({ factors: factorsWithRatings });
   };
 
@@ -453,12 +453,12 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (f.id === sameCategory[currentIndex + 1].id) return { ...f, order: factor.order };
       return f;
     });
-    const factorsWithRatings = calculateRatingsFromOrder(updatedFactors, decision!.rating_gap_multiplier || 1.0);
+    const factorsWithRatings = calculateRatingsFromOrder(updatedFactors, !!decision!.equal_weightage);
     saveDecision({ factors: factorsWithRatings });
   };
 
   const applyRatingsAndContinue = () => {
-    const factorsWithRatings = calculateRatingsFromOrder(decision!.factors, decision!.rating_gap_multiplier || 1.0);
+    const factorsWithRatings = calculateRatingsFromOrder(decision!.factors, !!decision!.equal_weightage);
     saveDecision({ factors: factorsWithRatings });
     setCurrentStep(6);
   };
@@ -789,10 +789,10 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           else if (command.direction === 'down') moveFactorDown(command.factorId);
           else if (command.direction === 'first') {
             const updated = decision.factors.map(f => f.id === command.factorId ? { ...f, order: -1 } : f).sort((a, b) => a.order - b.order).map((f, i) => ({ ...f, order: i }));
-            saveDecision({ factors: calculateRatingsFromOrder(updated, decision.rating_gap_multiplier || 1.0) });
+            saveDecision({ factors: calculateRatingsFromOrder(updated, !!decision.equal_weightage) });
           } else if (command.direction === 'last') {
             const updated = decision.factors.map(f => f.id === command.factorId ? { ...f, order: 999 } : f).sort((a, b) => a.order - b.order).map((f, i) => ({ ...f, order: i }));
-            saveDecision({ factors: calculateRatingsFromOrder(updated, decision.rating_gap_multiplier || 1.0) });
+            saveDecision({ factors: calculateRatingsFromOrder(updated, !!decision.equal_weightage) });
           }
         }
         break;

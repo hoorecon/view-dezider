@@ -14,6 +14,7 @@ import ImportReviewModal from '../ImportReviewModal';
 import ImportCreditsStrip from '../ImportCreditsStrip';
 import DeepImport from './DeepImport';
 import FactorValueUI from './FactorValueUI';
+import FormulaEditorModal from '../FormulaEditorModal';
 import TrainAIPanel from '../TrainAIPanel';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
 import {
@@ -23,6 +24,7 @@ import {
   ALL_OPERATORS,
   senseDataType,
   parseCountInput,
+  assignVariableIds,
 } from '../../utils/decisionHelpers';
 import LoaderMusicChip from '../LoaderMusicChip';
 import { useAiTouchpoint } from '../../utils/aiEstimates';
@@ -504,6 +506,20 @@ export default function Step2() {
 
   // Social Learning Templates for Factors
   const [showSLFactorModal, setShowSLFactorModal] = useState(false);
+  // Formulas editor (June 2026)
+  const [formulasModalOpen, setFormulasModalOpen] = useState(false);
+  // Auto-assign f1/f2/... to every top-level factor missing a variable_id.
+  // Runs once whenever the top-level factor list length changes (new factor
+  // added, another removed, or on first mount).
+  const topLevelCount = decision.factors.filter((f) => !f.parent_id).length;
+  React.useEffect(() => {
+    if (!decision.factors?.length) return;
+    const missing = decision.factors.some((f) => !f.parent_id && !f.variable_id);
+    if (!missing) return;
+    const patched = assignVariableIds(decision.factors as any);
+    saveDecision({ factors: patched } as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topLevelCount]);
   const [slFactorTemplates, setSlFactorTemplates] = useState<any[]>([]);
   const [loadingSLFactors, setLoadingSLFactors] = useState(false);
 
@@ -776,6 +792,25 @@ export default function Step2() {
       <Text style={styles.stepDescription}>
         List factors, group them with sub-factors (splitting 100%), then assign expected values, operators, and units.
       </Text>
+
+      {/* Formulas button — opens a dedicated modal to declare dependency
+          formulas over `fN` variable ids (e.g. f7 = f1*f2/100). */}
+      <TouchableOpacity
+        onPress={() => setFormulasModalOpen(true)}
+        activeOpacity={0.85}
+        accessibilityLabel="Open formula editor"
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          alignSelf: 'flex-start', backgroundColor: '#EDE7F6',
+          borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8,
+          borderWidth: 1, borderColor: '#D1C4E9', marginBottom: 10,
+        }}
+      >
+        <Ionicons name="calculator-outline" size={16} color={COLORS.primary} />
+        <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
+          Formulas {(decision.formulas && decision.formulas.length) ? `· ${decision.formulas.length}` : ''}
+        </Text>
+      </TouchableOpacity>
 
       {/* One-tap: AI-score every un-scored cell (e.g. a freshly imported comparison). */}
       {aiBestFactorsEnabled && (<>
@@ -1312,6 +1347,16 @@ export default function Step2() {
                 />
               ) : (
                 <>
+                  {factor.variable_id && (
+                    <View style={{
+                      backgroundColor: '#EDE7F6', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+                      borderWidth: 1, borderColor: '#D1C4E9', marginRight: 6,
+                    }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.primary }}>
+                        {factor.variable_id}
+                      </Text>
+                    </View>
+                  )}
                   <Text style={[styles.factorName, { flex: 1 }]}>{factor.name}</Text>
                   <TouchableOpacity
                     onPress={() => startFactorRename(factor)}
@@ -1782,6 +1827,7 @@ export default function Step2() {
       </Modal>
 
       <DecisionLinkPicker visible={linkPickerOpen} onClose={() => setLinkPickerOpen(false)} />
+      <FormulaEditorModal visible={formulasModalOpen} onClose={() => setFormulasModalOpen(false)} />
     </View>
   );
 }

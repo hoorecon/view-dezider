@@ -27,6 +27,10 @@ export interface Factor {
   category: 'primary' | 'secondary';
   rating: number;
   order: number;
+  // ── Standard variable identifier (June 2026) ──
+  // Auto-assigned label like "f1", "f2" (see assignVariableIds). Referenced
+  // by editable dependency formulas on the Decision.
+  variable_id?: string;
   unit?: string;
   expected_value?: string | number;
   data_type?: 'numeric' | 'text';
@@ -127,4 +131,18 @@ export interface Decision {
   final_notes?: string;
   // 'app' = Decider App / Finder clone (enables dynamic UI-object config in Step 2)
   decider_kind?: 'app' | 'template' | string;
+  // ── Equal Weightage mode (June 2026) ──
+  // When true, Step 4 uses flat weights (Mandatory/A=20, Optional/B=10) and
+  // ignores rating_gap_multiplier + Realistic Gap.
+  equal_weightage?: boolean;
+  // ── Editable dependency formulas ──
+  formulas?: DecisionFormula[];
+}
+
+export interface DecisionFormula {
+  id: string;
+  target: string;       // e.g. "f7"
+  expression: string;   // e.g. "f1 * (f2/100) * f3 * f6 / f5"
+  scope?: 'per_option' | 'constant';   // default: per_option
+  description?: string;
 }
