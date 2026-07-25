@@ -114,6 +114,43 @@ export default function WebScrollFix() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
+    // Diagnostic tag — users can verify the fix is live by opening DevTools
+    // console and typing `__wsf`. If it prints an object, the fix is loaded;
+    // if `undefined`, the deployed bundle is stale (hard-refresh needed).
+    (window as any).__wsf = { version: 'v3-2026-07-25', ready: true };
+
+    // ── Defensive focus-blur (June 2026) ─────────────────────────
+    // When the user clicks a bottom-tab anchor (e.g. "Solution Box"), the
+    // <a role="tab"> keeps keyboard focus. Chrome then routes PageUp/Down
+    // to that anchor's nearest scrollable ancestor — which is the fixed-
+    // position tab bar (not scrollable), so nothing happens until the user
+    // clicks INSIDE the content frame. We proactively defocus any tab
+    // anchor / button that just received focus via mouse, so PageDown/Space
+    // falls through to our window handler cleanly. Keyboard-navigating
+    // users (Tab key) are untouched — we only blur when the focus change
+    // came from a pointer.
+    let lastPointerAt = 0;
+    const onPointerDown = () => { lastPointerAt = Date.now(); };
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      // Only defocus if the focus was pointer-triggered (< 100 ms since
+      // pointerdown) and the target is a nav-tab role or link — never
+      // touch form fields.
+      if (Date.now() - lastPointerAt > 100) return;
+      const tag = t.tagName?.toLowerCase();
+      const role = t.getAttribute?.('role');
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (t.isContentEditable) return;
+      if (role === 'textbox' || role === 'combobox') return;
+      // Blur tab / link anchors so PageDown/Space stops targeting them.
+      if (tag === 'a' || role === 'tab' || role === 'button' || role === 'link') {
+        try { (t as any).blur?.(); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true });
+    window.addEventListener('focusin', onFocusIn, { capture: true, passive: true });
+
     // Track the pointer so we can scroll whatever the cursor is over. This is
     // what makes modals / bottom-sheets / split panes scroll correctly instead
     // of the page behind them.
@@ -241,6 +278,8 @@ export default function WebScrollFix() {
       window.removeEventListener('keydown', onKeyDown, { capture: true } as any);
       window.removeEventListener('wheel', onWheel, { capture: true } as any);
       window.removeEventListener('mousemove', onMove as any);
+      window.removeEventListener('pointerdown', onPointerDown, { capture: true } as any);
+      window.removeEventListener('focusin', onFocusIn, { capture: true } as any);
     };
   }, []);
 
