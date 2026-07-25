@@ -5,7 +5,7 @@
 //   • factor palette (tap to insert `fN` at the caret)
 //   • live-evaluated result against option #1's values (or the user-supplied
 //     symbol map)
-//   • a scope selector — per-option (default) vs constant
+//   • a scope selector — per-option (default) vs cross-option (shared scalar)
 // Persists into decision.formulas via saveDecision.
 import React, { useMemo, useState, useCallback } from 'react';
 import {
@@ -183,7 +183,7 @@ export default function FormulaEditorModal({ visible, onClose }: Props) {
                       <Text style={s.formulaHead}>
                         <Text style={{ color: COLORS.primary }}>{f.target}</Text>
                         {targetFactor ? ` · ${targetFactor.name}` : ''}
-                        {f.scope === 'constant' ? ' · constant' : ''}
+                        {f.scope === 'cross_option' ? ' · cross-option' : ''}
                       </Text>
                       <Text style={s.formulaExpr}>{f.expression}</Text>
                     </View>
@@ -251,22 +251,27 @@ export default function FormulaEditorModal({ visible, onClose }: Props) {
 
             {/* Scope */}
             <Text style={s.fieldLabel}>Scope</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              {(['per_option', 'constant'] as const).map((mode) => {
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+              {(['per_option', 'cross_option'] as const).map((mode) => {
                 const on = (draft.scope || 'per_option') === mode;
                 return (
                   <TouchableOpacity
                     key={mode}
-                    onPress={() => setDraft((d) => ({ ...d, scope: mode }))}
+                    onPress={() => setDraft((d) => ({ ...d, scope: mode as any }))}
                     style={[s.chip, on && s.chipOn]}
                   >
                     <Text style={[s.chipText, on && s.chipTextOn]}>
-                      {mode === 'per_option' ? 'Per option (default)' : 'Constant (same for all options)'}
+                      {mode === 'per_option' ? 'Per option (default)' : 'Cross-option (shared)'}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
+            <Text style={[s.helperText, { marginBottom: 12 }]}>
+              {(draft.scope || 'per_option') === 'per_option'
+                ? 'Computed separately for each option using that option\u2019s own values.'
+                : 'Produces one shared value used by all options (for constants that don\u2019t vary per option).'}
+            </Text>
 
             {/* Description */}
             <Text style={s.fieldLabel}>Description (optional)</Text>

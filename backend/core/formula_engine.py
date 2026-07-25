@@ -9,8 +9,9 @@ a Decision. The engine:
   • Supports two scopes:
         - ``per_option`` (default): each option's computed value is derived
           from that option's other factor values.
-        - ``constant``: single scalar computed once from the first option's
-          values (or from a caller-supplied constants map).
+        - ``cross_option``: a single scalar shared by every option — for
+          constants that don't vary per option (evaluated once from a
+          caller-supplied constants map or the first option's values).
 
 The frontend uses the same syntax; a mirror JS evaluator lives in
 ``frontend/src/utils/formulaEval.ts``.

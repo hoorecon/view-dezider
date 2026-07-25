@@ -143,6 +143,6 @@ export interface DecisionFormula {
   id: string;
   target: string;       // e.g. "f7"
   expression: string;   // e.g. "f1 * (f2/100) * f3 * f6 / f5"
-  scope?: 'per_option' | 'constant';   // default: per_option
+  scope?: 'per_option' | 'cross_option';   // default: per_option
   description?: string;
 }
