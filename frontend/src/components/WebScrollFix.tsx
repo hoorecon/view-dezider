@@ -195,9 +195,51 @@ export default function WebScrollFix() {
       e.preventDefault();
     };
 
+    // ------------------------------------------------------------------
+    // Mouse-wheel forwarding (June 2026)
+    // ------------------------------------------------------------------
+    // On desktop web ≥ 768px, WebFrame centres non-landing routes in a
+    // 960 px-wide card. The grey/lavender gutters on either side are NOT
+    // scrollable, so a wheel event over that area is a no-op — the user
+    // has to physically move the pointer into the card first. Similarly,
+    // on screens where the header/filter bar sits OUTSIDE a FlatList
+    // (e.g. /prr, Solution Box), the top ~200 px inside the card is also
+    // non-scrollable, forcing another click.
+    //
+    // Fix: when a wheel event fires over an element that is NOT inside
+    // any real scroller, forward its deltaY to the best visible scroller
+    // (the inner ScrollView). This matches Dashboard's "wheel anywhere"
+    // feel on every tab, without changing any screen's layout.
+    // ------------------------------------------------------------------
+    const onWheel = (e: WheelEvent) => {
+      // Only handle plain vertical wheel — leave horizontal / zoom (ctrl+wheel)
+      // to the browser.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.deltaY === 0) return;
+
+      // If the event's own target already has a scrollable ancestor, the
+      // browser will handle it natively — do nothing.
+      const nativeScroller = nearestScrollable(e.target);
+      if (nativeScroller) return;
+
+      // Forward to the best visible scroller (typically the tab's ScrollView).
+      const scroller = findBestScroller() || documentScroller();
+      if (!scroller) return;
+
+      // Convert wheel line/page deltas to pixels (matches browser defaults).
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 16;                              // lines → px
+      else if (e.deltaMode === 2) dy *= scroller.clientHeight * 0.9; // pages → px
+
+      scroller.scrollBy({ top: dy, behavior: 'auto' });
+      e.preventDefault();
+    };
+
     window.addEventListener('keydown', onKeyDown, { capture: true, passive: false });
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
     return () => {
       window.removeEventListener('keydown', onKeyDown, { capture: true } as any);
+      window.removeEventListener('wheel', onWheel, { capture: true } as any);
       window.removeEventListener('mousemove', onMove as any);
     };
   }, []);
