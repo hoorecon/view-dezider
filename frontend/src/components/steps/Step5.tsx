@@ -69,13 +69,30 @@ export default function Step5() {
   };
 
   const exceedsLimit = highestRating > 100;
+  const equalWeightage = !!decision.equal_weightage;
 
   return (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Step 5: Rate Factor Importance</Text>
-      <Text style={styles.stepDescription}>
-        Adjust each factor's gap from the one below it. Standard gap = {STANDARD_GAP} pts. Higher gaps amplify how much more important that factor is.
+      <Text style={[styles.stepDescription, equalWeightage && { opacity: 0.5 }]}>
+        Adjust each factor&apos;s gap from the one below it. Standard gap = {STANDARD_GAP} pts. Higher gaps amplify how much more important that factor is.
       </Text>
+
+      {/* Equal Weightage banner — the gap ladder is bypassed while this
+          mode is on (Step 4 toggle). Show a clear callout instead of
+          silently accepting chip taps that don't affect the rating. */}
+      {equalWeightage && (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          backgroundColor: '#EDE7F6', borderWidth: 1, borderColor: '#D1C4E9',
+          borderRadius: 12, padding: 12, marginBottom: 12,
+        }}>
+          <Ionicons name="lock-closed" size={16} color={COLORS.primary} />
+          <Text style={{ flex: 1, fontSize: 12, color: COLORS.textPrimary, lineHeight: 17 }}>
+            <Text style={{ fontWeight: '700' }}>Equal Weightage is ON</Text> — every Mandatory factor is fixed at 20 and every Optional at 10. The per-pair gap multipliers below are disabled. Turn Equal Weightage OFF (Step 4) to re-enable them.
+          </Text>
+        </View>
+      )}
 
       {exceedsLimit && (
         <View style={styles.gapWarningBox}>
@@ -128,15 +145,16 @@ export default function Step5() {
             </View>
 
             {!isLowest ? (
-              <View style={styles.perFactorGapRow}>
+              <View style={[styles.perFactorGapRow, equalWeightage && { opacity: 0.4 }]}>
                 <Text style={styles.perFactorGapLabel}>
-                  Gap from {belowFactor?.name || 'below'}: +{gapPts}
+                  Gap from {belowFactor?.name || 'below'}: {equalWeightage ? '—' : `+${gapPts}`}
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-                  <View style={styles.gapChipsRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} scrollEnabled={!equalWeightage}>
+                  <View style={styles.gapChipsRow} pointerEvents={equalWeightage ? 'none' : 'auto'}>
                     {GAP_PRESETS.map((preset) => (
                       <TouchableOpacity
                         key={preset.value}
+                        disabled={equalWeightage}
                         style={[
                           styles.gapChipSmall,
                           gapMult === preset.value && styles.gapChipSmallActive,
@@ -157,7 +175,11 @@ export default function Step5() {
                 </ScrollView>
               </View>
             ) : (
-              <Text style={styles.baseRatingNote}>Base rating: {STANDARD_GAP}</Text>
+              <Text style={styles.baseRatingNote}>
+                {equalWeightage
+                  ? `Flat rating (Equal Weightage) · ${factor.category === 'primary' ? 20 : 10}`
+                  : `Base rating: ${STANDARD_GAP}`}
+              </Text>
             )}
           </Card>
         );
