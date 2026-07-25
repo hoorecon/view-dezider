@@ -16,6 +16,10 @@ const ALLOWED_FUNCS: Record<string, (...a: number[]) => number> = {
   abs: (x) => Math.abs(x),
   min: (...a) => Math.min(...a),
   max: (...a) => Math.max(...a),
+  pow: (b, e) => Math.pow(b, e),
+  sqrt: (x) => Math.sqrt(x),
+  log: (x) => Math.log(x),
+  exp: (x) => Math.exp(x),
   round: (x, digits = 0) => {
     const p = Math.pow(10, digits);
     return Math.round(x * p) / p;
@@ -45,14 +49,21 @@ function tokenize(src: string): Tok[] {
       i = j;
       continue;
     }
-    if ('+-*/%(),'.includes(c)) {
-      tokens.push({ type: 'op', value: c });
-      i += 1;
-      continue;
-    }
+    // Check `**` (exponent) BEFORE the single `*` to avoid it being tokenized
+    // as two consecutive `*`. Also accept `^` as a friendlier alias.
     if (c === '*' && src[i + 1] === '*') {
       tokens.push({ type: 'op', value: '**' });
       i += 2;
+      continue;
+    }
+    if (c === '^') {
+      tokens.push({ type: 'op', value: '**' });
+      i += 1;
+      continue;
+    }
+    if ('+-*/%(),'.includes(c)) {
+      tokens.push({ type: 'op', value: c });
+      i += 1;
       continue;
     }
     throw new FormulaError(`Unexpected character: ${c}`);
@@ -78,10 +89,10 @@ function parse(tokens: Tok[]): (syms: Record<string, any>) => number {
     return left;
   }
   function parseTerm(): (s: Record<string, any>) => number {
-    let left = parseUnary();
+    let left = parsePower();
     while (peek() && peek().type === 'op' && '*/%'.includes(peek().value)) {
       const op = eat().value;
-      const right = parseUnary();
+      const right = parsePower();
       const L = left; const R = right;
       left = (s) => {
         const l = L(s); const r = R(s);
@@ -91,6 +102,17 @@ function parse(tokens: Tok[]): (syms: Record<string, any>) => number {
       };
     }
     return left;
+  }
+  // Exponentiation — RIGHT-associative: 2**3**2 = 2**(3**2) = 512.
+  // Sits between multiplicative and unary in precedence (Python-style).
+  function parsePower(): (s: Record<string, any>) => number {
+    const base = parseUnary();
+    if (peek() && peek().type === 'op' && peek().value === '**') {
+      eat();
+      const exp = parsePower(); // right-assoc via recursion
+      return (s) => Math.pow(base(s), exp(s));
+    }
+    return base;
   }
   function parseUnary(): (s: Record<string, any>) => number {
     if (peek() && peek().type === 'op' && (peek().value === '+' || peek().value === '-')) {

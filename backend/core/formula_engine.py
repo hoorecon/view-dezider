@@ -47,7 +47,12 @@ _ALLOWED_FUNCS = {
     "abs": abs,
     "min": min,
     "max": max,
+    "pow": pow,
     "round": round,
+    "sqrt": lambda x: x ** 0.5,
+    # `log` and `exp` are exposed via math.* so we don't leak `math` module.
+    "log": __import__("math").log,
+    "exp": __import__("math").exp,
 }
 
 _BINOPS = {
@@ -72,8 +77,12 @@ def parse_expression(expr: str) -> ast.Expression:
     """
     if not expr or not str(expr).strip():
         raise FormulaError("Expression is empty")
+    # Alias — accept `^` as exponent (aligns with the frontend tokenizer and
+    # matches typical math notation from spreadsheet users). Python would
+    # otherwise interpret `^` as bitwise XOR.
+    src = str(expr).replace("^", "**")
     try:
-        tree = ast.parse(str(expr), mode="eval")
+        tree = ast.parse(src, mode="eval")
     except SyntaxError as e:
         raise FormulaError(f"Syntax error: {e.msg}")
     for node in ast.walk(tree):
@@ -145,7 +154,7 @@ def used_variables(expr: str) -> List[str]:
     when you need to surface errors.
     """
     try:
-        tree = ast.parse(str(expr or ""), mode="eval")
+        tree = ast.parse(str(expr or "").replace("^", "**"), mode="eval")
     except SyntaxError:
         return []
     names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id not in _ALLOWED_FUNCS}

@@ -42,55 +42,105 @@ FACTORS = [
     ("f4",  "% of Referrals Converted",            "primary",   "%",      30,    "quantitative"),
     ("f5",  "Avg. Cycle Time of Conversion",       "secondary", "days",   5,     "quantitative"),
     ("f6",  "Campaign Duration (days)",            "primary",   "days",   60,    "quantitative"),
-    # ── Computed ──
+    # ── Computed customer counts (formulas below auto-fill these) ──
     ("f7",  "Projected Total Customers",           "primary",   "count",  None,  "quantitative"),
+    # ── Economic inputs ──
     ("f8",  "ARPU — Avg Revenue per User",         "primary",   "USD",    50,    "quantitative"),
     ("f9",  "CAC — Cost of Sales per Customer",    "secondary", "USD",    12,    "quantitative"),
     ("f10", "Internal Operational Cost",           "secondary", "USD",    5000,  "quantitative"),
     ("f11", "External Ops Cost",                   "secondary", "USD",    3000,  "quantitative"),
     ("f12", "Available Budget / Reserves",         "primary",   "USD",    50000, "quantitative"),
     # ── Roll-ups (used to score / compare campaigns) ──
-    ("f13", "Projected Revenue",                   "primary",   "USD",    None,  "quantitative"),
+    ("f13", "Projected Revenue (new customers)",   "primary",   "USD",    None,  "quantitative"),
     ("f14", "Total Campaign Cost",                 "primary",   "USD",    None,  "quantitative"),
     ("f15", "Net Contribution (Profit)",           "primary",   "USD",    None,  "quantitative"),
     ("f16", "ROI Multiple",                        "primary",   "x",      None,  "quantitative"),
+    # ── Diagnostic / derived (June 2026) ──
+    ("f17", "Viral Coefficient (K)",               "secondary", "x",      None,  "quantitative"),
+    ("f18", "Newly Acquired Customers",            "secondary", "count",  None,  "quantitative"),
+    ("f19", "Budget Utilisation %",                "secondary", "%",      None,  "quantitative"),
 ]
 
 FORMULAS = [
+    # ── f17 · Viral coefficient K (David Skok's Custs(0)-independent scalar) ──
+    # K = (referrer_pct) × (invites_each) × (conversion_pct)
+    # K > 1 → super-viral (exponential explosion)
+    # K = 1 → linear replacement
+    # K < 1 → sub-viral (converging geometric series — still positive uplift)
+    {
+        "id": "fx_viral_k",
+        "target": "f17",
+        "expression": "(f2/100) * f3 * (f4/100)",
+        "scope": "per_option",
+        "description": "Viral coefficient K = refer% × refs × conversion%. K>1 is super-viral, K<1 sub-viral.",
+    },
+    # ── f7 · Projected Total Customers (closed-form geometric series sum) ──
+    # From the Skok / For-Entrepreneurs article:
+    #   Custs(t) = Custs(0) × (K^(t/tti + 1) − 1) / (K − 1)
+    # where t = duration, tti = cycle time. Reduces to the standard viral
+    # growth formula and handles both K<1 (converging) and K>1 (exploding)
+    # correctly. Exact K=1 is left indeterminate — nudge any input by 1% to
+    # break the tie.
     {
         "id": "fx_projected_customers",
         "target": "f7",
-        "expression": "f1 * (f2/100) * f3 * (f4/100) * (f6/f5)",
+        "expression": "f1 * (f17^(f6/f5 + 1) - 1) / (f17 - 1)",
         "scope": "per_option",
-        "description": "Viral spread: initial × refer% × refs × conv% × cycles-in-duration",
+        "description": "Geometric-series total customers at campaign end (Skok's formula).",
     },
+    # ── f18 · Newly Acquired Customers = f7 − f1 ──
+    # The pre-existing user base isn't a marketing acquisition — cost & revenue
+    # metrics below reference this delta, not the full f7.
+    {
+        "id": "fx_new_customers",
+        "target": "f18",
+        "expression": "f7 - f1",
+        "scope": "per_option",
+        "description": "New customers acquired during the campaign (excludes the initial base f1).",
+    },
+    # ── f13 · Projected Revenue (from newly acquired customers) ──
     {
         "id": "fx_projected_revenue",
         "target": "f13",
-        "expression": "f7 * f8",
+        "expression": "f18 * f8",
         "scope": "per_option",
-        "description": "Projected customers × ARPU",
+        "description": "New customers × ARPU.",
     },
+    # ── f14 · Total Campaign Cost ──
+    # CAC applies only to newly acquired customers; f10/f11 are fixed ops.
     {
         "id": "fx_total_cost",
         "target": "f14",
-        "expression": "(f7 * f9) + f10 + f11",
+        "expression": "(f18 * f9) + f10 + f11",
         "scope": "per_option",
-        "description": "CAC × customers + internal + external ops",
+        "description": "CAC × new customers + internal ops + external ops.",
     },
+    # ── f15 · Net Contribution (Profit) ──
     {
         "id": "fx_net_contribution",
         "target": "f15",
         "expression": "f13 - f14",
         "scope": "per_option",
-        "description": "Revenue minus total cost",
+        "description": "Revenue minus total campaign cost.",
     },
+    # ── f16 · ROI Multiple ──
+    # Revenue-to-cost coverage. Guarded against divide-by-zero for options
+    # where every cost input is still blank.
     {
         "id": "fx_roi_multiple",
         "target": "f16",
         "expression": "f13 / max(f14, 1)",
         "scope": "per_option",
-        "description": "Revenue / total cost (guarded against 0)",
+        "description": "Revenue ÷ Total cost. Values >1 mean the campaign pays for itself.",
+    },
+    # ── f19 · Budget Utilisation % ──
+    # Warns the user when their campaign cost overruns available reserves.
+    {
+        "id": "fx_budget_utilisation",
+        "target": "f19",
+        "expression": "f14 / max(f12, 1) * 100",
+        "scope": "per_option",
+        "description": "Total cost as % of available budget (f12). >100% means over-budget.",
     },
 ]
 
@@ -135,12 +185,13 @@ async def main():
         "created_by_email": admin_email,
         "source_decision_title": "Viral Marketing Campaign Planner",
         "context": (
-            "Compare two or more marketing campaign plans across a proven viral-growth "
-            "formula (For Entrepreneurs / David Skok). The template pre-populates 16 "
-            "factors — from Initial Userbase (f1) through ROI Multiple (f16) — and 5 "
-            "editable dependency formulas that auto-compute Projected Customers, "
-            "Projected Revenue, Total Cost, Net Contribution and ROI once you enter "
-            "each campaign's inputs. Reference: "
+            "Compare two or more marketing campaign plans across David Skok's "
+            "viral-growth formula (For Entrepreneurs). Pre-populates 19 factors "
+            "and 8 dependency formulas that auto-compute the Viral Coefficient "
+            "K, Projected Total Customers via the geometric-series closed-form "
+            "(Custs(t) = Custs(0) × (K^(t/tti+1) − 1)/(K−1)), New Customers "
+            "Acquired, Projected Revenue, Total Cost, Net Contribution, ROI "
+            "Multiple, and Budget Utilisation %. Reference: "
             "https://www.forentrepreneurs.com/lessons-learnt-viral-marketing/"
         ),
         "factors": factors,
