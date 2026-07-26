@@ -473,3 +473,35 @@ Fixed permanently:
   src/components/steps/{FactorValueUI,Step2}.tsx, src/types/decision.ts. Tests: subfactor_v2 +
   iter188/193/194 all green (retargeted from deleted bmp-55-patterns to live BMC).
   BUILD → **2026.07.19.007** (`EXPECT_BUILD=2026.07.19.007 ./deploy/sync.sh emergent-v3`).
+
+## Iter 198 — Action Center consistency + Goal-Setter execution tasks + GEM PM Workspace (2026-07-27)
+- **Google Calendar prod fix**: backend now also reads `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET`
+  (production EC2 naming) and returns a friendly 503 (not 500) when unconfigured.
+- **Action Center revoke/switch**: `POST /action-items/{id}/unport` now DELETES the downstream CTT task /
+  Lifestyle routine (true revoke). NEW `POST /action-items/{id}/switch-port` moves CTT⇄LIFESTYLE (deletes old
+  record, flips recurrence_type). UI: ported rows show **Revoke** + **⇄ Move** buttons with data-loss alerts.
+- **Consistency sweep**: NEW `POST /action-items/sync-all` (idempotent) imports missed items from MyDezider
+  MPPS, Pros&Cons (chosen option) and Solution Finder action plans; normalises legacy lowercase
+  `solution_finder/solution_matrix` source_module → UPPERCASE. Action Center auto-runs it on focus (banner).
+- **GEM ↔ Action Center status sync**: six_legs goal status PUT ⇄ GOAL_SETTER-sourced action items
+  (maps: in_progress→wip_50, at_risk↔blocked, done↔done) incl. cascade to ported CTT/Lifestyle; action-item
+  status also writes back to smart_goals milestone (source_subref).
+- **Goal Setter**: `?goalId=` deep-link opens the goal in edit mode (used by GEM linked-goal card's new
+  **Open** button in LinkedGoalMilestonesView). NEW **Execution Tasks** section (edit mode): goal + each saved
+  milestone → "→ CTT" / "→ LifeStyle" via `POST /goal-setter/goals/{id}/create-task` (idempotent on gs_key,
+  ports immediately, milestone target_date becomes by_when).
+- **GEM PM Workspace (Tier-1 of JELCOS PM spec)**: backend `/api/gem-pm/*` (routes/gem_pm.py; collections
+  gem_pm_nodes / gem_pm_deps / gem_pm_registers) — WBS Goal→Milestone→Deliverable→Work Package→Task(CTT/
+  Routine)→Subtask (subtask recursive), deps FS/SS/FF/SF+lag, CPM critical path + slack + delayed flags,
+  weighted progress rollup, kanban col endpoint (backlog/todo/in_progress/review/done), task-node port to
+  CTT/LIFESTYLE via universal action item (source GEM), registers CRUD (risk/issue/change).
+  Frontend `/tools/gem-pm` (goal picker + 5 tabs: WBS tree w/ expand-collapse & add-child, Gantt w/ today
+  line + critical/delayed colors + deps list, Kanban tap-to-move, monthly Calendar, Registers). Entry:
+  **PM** button on gem.tsx cards + **PM Workspace** launch in gem-goal.tsx.
+  DEFERRED (Tier-2/3): baseline snapshots, workload/resource capacity, portfolio dashboard, attachments.
+- Testing: iter198 — backend 12/12 pytest (tests/test_iter198_action_center_and_gem_pm.py), frontend verified
+  (Action Center buttons, GEM PM 5 tabs, Goal Setter Execution Tasks + deep-link screenshot).
+- BUILD → **2026.07.27.011** (`EXPECT_BUILD=2026.07.27.011 ./deploy/sync.sh emergent-v3`),
+  metro cache ns v13-2026-07-27-011-gem-pm-workspace.
+- Prod note: user confirmed EC2 uses GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET in
+  /opt/dezider/backend/.env — now supported natively; restart container after deploy.
