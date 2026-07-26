@@ -195,6 +195,30 @@ export default function Root({ children }: PropsWithChildren) {
                 setTimeout(grabFocus, 200);
                 setTimeout(grabFocus, 800);
                 window.addEventListener('popstate', function () { setTimeout(grabFocus, 60); });
+
+                // ── Client-side navigation hook ─────────────────
+                // expo-router uses history.pushState/replaceState which
+                // never trigger popstate. Wrap both to emit a synthetic
+                // "wsf:navigation" event, then grab focus back to body
+                // after every route change (tab click, deep-link, etc.).
+                try {
+                  if (!window.history.__wsf_patched) {
+                    window.history.__wsf_patched = true;
+                    var origPush = window.history.pushState.bind(window.history);
+                    var origReplace = window.history.replaceState.bind(window.history);
+                    window.history.pushState = function () {
+                      var r = origPush.apply(this, arguments);
+                      try { window.dispatchEvent(new Event('wsf:navigation')); } catch (_) {}
+                      return r;
+                    };
+                    window.history.replaceState = function () {
+                      var r = origReplace.apply(this, arguments);
+                      try { window.dispatchEvent(new Event('wsf:navigation')); } catch (_) {}
+                      return r;
+                    };
+                  }
+                } catch (_) {}
+                window.addEventListener('wsf:navigation', function () { setTimeout(grabFocus, 60); });
               })();
             `,
           }}

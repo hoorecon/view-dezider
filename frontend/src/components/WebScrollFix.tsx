@@ -157,6 +157,31 @@ export default function WebScrollFix() {
     const onNavigate = () => { setTimeout(grabFocus, 60); };
     window.addEventListener('popstate', onNavigate);
 
+    // ── Client-side navigation hook (July 2026) ────────────────
+    // expo-router uses history.pushState / replaceState for tab and
+    // stack navigation — neither fires `popstate`, so a fresh useEffect
+    // never runs. Monkey-patch both to emit a synthetic
+    // "wsf:navigation" event that grabFocus can listen for. Idempotent
+    // via a marker on window.history so a second mount can't double-wrap.
+    try {
+      if (!(window.history as any).__wsf_patched) {
+        (window.history as any).__wsf_patched = true;
+        const origPush = window.history.pushState.bind(window.history);
+        const origReplace = window.history.replaceState.bind(window.history);
+        window.history.pushState = function (...args: any[]) {
+          const r = origPush(...args);
+          try { window.dispatchEvent(new Event('wsf:navigation')); } catch { /* ignore */ }
+          return r;
+        };
+        window.history.replaceState = function (...args: any[]) {
+          const r = origReplace(...args);
+          try { window.dispatchEvent(new Event('wsf:navigation')); } catch { /* ignore */ }
+          return r;
+        };
+      }
+    } catch { /* ignore */ }
+    window.addEventListener('wsf:navigation', onNavigate);
+
     // ── Defensive focus-blur (June 2026) ─────────────────────────
     // When the user clicks a bottom-tab anchor (e.g. "Solution Box"), the
     // <a role="tab"> keeps keyboard focus. Chrome then routes PageUp/Down
@@ -319,6 +344,7 @@ export default function WebScrollFix() {
       window.removeEventListener('pointerdown', onPointerDown, { capture: true } as any);
       window.removeEventListener('focusin', onFocusIn, { capture: true } as any);
       window.removeEventListener('popstate', onNavigate);
+      window.removeEventListener('wsf:navigation' as any, onNavigate);
     };
   }, []);
 
