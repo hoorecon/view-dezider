@@ -446,9 +446,17 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
                 rating = f.get("rating")
         return rating
 
+    def _fname(f: Dict[str, Any]) -> str:
+        """Prefer the Step-5+ rename override (`display_name`) over the raw
+        promoted 'SHOULD NOT - …' name so Action Plan titles show the user's
+        latest chosen factor labels."""
+        if not isinstance(f, dict):
+            return ""
+        return f.get("display_name") or f.get("name") or ""
+
     def _fmt_title(imp, action_text) -> str:
         f = factors.get(imp.get("factor_id")) or {}
-        fname = f.get("name") or "Factor"
+        fname = _fname(f) or "Factor"
         rating = _realistic_rating(imp)
         head = f"[{fname} - {_num(rating)}]" if rating is not None else f"[{fname}]"
         parts = [head, (action_text or "").strip()]
@@ -463,7 +471,7 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
         action_list = imp.get("action_items") or []
         if not action_list:
             # Push every improvement even when no explicit action was typed.
-            fname = (factors.get(factor_id) or {}).get("name") or "this factor"
+            fname = _fname(factors.get(factor_id) or {}) or "this factor"
             base = (imp.get("improvement_plan") or "").strip() or f"Improve {fname}"
             action_list = [{"task": base}]
         for ai in action_list:
@@ -559,7 +567,9 @@ async def import_from_pros_cons(analysis_id: str, user: dict = Depends(get_curre
             # Only actionable improvements (positive deltas) become action items.
             continue
         f = factors.get(factor_id) or {}
-        fname = f.get("name") or "this factor"
+        # Prefer the Step-5+ rename override so titles show the user's latest
+        # factor labels (not the raw 'SHOULD NOT - …' promotion name).
+        fname = f.get("display_name") or f.get("name") or "this factor"
         try:
             base_assess = float(cell.get("assessment_pct") or 0)
         except Exception:

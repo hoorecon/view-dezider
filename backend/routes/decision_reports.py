@@ -868,7 +868,17 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
     Handles both schemas:
       • Rich (8-step): factors + options + assessments (+ MPPS improvement_pct).
       • Flat (legacy): standalone `pros`/`cons` lists with importance.
+
+    Factor labels: the report ALWAYS prefers ``factor.display_name`` (the
+    Step-5+ rename override) over the raw ``factor.name`` so users see their
+    latest chosen labels — including SHOULD-NOT-prefixed cons they renamed
+    during "Review & Refine Expectations".
     """
+    def _fname(f: Dict[str, Any]) -> str:
+        """Display name used across every PDF section — falls back to the
+        raw promotion name (e.g. 'SHOULD NOT - X') only when no rename exists."""
+        return (f.get("display_name") or f.get("name") or "") if isinstance(f, dict) else ""
+
     sections = []
 
     factors = raw.get("factors") or []
@@ -979,7 +989,7 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
     for f in fsorted:
         frows.append([
             _num(f.get("priority_rank")),
-            _t(f.get("name")),
+            _t(_fname(f)),
             (str(f.get("notation") or "").capitalize() or "—"),
             _num(f.get("std_rating")),
             _t(f.get("expected_value")),
@@ -1003,7 +1013,7 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
             if not cell:
                 continue
             drows.append([
-                _t(f.get("name")),
+                _t(_fname(f)),
                 _t(cell.get("actual_value")),
                 f"{_num(cell.get('assessment_pct'))}%",
             ])
@@ -1073,7 +1083,7 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
                 cur = float(cell.get("assessment_pct") or 0)
                 proj = max(0.0, min(100.0, cur + imp))
                 irows.append([
-                    _t(f.get("name")),
+                    _t(_fname(f)),
                     f"{_num(cur)}%",
                     f"{'+' if imp > 0 else ''}{_num(imp)} pp",
                     f"{_num(proj)}%",

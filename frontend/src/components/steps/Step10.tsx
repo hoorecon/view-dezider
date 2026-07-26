@@ -25,11 +25,15 @@ export default function Step10() {
   const [mppsReady, setMppsReady] = useState(false);
   const [actionRefreshKey, setActionRefreshKey] = useState(0);
 
+  // Auto-push the MPPS improvement plans into the Action Plan every time
+  // Step 10 opens OR the underlying `mpps_improvements` list changes. The
+  // backend endpoint is idempotent (dedupes on mpps_key) so re-runs are safe.
+  // Mirrors Pros & Cons Step-8 auto-import behaviour so users see the exact
+  // same "improvement items appear automatically" experience across both flows.
   useEffect(() => {
+    if (!decision?.id) { setMppsReady(true); return; }
     let cancelled = false;
     (async () => {
-      const imps = (decision as any).mpps_improvements || [];
-      if (!imps.length) { if (!cancelled) setMppsReady(true); return; }
       try {
         const token = await AsyncStorage.getItem('session_token');
         const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
@@ -42,7 +46,7 @@ export default function Step10() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decision.id]);
+  }, [decision.id, (decision as any)?.mpps_improvements?.length]);
 
   const optionsWithDynamicWorth = decision.options.map(option => ({
     ...option,
