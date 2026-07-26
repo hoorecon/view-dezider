@@ -123,14 +123,14 @@ export default function WebScrollFix() {
     // installed itself, skip — its listeners are identical and it runs
     // before React mounts, so avoiding double-attach keeps behaviour clean.
     if ((window as any).__wsf_html) {
-      (window as any).__wsf = { version: 'v6-2026-07-26-autofocus', ready: true, delegated_to_html_inline: true };
+      (window as any).__wsf = { version: 'v7-2026-07-26-blur-tab-anchor', ready: true, delegated_to_html_inline: true };
       return;
     }
 
     // Diagnostic tag — users can verify the fix is live by opening DevTools
     // console and typing `__wsf`. If it prints an object, the fix is loaded;
     // if `undefined`, the deployed bundle is stale (hard-refresh needed).
-    (window as any).__wsf = { version: 'v6-2026-07-26-autofocus', ready: true };
+    (window as any).__wsf = { version: 'v7-2026-07-26-blur-tab-anchor', ready: true };
 
     // ── Auto-focus body so keys route to us WITHOUT any user click first ─
     // When a user opens the site by typing in the URL bar (or lands via a
@@ -145,16 +145,28 @@ export default function WebScrollFix() {
         if (document.body.getAttribute('tabindex') === null) {
           document.body.setAttribute('tabindex', '-1');
         }
-        // If the autofocus grabber (in +html.tsx) still holds focus, blur it
-        // and forward to body so keydown routes to us.
+        const ae = document.activeElement as HTMLElement | null;
+        // Grabber still focused? Blur it and forward to body.
         const g = document.getElementById('wsf-focus-grabber');
-        if (g && document.activeElement === g) {
+        if (g && ae === g) {
           (g as HTMLInputElement).blur();
           (document.body as any).focus?.({ preventScroll: true });
           return;
         }
-        const ae = document.activeElement;
+        // Body / html focused → nothing to do.
         if (!ae || ae === document.body || ae === document.documentElement) {
+          (document.body as any).focus?.({ preventScroll: true });
+          return;
+        }
+        // A tab anchor / button focused (from client-side navigation) →
+        // actively blur and re-focus body so keys route to us.
+        const tag = ae.tagName?.toLowerCase();
+        const role = ae.getAttribute?.('role');
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+        if ((ae as any).isContentEditable) return;
+        if (role === 'textbox' || role === 'combobox') return;
+        if (tag === 'a' || tag === 'button' || role === 'tab' || role === 'link' || role === 'button') {
+          ae.blur();
           (document.body as any).focus?.({ preventScroll: true });
         }
       } catch { /* ignore */ }
@@ -162,7 +174,12 @@ export default function WebScrollFix() {
     grabFocus();
     setTimeout(grabFocus, 100);
     setTimeout(grabFocus, 500);
-    const onNavigate = () => { setTimeout(grabFocus, 60); };
+    // Multiple deferred calls to catch React-Navigation's re-focus.
+    const onNavigate = () => {
+      setTimeout(grabFocus, 40);
+      setTimeout(grabFocus, 150);
+      setTimeout(grabFocus, 400);
+    };
     window.addEventListener('popstate', onNavigate);
 
     // ── Client-side navigation hook (July 2026) ────────────────

@@ -179,20 +179,38 @@ export default function Root({ children }: PropsWithChildren) {
                 // Chrome's URL bar retains focus after typing a URL — this ONLY
                 // yields to the page if an autofocus'd element grabs focus first
                 // (see the hidden #wsf-focus-grabber input rendered in <body>).
+                // Also actively blurs tab-anchors / buttons on route change, since
+                // client-side navigation (e.g. Profile tab click) parks focus on
+                // the newly-active anchor and keyboard scroll gets stuck there.
                 function grabFocus() {
                   try {
                     if (document.body.getAttribute('tabindex') === null) {
                       document.body.setAttribute('tabindex', '-1');
                     }
-                    // Drop the grabber if it still holds focus, forwarding to body.
+                    var ae = document.activeElement;
+                    // Grabber input still focused? (Fresh URL-bar navigation)
                     var g = document.getElementById('wsf-focus-grabber');
-                    if (g && document.activeElement === g) {
+                    if (g && ae === g) {
                       g.blur();
                       document.body.focus({ preventScroll: true });
                       return;
                     }
-                    var ae = document.activeElement;
+                    // Body / html already focused → nothing to do.
                     if (!ae || ae === document.body || ae === document.documentElement) {
+                      document.body.focus({ preventScroll: true });
+                      return;
+                    }
+                    // Anything else (a tab anchor, button, link) → forcibly
+                    // blur & move focus to body so PageDown routes to our
+                    // window handler. Guard against text inputs so we never
+                    // fight legitimate typing focus.
+                    var tag = ae.tagName && ae.tagName.toLowerCase();
+                    var role = ae.getAttribute && ae.getAttribute('role');
+                    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+                    if (ae.isContentEditable) return;
+                    if (role === 'textbox' || role === 'combobox') return;
+                    if (tag === 'a' || tag === 'button' || role === 'tab' || role === 'link' || role === 'button') {
+                      ae.blur();
                       document.body.focus({ preventScroll: true });
                     }
                   } catch (_) {}
@@ -228,7 +246,14 @@ export default function Root({ children }: PropsWithChildren) {
                     };
                   }
                 } catch (_) {}
-                window.addEventListener('wsf:navigation', function () { setTimeout(grabFocus, 60); });
+                window.addEventListener('wsf:navigation', function () {
+                  // Fire multiple times to catch React-Navigation's re-focus
+                  // of the newly-active tab anchor, which lands AFTER our
+                  // initial blur if React defers focus() to a mount effect.
+                  setTimeout(grabFocus, 40);
+                  setTimeout(grabFocus, 150);
+                  setTimeout(grabFocus, 400);
+                });
               })();
             `,
           }}
