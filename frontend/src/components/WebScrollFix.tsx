@@ -123,14 +123,14 @@ export default function WebScrollFix() {
     // installed itself, skip — its listeners are identical and it runs
     // before React mounts, so avoiding double-attach keeps behaviour clean.
     if ((window as any).__wsf_html) {
-      (window as any).__wsf = { version: 'v5-2026-07-26-cachebust', ready: true, delegated_to_html_inline: true };
+      (window as any).__wsf = { version: 'v6-2026-07-26-autofocus', ready: true, delegated_to_html_inline: true };
       return;
     }
 
     // Diagnostic tag — users can verify the fix is live by opening DevTools
     // console and typing `__wsf`. If it prints an object, the fix is loaded;
     // if `undefined`, the deployed bundle is stale (hard-refresh needed).
-    (window as any).__wsf = { version: 'v5-2026-07-26-cachebust', ready: true };
+    (window as any).__wsf = { version: 'v6-2026-07-26-autofocus', ready: true };
 
     // ── Auto-focus body so keys route to us WITHOUT any user click first ─
     // When a user opens the site by typing in the URL bar (or lands via a
@@ -144,6 +144,14 @@ export default function WebScrollFix() {
       try {
         if (document.body.getAttribute('tabindex') === null) {
           document.body.setAttribute('tabindex', '-1');
+        }
+        // If the autofocus grabber (in +html.tsx) still holds focus, blur it
+        // and forward to body so keydown routes to us.
+        const g = document.getElementById('wsf-focus-grabber');
+        if (g && document.activeElement === g) {
+          (g as HTMLInputElement).blur();
+          (document.body as any).focus?.({ preventScroll: true });
+          return;
         }
         const ae = document.activeElement;
         if (!ae || ae === document.body || ae === document.documentElement) {

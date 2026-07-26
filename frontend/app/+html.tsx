@@ -176,10 +176,20 @@ export default function Root({ children }: PropsWithChildren) {
                 window.addEventListener('wheel', onWheel, { capture: true, passive: false });
 
                 // Auto-focus body so keys route to us WITHOUT any user click first.
+                // Chrome's URL bar retains focus after typing a URL — this ONLY
+                // yields to the page if an autofocus'd element grabs focus first
+                // (see the hidden #wsf-focus-grabber input rendered in <body>).
                 function grabFocus() {
                   try {
                     if (document.body.getAttribute('tabindex') === null) {
                       document.body.setAttribute('tabindex', '-1');
+                    }
+                    // Drop the grabber if it still holds focus, forwarding to body.
+                    var g = document.getElementById('wsf-focus-grabber');
+                    if (g && document.activeElement === g) {
+                      g.blur();
+                      document.body.focus({ preventScroll: true });
+                      return;
                     }
                     var ae = document.activeElement;
                     if (!ae || ae === document.body || ae === document.documentElement) {
@@ -233,6 +243,30 @@ export default function Root({ children }: PropsWithChildren) {
           flexDirection: "column",
         }}
       >
+        {/* HTML autofocus grabber — the one browser-sanctioned way to
+            steal keyboard focus back from Chrome's URL bar after a fresh
+            navigation. Chrome honors the `autofocus` attribute even when
+            the URL bar was previously focused, unlike element.focus()
+            from JS. The inline script above blurs this immediately after
+            mount and forwards focus to <body> so tab-order isn't skewed. */}
+        <input
+          id="wsf-focus-grabber"
+          tabIndex={-1}
+          autoFocus
+          readOnly
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: 'none',
+            border: 0,
+            padding: 0,
+          }}
+        />
         {children}
       </body>
     </html>
