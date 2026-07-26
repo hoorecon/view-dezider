@@ -1,0 +1,33 @@
+{
+  "summary": "Verified web keyboard-scroll v9 (tabindex scrollers + tabPress blur) end-to-end via Playwright on the preview URL. Logged in as admin@test.com, exercised all 10 review-request scenarios: version marker, direct-nav /profile PageDown, click-then-PageDown for Profile & Solution Box, tabindex tagging count, activeElement=BODY after tabPress, text input focus/typing, wheel forwarding over grey gutters, Dashboard regression. Every scenario passed. Modal-scroll shortcut was validated via code review only (findBestScroller's insideOverlay +1e9 bonus and pointer/nearestScrollable path are untouched in this iteration, and score for a fixed-position modal scroller still dominates), not by opening a real modal — flagged for main-agent self-check if desired. No React Native issues detected in the two edited files. Deprecated packages / SafeAreaView issues: none introduced.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["Playwright inline script executed via mcp_browser_automation (no persisted .py test file, all evidence in this JSON)"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "WebScrollFix.tsx and +html.tsx are duplicated in logic (SCROLL_KEYS, isScrollable, nearestScrollable, findBestScroller, pickScroller, onKeyDown, onWheel, tagScroller, MutationObserver). Both paths are guarded by the __wsf_html flag so they don't double-attach, but any future change must be applied in both files. Consider extracting the JS body into a single script asset imported from both to prevent drift.",
+    "The MutationObserver scans every added DOM node's descendant divs and calls getComputedStyle on each. On very heavy dynamic pages (e.g., typing in a rich list, drag interactions) this can be a hotspot. Not a bug — acceptable for a scroll-fix — but worth watching if perf reports come in.",
+    "tagScroller skips any element that already has a `tabindex` attribute (of any value). This is a deliberate safety guard, but it also means a component that sets tabindex=0/1 on a genuinely-scrollable div will lose the tag; not an issue in current codebase but worth noting."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "100%"},
+  "seed_data_creation": "None — used existing admin account only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Preview URL is EXPO_PUBLIC_BACKEND_URL. Login flow uses button labelled 'Sign In' (not 'Log In'). After admin login, / redirects to /admin, so navigate to /(tabs) explicitly for Dashboard. Tab bar entries are role='tab' with visible text 'Home' / 'Solution Box' / 'Shared' / 'Journal' / 'Profile'. RN-Web ScrollView renders as <div overflow-y:scroll>. All scroller <div>s carry tabindex='-1' after v9 tagger runs (verified 1/1 on direct /profile, 3/3 on Profile via tab-click, 5/5 on Solution Box, 2/2 on Dashboard). PageDown scrolls the largest-overflow visible scroller by ~clientHeight*0.9 pixels (observed 662 on 800px viewport). activeElement === document.body immediately after every tab click, confirming screenListeners.tabPress blur ran.",
+  "rca_of_issue": "Bug was: after client-side navigation to a tabs sub-route (Profile / Solution Box / etc.), PageDown did nothing until user clicked the page, because keyboard focus remained on the tab anchor (a fixed-position element inside the tab bar) — RN-Web's inner ScrollView div was neither the browser's default scroller nor focusable, so the browser's native PageDown had no target. Fix (v9): (a) tabIndex='-1' via MutationObserver-driven tagger on every RN-Web ScrollView container div (both in React-mounted WebScrollFix and HTML-inline pre-mount fallback in +html.tsx); (b) screenListeners.tabPress in (tabs)/_layout.tsx blurs document.activeElement before route transition, ensuring focus falls to body — where WebScrollFix's window-level keydown listener can pick the correct scroller via pickScroller() heuristic. Verified: all scrollers tagged, activeElement=BODY after every tab press, PageDown 0→662 on Profile (direct + via-click), 0→490 on Solution Box, 0→662 on Dashboard (no regression), wheel gutter forwarding still works (490→890), and text input still focusable & typable.",
+  "test_evidence": {
+    "version_markers": {"js": "v9-2026-07-26-tabindex-scrollers", "html_inline": "v9-2026-07-26-tabindex-scrollers", "delegated_to_html_inline": true},
+    "dashboard_pagedown": {"beforeDivScrollTop": 0, "afterDivScrollTop": 662},
+    "profile_direct_nav_pagedown": {"scrollersTagged": "1/1", "beforeScrollTop": 0, "afterScrollTop": 662, "activeElement": "BODY"},
+    "profile_via_dashboard_tab_click_pagedown": {"scrollersTagged": "3/3", "beforeScrollTop": 0, "afterScrollTop": 662, "activeElementAfterTabPress": "BODY"},
+    "solution_box_via_tab_click_pagedown": {"scrollersTagged": "5/5", "beforeScrollTop": 0, "afterScrollTop": 490, "activeElementAfterTabPress": "BODY"},
+    "wheel_over_grey_gutter_x100_y500": {"beforeScrollTop": 490, "afterScrollTop": 890},
+    "text_input_typing": {"focusedTag": "INPUT", "typedValue": "hello test"}
+  }
+}

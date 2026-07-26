@@ -61,7 +61,7 @@ export default function Root({ children }: PropsWithChildren) {
             __html: `
               (function () {
                 if (window.__wsf_html) return;
-                window.__wsf_html = { installed_at: Date.now(), version: 'v9-tabindex-on-scrollers' };
+                window.__wsf_html = { installed_at: Date.now(), version: 'v9-2026-07-26-tabindex-scrollers' };
                 var KEYS = ['PageDown','PageUp','Home','End',' ','Spacebar','ArrowDown','ArrowUp'];
                 var lastX = (window.innerWidth||800)/2, lastY = (window.innerHeight||600)/2;
                 document.addEventListener('mousemove', function (e) { lastX = e.clientX; lastY = e.clientY; }, { passive: true, capture: true });

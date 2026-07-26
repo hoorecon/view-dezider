@@ -9,8 +9,8 @@ line below). The three keys must each start at column 1 — sync.sh looks
 for ^BUILD_VERSION=, ^BUILD_TIMESTAMP=, ^BUILD_TAG= anchored to a line
 start so this descriptive paragraph CANNOT trip the extractor.
 ═══════════════════════════════════════════════════════════════════════
-BUILD_VERSION=2026.08.02.001
-BUILD_TIMESTAMP=2026-08-02T10:00:00Z
+BUILD_VERSION=2026.07.26.007
+BUILD_TIMESTAMP=2026-07-26T16:15:00Z
 BUILD_TAG=v3.127-scroll-fix-tabindex-on-scrollers
 -->
 
