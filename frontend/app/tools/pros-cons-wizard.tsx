@@ -25,6 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/utils/api';
+import InsertFromModulesButton from '../../src/components/PassableValuePicker';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import ActionItemEditor from '../../src/components/ActionItemEditor';
 import { showAlert } from '../../src/utils/alert';
@@ -964,6 +965,7 @@ export default function ProsConsWizard() {
               <View style={styles.card}>
                 <Text style={styles.inputLabel}>Factor name</Text>
                 <TextInput style={styles.input} placeholder="e.g., Mileage - in the case of a Car Purchase decision" placeholderTextColor={COLORS.textDim} value={fName} onChangeText={setFName} onSubmitEditing={addFactor} />
+                <InsertFromModulesButton accept="text" title="Insert as Factor Name" onPick={(it) => setFName(it.value)} />
                 <TouchableOpacity style={[styles.primaryBtn, !fName.trim() && { opacity: 0.5 }]}
                   disabled={!fName.trim() || busy} onPress={addFactor}>
                   <Ionicons name="add" size={18} color="#fff" />
@@ -1044,6 +1046,19 @@ export default function ProsConsWizard() {
                     onChangeText={setOptName}
                     onSubmitEditing={addOption}
                   />
+                  <InsertFromModulesButton
+                    accept="text"
+                    title="Insert as Option Name"
+                    onPick={async (it) => {
+                      if (it.module === 'SOLUTION_FINDER') {
+                        setBusy(true);
+                        try {
+                          await api.post(`${base}/${id}/options`, { name: it.value, sf_ref: { entry_id: it.ref_id, label: 'Solution Finder' } });
+                          await reload();
+                        } finally { setBusy(false); }
+                      } else setOptName(it.value);
+                    }}
+                  />
                   <TouchableOpacity
                     style={[styles.addOptBtn, (!optName.trim() || busy) && { opacity: 0.5 }]}
                     onPress={addOption}
@@ -1062,6 +1077,15 @@ export default function ProsConsWizard() {
                 const isEditingThisOpt = editingOptId === o.id;
                 return (
                   <View key={o.id} style={styles.optionCard}>
+                    {(o as any).sf_ref?.entry_id ? (
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: '#EEF2FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginBottom: 4 }}
+                        onPress={() => router.push({ pathname: '/tools/solution-finder', params: { id: (o as any).sf_ref.entry_id } } as any)}
+                      >
+                        <Ionicons name="link" size={11} color="#4F46E5" />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#4F46E5' }}>Solution Finder — open action plan</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     <View style={styles.optionHeader}>
                       <TouchableOpacity
                         onPress={() => toggleOptCollapsed(o.id)}
@@ -1563,6 +1587,7 @@ export default function ProsConsWizard() {
                     value={f.expected_value || ''}
                     onSave={(text) => updateFactor(f.id, { expected_value: text || null })}
                   />
+                  <InsertFromModulesButton accept="all" compact title="Insert as Expected Value" onPick={(it) => updateFactor(f.id, { expected_value: it.value })} />
                   <Text style={styles.cellLabel}>Unit</Text>
                   <DebouncedInput
                     style={[styles.inputSm, { width: 72 }]}
@@ -1599,6 +1624,7 @@ export default function ProsConsWizard() {
                         value={String(cell.assessment_pct ?? 0)}
                         onSave={(text) => upsertCell(o.id, f.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(text, 10) || 0)) })}
                       />
+                      <InsertFromModulesButton accept="percent" compact title="Insert as Custom %" onPick={(it) => upsertCell(o.id, f.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(it.value, 10) || 0)) })} />
                       <Text style={styles.cellValue}>= {cell.cell_value?.toFixed?.(1) ?? '0'}</Text>
                     </View>
                   );

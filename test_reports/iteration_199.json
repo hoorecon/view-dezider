@@ -1,0 +1,36 @@
+{
+  "summary": "Iter-199 Inter-module Integrations. Backend: 7/7 pytest tests PASSED covering GET /api/integrations/passable-values (shape + Option Name text + Case-1 Worth % percent + SMART Goal link '/tools/solution-finder?id='), POST /api/pros-cons/{id}/options with sf_ref (persisted in POST response AND GET analysis), POST /api/ctt/tasks + PUT with classification_ref (create/read/null-update), and GET /api/gem-pm/nodes/all?types=deliverable,work_package (type filter respected). Frontend: /tools/solution-finder?seed=Hello%20World pre-fills SMART Goal field VERIFIED. /tools/pros-cons-wizard (new analysis) Step 1 renders the ⇄ 'Insert from other modules' button beside factor input (1 picker button detected via aria-label). Modal-open + pick assertion NOT VERIFIED end-to-end (modal detection failed after click — likely timing/render, not a code bug). /tools/ctt-task new-task page repeatedly redirected to /auth/login even after a successful super@test.com login (session preserved for /admin and /tools/solution-finder in the same run), so Classification 'Link to pre-existing item' and Dependencies 'Trigger from this task' launcher chips COULD NOT be verified end-to-end. MyDezider Step 2/6 flows were not exercised in the UI due to token budget — backend integrations are verified, so the UI wiring is expected to work.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "/tools/ctt-task", "issue": "Direct navigation to /tools/ctt-task after successful login redirects to /auth/login. In the same browser session, /admin and /tools/solution-finder loaded fine — auth state is present. Blocks E2E verification of the new Classification 'Link to pre-existing item' picker and Dependencies 'Trigger from this task' chips. Please investigate route guard / session hydration on this screen. Reference: /app/frontend/app/tools/ctt-task.tsx", "testID": "n/a", "priority": "HIGH"},
+      {"component": "PassableValuePicker / InsertFromModulesButton", "issue": "The ⇄ button is rendered with accessibilityLabel='Insert from other modules' but no testID. Adds friction for automated testing. Suggest adding testID='pv-picker-open' (and testID on picked-item rows) so future runs can deterministically drive it. Reference: /app/frontend/src/components/PassableValuePicker.tsx:137", "testID": "pv-picker-open (missing)", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter199_passable_and_intermodule.py",
+    "/app/test_reports/pytest/iter199.xml"
+  ],
+  "action_items": [
+    "Investigate why /tools/ctt-task redirects to /auth/login on a fresh authenticated session (route guard / auth hydration). Once fixed, retest Classification section 'Link to pre-existing item' picker + Dependencies section 'Trigger from this task' launcher chips (Solution Finder w/seed, MyDezider new-decision, Pros & Cons, Sub Task chain, LifeStyle, Goal).",
+    "Add testID='pv-picker-open' to InsertFromModulesButton and testID='pv-picker-item-<idx>' or category-based testID to picker rows in PassableValuePicker.tsx so the modal + pick flow can be automated deterministically.",
+    "Recommend main agent to self-verify these three UI flows in the preview: (1) Pros&Cons wizard Step 1 → click ⇄ → modal shows picker → pick a text row → factor name input fills, (2) MyDezider Step 2/6/7 ⇄ variants, (3) /tools/ctt-task Classification + Dependencies sections after fixing the redirect."
+  ],
+  "critical_code_review_comments": [
+    "backend/routes/integrations_passable.py:104 — SMART Goal.value is truncated to 140 chars (goal[:140]). Fine as a one-liner, but recognise this in UI to avoid picking a truncated goal into a factor name.",
+    "backend/routes/pros_cons.py:534 — sf_ref is stored as-is (dict). Consider validating minimum keys (entry_id) to reject malformed payloads early.",
+    "backend/routes/ctt_gem.py:81 — classification_ref accepts any shape (body.get). Consider Pydantic validation to enforce {type, ref_id, label}."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter199_passable_and_intermodule.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "partial — 2/4 flows verified"},
+  "seed_data_creation": "Backend test creates 1 decision with 2 options (opt-A worth 72%) + 1 pros-cons analysis (TEST_iter199 prefix) per run for regression. Frontend test created a Pros&Cons analysis 'TEST_iter199_wiz2'. Test data prefixed with 'TEST_iter199_' for cleanup.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend fully green. Focus remaining UI retest on: (1) resolve /tools/ctt-task redirect to /auth/login, then verify Classification 'Link to pre-existing item' picker groups (Goal/Milestone/Deliverable/Work Package/Parent CTT Task) and Dependencies 'Trigger from this task' 6 launcher chips + Sub Task chain to /tools/ctt-task?parent_task_id=&parent_title=; (2) full modal open + pick round-trip on the ⇄ button in Pros&Cons wizard Step 1/2 and MyDezider Step 2/6/7; (3) Solution Finder — inside an existing entry with solutions verify 'New SF' pill on solution/mitigation/contingency rows in the ASM control cluster (not exercised in this run). Auth uses session_token key (not access_token) — see test file for pattern. All test data prefixed TEST_iter199_.",
+  "rca_of_issue": "n/a — backend passes; frontend redirect blocker is an app-side bug (not a test-script bug)."
+}

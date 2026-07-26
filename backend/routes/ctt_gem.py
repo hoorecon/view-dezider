@@ -76,6 +76,9 @@ async def create_ctt_task(request: Request, user: dict = Depends(get_current_use
         # LDC + AALA tagging (used by Time Dezider's allocator)
         "linked_freedoms": body.get("linked_freedoms", []),
         "linked_aala_cells": body.get("linked_aala_cells", []),
+        # Classification ref — link this task under a pre-existing module item:
+        # {"type": goal|milestone|deliverable|work_package|parent_task, "ref_id", "label"}
+        "classification_ref": body.get("classification_ref"),
         "created_at": now,
         "updated_at": now,
     }
@@ -131,7 +134,7 @@ async def update_ctt_task(task_id: str, request: Request, user: dict = Depends(g
         "internal_help", "external_help", "task_duration", "from_time", "to_time",
         "life_area", "decision_type", "goal_id", "is_routine", "frequency",
         "day_status", "source_type", "source_id",
-        "linked_freedoms", "linked_aala_cells",
+        "linked_freedoms", "linked_aala_cells", "classification_ref",
     ]
     update = {k: body[k] for k in allowed if k in body}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()

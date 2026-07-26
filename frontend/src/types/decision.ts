@@ -70,6 +70,7 @@ export interface DecisionOption {
   ai_rationale?: string;               // one-line why this option fits
   price_range?: string;                // store item price badge
   rating?: number;                     // store item avg rating badge
+  sf_ref?: { entry_id: string; label?: string };  // inserted from a Solution Finder SMART Goal
 }
 
 // A single AI/Store suggestion returned by POST /api/ai/find-best-options

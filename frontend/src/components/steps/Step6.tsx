@@ -7,6 +7,8 @@ import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import api from '../../utils/api';
+import { useRouter } from 'expo-router';
+import InsertFromModulesButton from '../PassableValuePicker';
 
 const TYPE_ICONS: Record<string, string> = {
   PRODUCT: 'cube', SERVICE: 'construct', EVENT: 'calendar',
@@ -18,6 +20,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default function Step6() {
+  const router = useRouter();
   const { decision, addOption, addOptionByName, addOptionFromStore, removeOption, newOptionName, setNewOptionName, setCurrentStep, saveDecision, highlightOptionName, setHighlightOptionName } = useDecision();
 
   // Auto-clear the post-import spotlight after a few seconds.
@@ -239,6 +242,15 @@ export default function Step6() {
                   ) : null}
                   <Text style={styles.optionName}>{option.name}</Text>
                 </View>
+                {option.sf_ref?.entry_id ? (
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, alignSelf: 'flex-start', backgroundColor: '#EEF2FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}
+                    onPress={() => router.push({ pathname: '/tools/solution-finder', params: { id: option.sf_ref!.entry_id } } as any)}
+                  >
+                    <Ionicons name="link" size={11} color="#4F46E5" />
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#4F46E5' }}>Solution Finder — open action plan</Text>
+                  </TouchableOpacity>
+                ) : null}
                 {/* Store price / rating chips */}
                 {(option.price_range || typeof option.rating === 'number') && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
@@ -289,6 +301,14 @@ export default function Step6() {
           value={newOptionName}
           onChangeText={setNewOptionName}
           onSubmitEditing={addOption}
+        />
+        <InsertFromModulesButton
+          accept="text"
+          title="Insert as Option Name"
+          onPick={(it) => {
+            if (it.module === 'SOLUTION_FINDER') addOptionByName(it.value, { entry_id: it.ref_id, label: 'Solution Finder' });
+            else setNewOptionName(it.value);
+          }}
         />
         <TouchableOpacity style={styles.addButton} onPress={addOption}>
           <Ionicons name="add" size={24} color={COLORS.white} />

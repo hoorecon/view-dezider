@@ -155,7 +155,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   // and reload once. This is idempotent: second boot sees matching
   // stamp and is a no-op.
   // -------------------------------------------------------------------
-  const BUILD_VERSION = '2026-07-27-gem-pm-v13-011';
+  const BUILD_VERSION = '2026-07-27-intermodule-v14-012';
   const STAMP_KEY = '__jelcos_build_version__';
   try {
     const storedStamp = localStorage.getItem(STAMP_KEY);

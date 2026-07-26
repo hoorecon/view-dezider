@@ -17,6 +17,7 @@ import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../util
 import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '../../utils/googleSheets';
 import { showAlert } from '../../utils/alert';
 import { api } from '../../utils/api';
+import InsertFromModulesButton from '../PassableValuePicker';
 import type { Factor } from '../../types/decision';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import LoaderMusicChip from '../LoaderMusicChip';
@@ -360,8 +361,15 @@ export default function Step7() {
   const handleCustomInputBlur = (optionId: string, factorId: string) => {
     const key = getAssessmentKey(optionId, factorId);
     const inputValue = customInputValues[key] || '0';
-    const num = parseInt(inputValue) || 0;
+    applyCustomPct(optionId, factorId, inputValue);
+  };
+
+  // Direct commit path used by the inter-module value picker (no blur race).
+  const applyCustomPct = (optionId: string, factorId: string, pctStr: string) => {
+    const key = getAssessmentKey(optionId, factorId);
+    const num = parseInt(pctStr) || 0;
     const percentage = Math.min(100, Math.max(0, num));
+    setCustomInputValues({ ...customInputValues, [key]: String(percentage) });
     const currentActual = getActualValue(optionId, factorId);
     const factor = decision.factors.find(f => f.id === factorId);
     const unitStr = factor?.unit || '';
@@ -842,6 +850,12 @@ export default function Step7() {
                 maxLength={3}
                 placeholderTextColor="rgba(255,255,255,0.6)"
                 placeholder="0"
+              />
+              <InsertFromModulesButton
+                accept="percent"
+                compact
+                title="Insert as Custom Assessment %"
+                onPick={(it) => applyCustomPct(option.id, f.id, it.value)}
               />
               {/* The % glyph itself is now tappable — re-clicking the active
                   % button toggles the input off and clears the cell (matches

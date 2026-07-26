@@ -12,7 +12,7 @@ const config = getDefaultConfig(__dirname);
 // `.metro-cache` unless the path itself changes).
 //
 // Alternatively set METRO_CACHE_ROOT in your env to override.
-const CACHE_VERSION = 'v13-2026-07-27-011-gem-pm-workspace';
+const CACHE_VERSION = 'v14-2026-07-27-012-inter-module-integrations';
 const root = process.env.METRO_CACHE_ROOT
   || path.join(__dirname, `.metro-cache-${CACHE_VERSION}`);
 config.cacheStores = [

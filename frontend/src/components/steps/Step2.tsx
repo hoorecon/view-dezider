@@ -8,6 +8,7 @@ import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
+import InsertFromModulesButton from '../PassableValuePicker';
 import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import ImportReviewModal from '../ImportReviewModal';
@@ -745,6 +746,12 @@ export default function Step2() {
             value={getExpectedInput(factor)}
             onChangeText={(v) => handleExpectedValueChange(factor.id, v)}
             onBlur={() => handleExpectedValueBlur(factor.id)}
+          />
+          <InsertFromModulesButton
+            accept="all"
+            compact
+            title="Insert as Expected Value"
+            onPick={(it) => { handleExpectedValueChange(factor.id, it.value); updateFactor(factor.id, { expected_value: it.value }); }}
           />
           <View style={[styles.dataTypeBadge, detectedType === 'text' ? styles.dataTypeBadgeText : null]}>
             <Text style={styles.dataTypeBadgeLabel}>{detectedType === 'numeric' ? '123' : 'abc'}</Text>
@@ -1713,6 +1720,7 @@ export default function Step2() {
           onChangeText={setNewFactorName}
           onSubmitEditing={addFactor}
         />
+        <InsertFromModulesButton accept="text" title="Insert as Factor Name" onPick={(it) => setNewFactorName(it.value)} />
         <TouchableOpacity style={styles.addButton} onPress={addFactor}>
           <Ionicons name="add" size={24} color={COLORS.white} />
         </TouchableOpacity>

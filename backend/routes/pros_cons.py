@@ -530,6 +530,9 @@ async def add_option(analysis_id: str, body: Dict[str, Any], user: dict = Depend
         description=body.get("description") or "",
         order=len(doc["options"]),
     ).dict()
+    # Inter-module hand-off: option inserted from a Solution Finder SMART Goal
+    if isinstance(body.get("sf_ref"), dict):
+        opt["sf_ref"] = body["sf_ref"]
     doc["options"].append(opt)
     await _persist(analysis_id, user["user_id"], {"options": doc["options"]})
     return {"id": opt["id"], "option": opt}

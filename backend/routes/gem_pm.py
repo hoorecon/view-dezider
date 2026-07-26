@@ -97,6 +97,20 @@ def _node_from_body(body: Dict[str, Any]) -> Dict[str, Any]:
 
 # ═══════════════════════════ WBS NODES ═══════════════════════════
 
+@router.get("/nodes/all")
+async def list_all_nodes(request: Request, user: dict = Depends(get_current_user)):
+    """Flat list of the user's PM nodes across all GEM goals — used by the CTT
+    'classify under' picker. Optional ?types=deliverable,work_package filter."""
+    q: Dict[str, Any] = {"user_id": user["user_id"]}
+    types = request.query_params.get("types")
+    if types:
+        q["node_type"] = {"$in": [t.strip() for t in types.split(",") if t.strip()]}
+    rows = await db.gem_pm_nodes.find(
+        q, {"_id": 0, "node_id": 1, "goal_id": 1, "node_type": 1, "title": 1}
+    ).sort("updated_at", -1).to_list(500)
+    return rows
+
+
 @router.post("/{goal_id}/nodes")
 async def create_node(goal_id: str, request: Request, user: dict = Depends(get_current_user)):
     await _own_goal(goal_id, user)

@@ -3,7 +3,7 @@ import { showAlert } from '../../src/utils/alert';
 import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Switch,
+  TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Switch, Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -70,6 +70,7 @@ export default function CTTTaskScreen() {
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const spawnParams = useLocalSearchParams<{ parent_task_id?: string; parent_title?: string }>();
   const { session } = useAuthStore();
   const editId = id as string | undefined;
   const [loading, setLoading] = useState(false);
@@ -107,6 +108,58 @@ export default function CTTTaskScreen() {
     if (editId) loadTask();
   }, [editId]);
 
+  // Spawned as a SUB-TASK from another CTT task ("Trigger from this task")
+  useEffect(() => {
+    if (!editId && spawnParams?.parent_task_id) {
+      setClassificationRef({
+        type: 'parent_task',
+        ref_id: String(spawnParams.parent_task_id),
+        label: String(spawnParams.parent_title || 'Parent task'),
+      });
+    }
+  }, [editId, spawnParams?.parent_task_id]);
+
+  const CLS_TYPE_LABELS: Record<string, string> = {
+    goal: 'Goal', milestone: 'Milestone', deliverable: 'Deliverable',
+    work_package: 'Work Package', parent_task: 'Parent CTT Task',
+  };
+
+  const openClsPicker = async () => {
+    setClsPickerOpen(true);
+    setClsLoading(true);
+    try {
+      const [goalsR, nodesR, tasksR] = await Promise.all([
+        api.get('/goal-setter/goals').catch(() => ({ data: [] })),
+        api.get('/gem-pm/nodes/all?types=deliverable,work_package').catch(() => ({ data: [] })),
+        api.get('/ctt/tasks').catch(() => ({ data: [] })),
+      ]);
+      const opts: { type: string; ref_id: string; label: string }[] = [];
+      (goalsR.data || []).forEach((g: any) => {
+        opts.push({ type: 'goal', ref_id: g.goal_id, label: g.title || 'Goal' });
+        (g.milestones || []).forEach((m: any) => {
+          opts.push({ type: 'milestone', ref_id: m.milestone_id, label: `${m.title || 'Milestone'} · ${g.title || ''}` });
+        });
+      });
+      (nodesR.data || []).forEach((n: any) => {
+        opts.push({ type: n.node_type, ref_id: n.node_id, label: n.title || 'PM node' });
+      });
+      (tasksR.data || []).forEach((t: any) => {
+        if (t.task_id !== editId) opts.push({ type: 'parent_task', ref_id: t.task_id, label: t.task || 'CTT task' });
+      });
+      setClsOptions(opts);
+    } finally { setClsLoading(false); }
+  };
+
+  // ── "Trigger from this task" launchers (Dependencies & Help) ──
+  const TRIGGERS = [
+    { id: 'sf', label: 'Solution Finder', icon: 'bulb', color: '#4F46E5', go: () => router.push({ pathname: '/tools/solution-finder', params: { seed: task } } as any) },
+    { id: 'dez', label: 'MyDezider', icon: 'git-compare', color: '#8E24AA', go: () => router.push({ pathname: '/tools/new-decision', params: { module: 'dezider' } } as any) },
+    { id: 'pc', label: 'Pros & Cons', icon: 'swap-vertical', color: '#0D9488', go: () => router.push('/tools/pros-cons' as any) },
+    { id: 'sub', label: 'Sub Task', icon: 'git-branch', color: '#F59E0B', go: () => router.push({ pathname: '/tools/ctt-task', params: { parent_task_id: editId || '', parent_title: task } } as any) },
+    { id: 'life', label: 'LifeStyle Routine', icon: 'repeat', color: '#B45309', go: () => router.push('/tools/lifestyle' as any) },
+    { id: 'goal', label: 'Goal', icon: 'flag', color: '#059669', go: () => router.push('/tools/goal-setter' as any) },
+  ];
+
   const loadTask = async () => {
     setLoading(true);
     try {
@@ -137,6 +190,7 @@ export default function CTTTaskScreen() {
       setSourceType(d.source_type || 'manual');
       setSourceId(d.source_id || '');
       setLinkedFreedoms(d.linked_freedoms || []);
+      setClassificationRef(d.classification_ref || null);
     } catch (e) {
       showAlert('Error', 'Failed to load task');
       safeBack(router);
@@ -176,6 +230,7 @@ export default function CTTTaskScreen() {
         is_routine: isRoutine,
         frequency: isRoutine ? frequency : null,
         linked_freedoms: linkedFreedoms,
+        classification_ref: classificationRef,
       };
       if (editId) {
         await api.put(`/ctt/tasks/${editId}`, payload);
@@ -348,6 +403,29 @@ export default function CTTTaskScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              <Text style={st.label}>Link to pre-existing item</Text>
+              <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 6 }}>
+                Classify this task under a Goal, Milestone, Deliverable, Work Package or a Parent CTT Task.
+              </Text>
+              {classificationRef ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EEF2FF', borderRadius: 10, padding: 10 }}>
+                  <Ionicons name="link" size={14} color="#4F46E5" />
+                  <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: '#3730A3' }} numberOfLines={1}>
+                    {CLS_TYPE_LABELS[classificationRef.type] || classificationRef.type}: {classificationRef.label}
+                  </Text>
+                  <TouchableOpacity onPress={() => setClassificationRef(null)} hitSlop={8}>
+                    <Ionicons name="close-circle" size={16} color="#6366F1" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#C7D2FE', borderStyle: 'dashed', borderRadius: 10, padding: 10 }}
+                  onPress={openClsPicker}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color="#4F46E5" />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#4F46E5' }}>Choose item to link…</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -499,6 +577,23 @@ export default function CTTTaskScreen() {
               />
 
               <LinkedFreedomsPicker value={linkedFreedoms} onChange={setLinkedFreedoms} />
+
+              <Text style={st.label}>Trigger from this task</Text>
+              <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 6 }}>
+                A task can involve a problem to be solved or a decision to be made — launch the right tool with this task&apos;s context.
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {TRIGGERS.map(t => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: t.color + '15', borderWidth: 1, borderColor: t.color + '40', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 }}
+                    onPress={t.go}
+                  >
+                    <Ionicons name={t.icon as any} size={13} color={t.color} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: t.color }}>{t.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
         </ScrollView>
@@ -555,6 +650,51 @@ export default function CTTTaskScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Classification "link to pre-existing item" picker */}
+      <Modal visible={clsPickerOpen} transparent animationType="slide" onRequestClose={() => setClsPickerOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxWidth: 640, width: '100%', alignSelf: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: COLORS.textPrimary }}>Link to pre-existing item</Text>
+              <TouchableOpacity onPress={() => setClsPickerOpen(false)}><Ionicons name="close" size={22} color={COLORS.textSecondary} /></TouchableOpacity>
+            </View>
+            {clsLoading ? <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 24 }} /> : (
+              <ScrollView style={{ maxHeight: 420 }}>
+                {['goal', 'milestone', 'deliverable', 'work_package', 'parent_task'].map(tp => {
+                  const list = clsOptions.filter(o => o.type === tp);
+                  if (list.length === 0) return null;
+                  return (
+                    <View key={tp}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.textMuted, textTransform: 'uppercase', marginTop: 12, marginBottom: 4 }}>
+                        {CLS_TYPE_LABELS[tp]} ({list.length})
+                      </Text>
+                      {list.map(o => (
+                        <TouchableOpacity
+                          key={`${o.type}-${o.ref_id}`}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}
+                          onPress={() => { setClassificationRef(o); setClsPickerOpen(false); }}
+                        >
+                          <Ionicons
+                            name={tp === 'goal' ? 'flag' : tp === 'milestone' ? 'flag-outline' : tp === 'deliverable' ? 'cube' : tp === 'work_package' ? 'briefcase' : 'git-branch'}
+                            size={14} color="#4F46E5"
+                          />
+                          <Text style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary }} numberOfLines={1}>{o.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })}
+                {clsOptions.length === 0 && (
+                  <Text style={{ fontSize: 12, color: COLORS.textMuted, textAlign: 'center', marginVertical: 24 }}>
+                    Nothing to link yet — create Goals (Goal Setter), PM nodes (GEM PM) or other CTT tasks first.
+                  </Text>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

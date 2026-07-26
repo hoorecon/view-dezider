@@ -97,6 +97,10 @@ class DecisionOption(BaseModel):
     ai_rationale: Optional[str] = None       # one-line why this option fits
     price_range: Optional[str] = None        # store item price badge
     rating: Optional[float] = None           # store item avg rating badge
+    # ── Inter-module hand-off: inserted from a Solution Finder SMART Goal ──
+    # {"entry_id": ..., "label": ...} — UI shows a 🔗 chip that deep-links to
+    # the Solution Finder entry (where the detailed Q5 action plan lives).
+    sf_ref: Optional[Dict[str, Any]] = None
 
 
 class PRRDecision(BaseModel):

@@ -31,6 +31,7 @@ import { COLORS } from '../../src/constants/colors';
 import { DECISION_TYPES } from '../../src/constants/decisionTypes';
 import { useAuthStore } from '../../src/store/authStore';
 import api from '../../src/utils/api';
+import InsertFromModulesButton from '../../src/components/PassableValuePicker';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import { addDaysISO } from '../../src/utils/dateLocalize';
 import { useLifeAreas } from '../../src/utils/useLifeAreas';
@@ -242,6 +243,13 @@ export default function SimpleSolutionFinder() {
     // Gate load on auth hydration to avoid the cold-deep-link 401 race.
     if (editId && authHydrated) loadEntry();
   }, [editId, authHydrated]);
+
+  // Recursive SF seed (from a Q3/Q4b/Q4c row or a CTT task): pre-fills the
+  // SMART Goal one-liner when starting a NEW Solution Finder entry.
+  const seedParam = params.seed as string | undefined;
+  useEffect(() => {
+    if (seedParam && !editId) setSmartGoal(String(seedParam));
+  }, [seedParam, editId]);
 
   const loadEntry = async () => {
     setLoading(true);
@@ -769,6 +777,15 @@ export default function SimpleSolutionFinder() {
         <Ionicons name="grid-outline" size={10} color="#0F766E" />
         <Text style={s.asmPillText}>ASM</Text>
       </TouchableOpacity>
+      {(source === 'solution' || source === 'mitigation' || source === 'contingency') && (
+        <TouchableOpacity
+          onPress={() => router.push({ pathname: '/tools/solution-finder', params: { seed: label || '' } } as any)}
+          style={[s.asmPill, { backgroundColor: '#EEF2FF' }]}
+        >
+          <Ionicons name="git-branch-outline" size={10} color="#4F46E5" />
+          <Text style={[s.asmPillText, { color: '#4F46E5' }]}>New SF</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -1361,6 +1378,7 @@ export default function SimpleSolutionFinder() {
                   onChangeText={t => setNewSolText(prev => ({ ...prev, [r.id]: t }))}
                   onSubmitEditing={() => addSolution(r.id)}
                 />
+                <InsertFromModulesButton accept="text" compact title="Insert as Solution" onPick={(it) => setNewSolText(prev => ({ ...prev, [r.id]: it.value }))} />
                 <TouchableOpacity style={s.addBtn} onPress={() => addSolution(r.id)}>
                   <Ionicons name="add" size={18} color="#FFF" />
                 </TouchableOpacity>
@@ -1582,6 +1600,7 @@ export default function SimpleSolutionFinder() {
                   onChangeText={t => setNewMitText(prev => ({ ...prev, [r.id]: t }))}
                   onSubmitEditing={() => addMitigation(r.id)}
                 />
+                <InsertFromModulesButton accept="text" compact title="Insert as Mitigation" onPick={(it) => setNewMitText(prev => ({ ...prev, [r.id]: it.value }))} />
                 <TouchableOpacity style={s.addBtn} onPress={() => addMitigation(r.id)}>
                   <Ionicons name="add" size={18} color="#FFF" />
                 </TouchableOpacity>
@@ -1618,6 +1637,7 @@ export default function SimpleSolutionFinder() {
                   onChangeText={t => setNewConText(prev => ({ ...prev, [r.id]: t }))}
                   onSubmitEditing={() => addContingency(r.id)}
                 />
+                <InsertFromModulesButton accept="text" compact title="Insert as Contingency" onPick={(it) => setNewConText(prev => ({ ...prev, [r.id]: it.value }))} />
                 <TouchableOpacity style={s.addBtn} onPress={() => addContingency(r.id)}>
                   <Ionicons name="add" size={18} color="#FFF" />
                 </TouchableOpacity>
