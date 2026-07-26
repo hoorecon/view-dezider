@@ -72,7 +72,9 @@ function insideOverlay(node: any): boolean {
 }
 
 // Fallback: the most relevant visible scroller. A scroller inside a modal /
-// bottom-sheet overlay always wins over the page scroller behind it.
+// bottom-sheet overlay always wins over the page scroller behind it. Also
+// heavily weighs by content-overflow size (scrollHeight − clientHeight) so
+// the tab's main list beats any tiny horizontal filter strip.
 function findBestScroller(): HTMLElement | null {
   if (typeof document === 'undefined') return null;
   const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -90,9 +92,13 @@ function findBestScroller(): HTMLElement | null {
     if (rect.bottom <= 0 || rect.top >= vh) continue;
 
     const visibleHeight = Math.min(rect.bottom, vh) - Math.max(rect.top, 0);
-    // Strongly prefer a scroller that lives inside a modal/bottom-sheet so the
-    // page behind the overlay never steals the keys.
-    const score = visibleHeight + (insideOverlay(el) ? 1_000_000 : 0);
+    const overflow = el.scrollHeight - el.clientHeight;
+    // Score:
+    //   • overflow×1000 — a scroller with more content to reveal always wins
+    //   • visibleHeight — tiebreak by on-screen size
+    //   • +1e9 if inside a fixed-position overlay (modal/bottom-sheet), so
+    //     modals steal keys from the page behind.
+    const score = overflow * 1000 + visibleHeight + (insideOverlay(el) ? 1_000_000_000 : 0);
     if (score > bestScore) {
       bestScore = score;
       best = el;
@@ -124,7 +130,32 @@ export default function WebScrollFix() {
     // Diagnostic tag — users can verify the fix is live by opening DevTools
     // console and typing `__wsf`. If it prints an object, the fix is loaded;
     // if `undefined`, the deployed bundle is stale (hard-refresh needed).
-    (window as any).__wsf = { version: 'v3-2026-07-25', ready: true };
+    (window as any).__wsf = { version: 'v4-2026-07-26', ready: true };
+
+    // ── Auto-focus body so keys route to us WITHOUT any user click first ─
+    // When a user opens the site by typing in the URL bar (or lands via a
+    // redirect / hard-refresh), keyboard focus stays on the browser chrome,
+    // so `keydown` events never reach `document`. Chrome only routes keys
+    // to the page after any DOM interaction. We defeat this by giving the
+    // body a programmatic tabindex and focusing it — allowed because there
+    // is an active user session (login flow already involved DOM clicks).
+    // Runs once on mount and again after each navigation.
+    const grabFocus = () => {
+      try {
+        if (document.body.getAttribute('tabindex') === null) {
+          document.body.setAttribute('tabindex', '-1');
+        }
+        const ae = document.activeElement;
+        if (!ae || ae === document.body || ae === document.documentElement) {
+          (document.body as any).focus?.({ preventScroll: true });
+        }
+      } catch { /* ignore */ }
+    };
+    grabFocus();
+    setTimeout(grabFocus, 100);
+    setTimeout(grabFocus, 500);
+    const onNavigate = () => { setTimeout(grabFocus, 60); };
+    window.addEventListener('popstate', onNavigate);
 
     // ── Defensive focus-blur (June 2026) ─────────────────────────
     // When the user clicks a bottom-tab anchor (e.g. "Solution Box"), the
@@ -287,6 +318,7 @@ export default function WebScrollFix() {
       window.removeEventListener('mousemove', onMove as any);
       window.removeEventListener('pointerdown', onPointerDown, { capture: true } as any);
       window.removeEventListener('focusin', onFocusIn, { capture: true } as any);
+      window.removeEventListener('popstate', onNavigate);
     };
   }, []);
 

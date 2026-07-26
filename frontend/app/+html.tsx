@@ -99,13 +99,16 @@ export default function Root({ children }: PropsWithChildren) {
                     if (r.height < 80) continue;
                     if (r.bottom <= 0 || r.top >= vh) continue;
                     var visH = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+                    var overflow = el.scrollHeight - el.clientHeight;
                     var fixedBonus = 0;
                     var walk = el;
                     while (walk && walk !== document.body) {
-                      if (getComputedStyle(walk).position === 'fixed') { fixedBonus = 1e6; break; }
+                      if (getComputedStyle(walk).position === 'fixed') { fixedBonus = 1e9; break; }
                       walk = walk.parentElement;
                     }
-                    var score = visH + fixedBonus;
+                    // Prefer scrollers with the most content to reveal (overflow) —
+                    // guarantees a tab's main list beats any tiny horizontal filter strip.
+                    var score = overflow * 1000 + visH + fixedBonus;
                     if (score > bestScore) { bestScore = score; best = el; }
                   }
                   return best;
@@ -171,6 +174,27 @@ export default function Root({ children }: PropsWithChildren) {
                 }
                 window.addEventListener('keydown', onKey, { capture: true, passive: false });
                 window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+
+                // Auto-focus body so keys route to us WITHOUT any user click first.
+                function grabFocus() {
+                  try {
+                    if (document.body.getAttribute('tabindex') === null) {
+                      document.body.setAttribute('tabindex', '-1');
+                    }
+                    var ae = document.activeElement;
+                    if (!ae || ae === document.body || ae === document.documentElement) {
+                      document.body.focus({ preventScroll: true });
+                    }
+                  } catch (_) {}
+                }
+                if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', grabFocus);
+                } else {
+                  grabFocus();
+                }
+                setTimeout(grabFocus, 200);
+                setTimeout(grabFocus, 800);
+                window.addEventListener('popstate', function () { setTimeout(grabFocus, 60); });
               })();
             `,
           }}
