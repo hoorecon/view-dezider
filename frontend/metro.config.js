@@ -12,7 +12,7 @@ const config = getDefaultConfig(__dirname);
 // `.metro-cache` unless the path itself changes).
 //
 // Alternatively set METRO_CACHE_ROOT in your env to override.
-const CACHE_VERSION = 'v7-2026-07-26-blur-tab-anchor';
+const CACHE_VERSION = 'v8-2026-07-26-jit-blur';
 const root = process.env.METRO_CACHE_ROOT
   || path.join(__dirname, `.metro-cache-${CACHE_VERSION}`);
 config.cacheStores = [

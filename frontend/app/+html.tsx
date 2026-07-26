@@ -143,6 +143,21 @@ export default function Root({ children }: PropsWithChildren) {
                   var isJump = e.key === 'Home' || e.key === 'End';
                   if ((e.ctrlKey || e.metaKey || e.altKey) && !isJump) return;
                   if (e.altKey && isJump) return;
+
+                  // JIT focus cleanup — if a tab anchor / link / button is
+                  // still focused (from a tab click or React-Nav re-focus),
+                  // blur it right now so subsequent keydown behaves normally.
+                  // Guarded against text inputs so we never fight typing focus.
+                  var ae = document.activeElement;
+                  if (ae && ae !== document.body && ae !== document.documentElement) {
+                    var tg = ae.tagName && ae.tagName.toLowerCase();
+                    var rl = ae.getAttribute && ae.getAttribute('role');
+                    var isFormField = (tg === 'input' || tg === 'textarea' || tg === 'select' || ae.isContentEditable || rl === 'textbox' || rl === 'combobox');
+                    if (!isFormField && (tg === 'a' || tg === 'button' || rl === 'tab' || rl === 'link' || rl === 'button')) {
+                      try { ae.blur(); } catch (_) {}
+                    }
+                  }
+
                   var s = pickScroller();
                   if (!s) return;
                   var page = Math.max(s.clientHeight * 0.9, 100);

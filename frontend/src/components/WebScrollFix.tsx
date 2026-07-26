@@ -123,14 +123,11 @@ export default function WebScrollFix() {
     // installed itself, skip — its listeners are identical and it runs
     // before React mounts, so avoiding double-attach keeps behaviour clean.
     if ((window as any).__wsf_html) {
-      (window as any).__wsf = { version: 'v7-2026-07-26-blur-tab-anchor', ready: true, delegated_to_html_inline: true };
+      (window as any).__wsf = { version: 'v8-2026-07-26-jit-blur-in-keydown', ready: true, delegated_to_html_inline: true };
       return;
     }
 
-    // Diagnostic tag — users can verify the fix is live by opening DevTools
-    // console and typing `__wsf`. If it prints an object, the fix is loaded;
-    // if `undefined`, the deployed bundle is stale (hard-refresh needed).
-    (window as any).__wsf = { version: 'v7-2026-07-26-blur-tab-anchor', ready: true };
+    (window as any).__wsf = { version: 'v8-2026-07-26-jit-blur-in-keydown', ready: true };
 
     // ── Auto-focus body so keys route to us WITHOUT any user click first ─
     // When a user opens the site by typing in the URL bar (or lands via a
@@ -275,6 +272,21 @@ export default function WebScrollFix() {
       if ((e.ctrlKey || e.metaKey || e.altKey) && !isJumpKey) return;
       // Plain Alt/Ctrl+ArrowKeys etc. → let the browser handle.
       if (e.altKey && isJumpKey) return;
+
+      // JIT focus cleanup — if a tab anchor / link / button still holds
+      // focus (from a client-side tab click), blur it right now so key
+      // routing normalises. Text inputs are strictly excluded so typing
+      // is never disrupted.
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && ae !== document.body && ae !== document.documentElement) {
+        const tg = ae.tagName?.toLowerCase();
+        const rl = ae.getAttribute?.('role');
+        const isFormField = tg === 'input' || tg === 'textarea' || tg === 'select'
+          || (ae as any).isContentEditable || rl === 'textbox' || rl === 'combobox';
+        if (!isFormField && (tg === 'a' || tg === 'button' || rl === 'tab' || rl === 'link' || rl === 'button')) {
+          try { ae.blur(); } catch { /* ignore */ }
+        }
+      }
 
       const scroller = pickScroller();
       if (!scroller) return;
