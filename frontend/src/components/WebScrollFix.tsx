@@ -113,6 +113,13 @@ function documentScroller(): HTMLElement | null {
 export default function WebScrollFix() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    // If the HTML-level inline fallback (see app/+html.tsx) has already
+    // installed itself, skip — its listeners are identical and it runs
+    // before React mounts, so avoiding double-attach keeps behaviour clean.
+    if ((window as any).__wsf_html) {
+      (window as any).__wsf = { version: 'v3-2026-07-25', ready: true, delegated_to_html_inline: true };
+      return;
+    }
 
     // Diagnostic tag — users can verify the fix is live by opening DevTools
     // console and typing `__wsf`. If it prints an object, the fix is loaded;

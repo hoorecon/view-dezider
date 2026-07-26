@@ -45,6 +45,136 @@ export default function Root({ children }: PropsWithChildren) {
             `,
           }}
         />
+        {/*
+          HTML-level scroll fallback (July 2026)
+          ────────────────────────────────────────────────────────────────
+          Runs BEFORE any React / expo-router JS. Even if the React bundle
+          fails to load, is stale, or WebScrollFix isn't mounted, this
+          native inline handler guarantees PageUp / PageDown / Space /
+          Home / End / Arrow keys scroll the visible content area.
+          Idempotent — tags itself on window so a later React mount won't
+          double-attach.
+          ────────────────────────────────────────────────────────────────
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                if (window.__wsf_html) return;
+                window.__wsf_html = { installed_at: Date.now() };
+                var KEYS = ['PageDown','PageUp','Home','End',' ','Spacebar','ArrowDown','ArrowUp'];
+                var lastX = (window.innerWidth||800)/2, lastY = (window.innerHeight||600)/2;
+                document.addEventListener('mousemove', function (e) { lastX = e.clientX; lastY = e.clientY; }, { passive: true, capture: true });
+
+                function isScrollable(el) {
+                  if (!el || el.nodeType !== 1) return false;
+                  if (el.scrollHeight - el.clientHeight < 8) return false;
+                  var oy = getComputedStyle(el).overflowY;
+                  return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+                }
+                function nearestScrollable(node) {
+                  var el = node;
+                  while (el && el !== document.body && el !== document.documentElement) {
+                    if (isScrollable(el)) return el;
+                    el = el.parentElement;
+                  }
+                  return null;
+                }
+                function isTextEntry(el) {
+                  if (!el) return false;
+                  var tag = (el.tagName||'').toLowerCase();
+                  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+                  if (el.isContentEditable) return true;
+                  var role = el.getAttribute && el.getAttribute('role');
+                  return role === 'textbox' || role === 'combobox' || role === 'slider';
+                }
+                function findBestScroller() {
+                  var vh = window.innerHeight || document.documentElement.clientHeight;
+                  var best = null, bestScore = -1;
+                  var divs = document.querySelectorAll('div');
+                  for (var i = 0; i < divs.length; i++) {
+                    var el = divs[i];
+                    if (!isScrollable(el)) continue;
+                    var r = el.getBoundingClientRect();
+                    if (r.height < 80) continue;
+                    if (r.bottom <= 0 || r.top >= vh) continue;
+                    var visH = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+                    var fixedBonus = 0;
+                    var walk = el;
+                    while (walk && walk !== document.body) {
+                      if (getComputedStyle(walk).position === 'fixed') { fixedBonus = 1e6; break; }
+                      walk = walk.parentElement;
+                    }
+                    var score = visH + fixedBonus;
+                    if (score > bestScore) { bestScore = score; best = el; }
+                  }
+                  return best;
+                }
+                function pickScroller() {
+                  var s = nearestScrollable(document.elementFromPoint(lastX, lastY));
+                  if (s) return s;
+                  s = nearestScrollable(document.activeElement);
+                  if (s) return s;
+                  return findBestScroller();
+                }
+                // Defocus tab-bar anchors on mouse click so PageDown never
+                // targets a non-scrollable fixed-position button.
+                var lastPointerAt = 0;
+                document.addEventListener('pointerdown', function () { lastPointerAt = Date.now(); }, { capture: true, passive: true });
+                document.addEventListener('focusin', function (e) {
+                  var t = e.target; if (!t) return;
+                  if (Date.now() - lastPointerAt > 100) return;
+                  var tag = (t.tagName||'').toLowerCase();
+                  var role = t.getAttribute && t.getAttribute('role');
+                  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+                  if (t.isContentEditable) return;
+                  if (role === 'textbox' || role === 'combobox') return;
+                  if (tag === 'a' || role === 'tab' || role === 'button' || role === 'link') {
+                    try { t.blur && t.blur(); } catch (_) {}
+                  }
+                }, { capture: true, passive: true });
+
+                function onKey(e) {
+                  if (KEYS.indexOf(e.key) === -1) return;
+                  if (isTextEntry(e.target) || isTextEntry(document.activeElement)) return;
+                  var isJump = e.key === 'Home' || e.key === 'End';
+                  if ((e.ctrlKey || e.metaKey || e.altKey) && !isJump) return;
+                  if (e.altKey && isJump) return;
+                  var s = pickScroller();
+                  if (!s) return;
+                  var page = Math.max(s.clientHeight * 0.9, 100);
+                  var line = 60;
+                  switch (e.key) {
+                    case 'PageDown': s.scrollBy({ top: page, behavior: 'smooth' }); break;
+                    case 'PageUp':   s.scrollBy({ top: -page, behavior: 'smooth' }); break;
+                    case ' ':
+                    case 'Spacebar': s.scrollBy({ top: e.shiftKey ? -page : page, behavior: 'smooth' }); break;
+                    case 'ArrowDown': s.scrollBy({ top: line, behavior: 'auto' }); break;
+                    case 'ArrowUp':   s.scrollBy({ top: -line, behavior: 'auto' }); break;
+                    case 'Home': s.scrollTo({ top: 0, behavior: 'smooth' }); break;
+                    case 'End':  s.scrollTo({ top: s.scrollHeight, behavior: 'smooth' }); break;
+                    default: return;
+                  }
+                  e.preventDefault();
+                }
+                function onWheel(e) {
+                  if (e.ctrlKey || e.metaKey || e.altKey) return;
+                  if (!e.deltaY) return;
+                  if (nearestScrollable(e.target)) return;
+                  var s = findBestScroller();
+                  if (!s) return;
+                  var dy = e.deltaY;
+                  if (e.deltaMode === 1) dy *= 16;
+                  else if (e.deltaMode === 2) dy *= s.clientHeight * 0.9;
+                  s.scrollBy({ top: dy, behavior: 'auto' });
+                  e.preventDefault();
+                }
+                window.addEventListener('keydown', onKey, { capture: true, passive: false });
+                window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+              })();
+            `,
+          }}
+        />
       </head>
       <body
         style={{
