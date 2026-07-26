@@ -61,7 +61,7 @@ export default function Root({ children }: PropsWithChildren) {
             __html: `
               (function () {
                 if (window.__wsf_html) return;
-                window.__wsf_html = { installed_at: Date.now(), version: 'v10-2026-07-26-008-julyfix' };
+                window.__wsf_html = { installed_at: Date.now(), version: 'v11-2026-07-26-009-ariahidden' };
                 var KEYS = ['PageDown','PageUp','Home','End',' ','Spacebar','ArrowDown','ArrowUp'];
                 var lastX = (window.innerWidth||800)/2, lastY = (window.innerHeight||600)/2;
                 document.addEventListener('mousemove', function (e) { lastX = e.clientX; lastY = e.clientY; }, { passive: true, capture: true });
@@ -72,10 +72,24 @@ export default function Root({ children }: PropsWithChildren) {
                   var oy = getComputedStyle(el).overflowY;
                   return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
                 }
+                // React-Navigation web keeps inactive tab screens mounted with
+                // aria-hidden="true" on their wrapper (they stay display:flex,
+                // just visually swapped out). Without excluding those, our
+                // "best scroller" heuristic picks the previously-open tab's
+                // ScrollView (bigger content) and PageDown scrolls the wrong
+                // screen after a tab switch.
+                function isInInactiveTab(el) {
+                  var walk = el;
+                  while (walk && walk !== document.body) {
+                    if (walk.getAttribute && walk.getAttribute('aria-hidden') === 'true') return true;
+                    walk = walk.parentElement;
+                  }
+                  return false;
+                }
                 function nearestScrollable(node) {
                   var el = node;
                   while (el && el !== document.body && el !== document.documentElement) {
-                    if (isScrollable(el)) return el;
+                    if (isScrollable(el) && !isInInactiveTab(el)) return el;
                     el = el.parentElement;
                   }
                   return null;
@@ -95,6 +109,9 @@ export default function Root({ children }: PropsWithChildren) {
                   for (var i = 0; i < divs.length; i++) {
                     var el = divs[i];
                     if (!isScrollable(el)) continue;
+                    // Skip scrollers inside an aria-hidden inactive tab screen
+                    // (react-navigation keeps prev tab mounted but aria-hidden).
+                    if (isInInactiveTab(el)) continue;
                     var r = el.getBoundingClientRect();
                     if (r.height < 80) continue;
                     if (r.bottom <= 0 || r.top >= vh) continue;

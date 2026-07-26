@@ -51,6 +51,21 @@ function isScrollable(el: any): boolean {
   return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
 }
 
+// React Navigation marks inactive tab screen wrappers with aria-hidden="true"
+// even though CSS-wise they remain display:flex / visibility:visible. Without
+// this filter, our "best scroller" heuristic happily picks the invisible
+// previously-open tab's ScrollView because it has more content to scroll,
+// making PageDown/PageUp scroll the WRONG (hidden) screen. Excluding any
+// scroller whose ancestor chain contains aria-hidden="true" fixes tab-switch.
+function isInInactiveTab(el: any): boolean {
+  let walk: HTMLElement | null = el as HTMLElement | null;
+  while (walk && walk !== document.body) {
+    if (walk.getAttribute && walk.getAttribute('aria-hidden') === 'true') return true;
+    walk = walk.parentElement;
+  }
+  return false;
+}
+
 // Walk up from a node to the first scrollable ancestor (inclusive).
 function nearestScrollable(node: any): HTMLElement | null {
   let el = node as HTMLElement | null;
@@ -85,6 +100,10 @@ function findBestScroller(): HTMLElement | null {
   for (let i = 0; i < nodes.length; i++) {
     const el = nodes[i] as HTMLElement;
     if (!isScrollable(el)) continue;
+    // Skip scrollers inside inactive tab screens (react-navigation web keeps
+    // them mounted with aria-hidden="true"). Without this we'd scroll the
+    // previously-open tab's content instead of the visible one.
+    if (isInInactiveTab(el)) continue;
 
     const rect = el.getBoundingClientRect();
     if (rect.height < 80) continue;
@@ -123,11 +142,11 @@ export default function WebScrollFix() {
     // installed itself, skip — its listeners are identical and it runs
     // before React mounts, so avoiding double-attach keeps behaviour clean.
     if ((window as any).__wsf_html) {
-      (window as any).__wsf = { version: 'v10-2026-07-26-008-julyfix', ready: true, delegated_to_html_inline: true };
+      (window as any).__wsf = { version: 'v11-2026-07-26-009-ariahidden', ready: true, delegated_to_html_inline: true };
       return;
     }
 
-    (window as any).__wsf = { version: 'v10-2026-07-26-008-julyfix', ready: true };
+    (window as any).__wsf = { version: 'v11-2026-07-26-009-ariahidden', ready: true };
 
     // ── ScrollView tabIndex tagger (July 2026) ──────────────────
     // Make every RN-Web ScrollView container div focusable via
