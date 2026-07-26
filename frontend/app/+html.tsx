@@ -61,7 +61,7 @@ export default function Root({ children }: PropsWithChildren) {
             __html: `
               (function () {
                 if (window.__wsf_html) return;
-                window.__wsf_html = { installed_at: Date.now() };
+                window.__wsf_html = { installed_at: Date.now(), version: 'v9-tabindex-on-scrollers' };
                 var KEYS = ['PageDown','PageUp','Home','End',' ','Spacebar','ArrowDown','ArrowUp'];
                 var lastX = (window.innerWidth||800)/2, lastY = (window.innerHeight||600)/2;
                 document.addEventListener('mousemove', function (e) { lastX = e.clientX; lastY = e.clientY; }, { passive: true, capture: true });
@@ -106,8 +106,6 @@ export default function Root({ children }: PropsWithChildren) {
                       if (getComputedStyle(walk).position === 'fixed') { fixedBonus = 1e9; break; }
                       walk = walk.parentElement;
                     }
-                    // Prefer scrollers with the most content to reveal (overflow) —
-                    // guarantees a tab's main list beats any tiny horizontal filter strip.
                     var score = overflow * 1000 + visH + fixedBonus;
                     if (score > bestScore) { bestScore = score; best = el; }
                   }
@@ -120,22 +118,6 @@ export default function Root({ children }: PropsWithChildren) {
                   if (s) return s;
                   return findBestScroller();
                 }
-                // Defocus tab-bar anchors on mouse click so PageDown never
-                // targets a non-scrollable fixed-position button.
-                var lastPointerAt = 0;
-                document.addEventListener('pointerdown', function () { lastPointerAt = Date.now(); }, { capture: true, passive: true });
-                document.addEventListener('focusin', function (e) {
-                  var t = e.target; if (!t) return;
-                  if (Date.now() - lastPointerAt > 100) return;
-                  var tag = (t.tagName||'').toLowerCase();
-                  var role = t.getAttribute && t.getAttribute('role');
-                  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-                  if (t.isContentEditable) return;
-                  if (role === 'textbox' || role === 'combobox') return;
-                  if (tag === 'a' || role === 'tab' || role === 'button' || role === 'link') {
-                    try { t.blur && t.blur(); } catch (_) {}
-                  }
-                }, { capture: true, passive: true });
 
                 function onKey(e) {
                   if (KEYS.indexOf(e.key) === -1) return;
@@ -143,21 +125,6 @@ export default function Root({ children }: PropsWithChildren) {
                   var isJump = e.key === 'Home' || e.key === 'End';
                   if ((e.ctrlKey || e.metaKey || e.altKey) && !isJump) return;
                   if (e.altKey && isJump) return;
-
-                  // JIT focus cleanup — if a tab anchor / link / button is
-                  // still focused (from a tab click or React-Nav re-focus),
-                  // blur it right now so subsequent keydown behaves normally.
-                  // Guarded against text inputs so we never fight typing focus.
-                  var ae = document.activeElement;
-                  if (ae && ae !== document.body && ae !== document.documentElement) {
-                    var tg = ae.tagName && ae.tagName.toLowerCase();
-                    var rl = ae.getAttribute && ae.getAttribute('role');
-                    var isFormField = (tg === 'input' || tg === 'textarea' || tg === 'select' || ae.isContentEditable || rl === 'textbox' || rl === 'combobox');
-                    if (!isFormField && (tg === 'a' || tg === 'button' || rl === 'tab' || rl === 'link' || rl === 'button')) {
-                      try { ae.blur(); } catch (_) {}
-                    }
-                  }
-
                   var s = pickScroller();
                   if (!s) return;
                   var page = Math.max(s.clientHeight * 0.9, 100);
@@ -190,85 +157,48 @@ export default function Root({ children }: PropsWithChildren) {
                 window.addEventListener('keydown', onKey, { capture: true, passive: false });
                 window.addEventListener('wheel', onWheel, { capture: true, passive: false });
 
-                // Auto-focus body so keys route to us WITHOUT any user click first.
-                // Chrome's URL bar retains focus after typing a URL — this ONLY
-                // yields to the page if an autofocus'd element grabs focus first
-                // (see the hidden #wsf-focus-grabber input rendered in <body>).
-                // Also actively blurs tab-anchors / buttons on route change, since
-                // client-side navigation (e.g. Profile tab click) parks focus on
-                // the newly-active anchor and keyboard scroll gets stuck there.
-                function grabFocus() {
-                  try {
-                    if (document.body.getAttribute('tabindex') === null) {
-                      document.body.setAttribute('tabindex', '-1');
-                    }
-                    var ae = document.activeElement;
-                    // Grabber input still focused? (Fresh URL-bar navigation)
-                    var g = document.getElementById('wsf-focus-grabber');
-                    if (g && ae === g) {
-                      g.blur();
-                      document.body.focus({ preventScroll: true });
-                      return;
-                    }
-                    // Body / html already focused → nothing to do.
-                    if (!ae || ae === document.body || ae === document.documentElement) {
-                      document.body.focus({ preventScroll: true });
-                      return;
-                    }
-                    // Anything else (a tab anchor, button, link) → forcibly
-                    // blur & move focus to body so PageDown routes to our
-                    // window handler. Guard against text inputs so we never
-                    // fight legitimate typing focus.
-                    var tag = ae.tagName && ae.tagName.toLowerCase();
-                    var role = ae.getAttribute && ae.getAttribute('role');
-                    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-                    if (ae.isContentEditable) return;
-                    if (role === 'textbox' || role === 'combobox') return;
-                    if (tag === 'a' || tag === 'button' || role === 'tab' || role === 'link' || role === 'button') {
-                      ae.blur();
-                      document.body.focus({ preventScroll: true });
-                    }
-                  } catch (_) {}
+                // ── ScrollView tabIndex tagger (August 2026) ─────────────────
+                // Make every RN-Web ScrollView container div focusable via
+                // tabIndex=-1. This lets keyboard focus land on the scrollable
+                // content itself so PageDown/PageUp/Space route to the right
+                // scroller without any preemptive focus-stealing. Uses a
+                // MutationObserver so newly-rendered ScrollViews (on route
+                // change, modal open, etc.) get the attribute too.
+                function tagScroller(el) {
+                  if (!el || el.nodeType !== 1) return;
+                  if (el.hasAttribute('tabindex')) return;
+                  var oy;
+                  try { oy = getComputedStyle(el).overflowY; } catch (_) { return; }
+                  if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') return;
+                  el.setAttribute('tabindex', '-1');
+                }
+                function scanAll(root) {
+                  var divs = (root || document).querySelectorAll ? (root || document).querySelectorAll('div') : [];
+                  for (var i = 0; i < divs.length; i++) tagScroller(divs[i]);
                 }
                 if (document.readyState === 'loading') {
-                  document.addEventListener('DOMContentLoaded', grabFocus);
+                  document.addEventListener('DOMContentLoaded', function () { scanAll(document); });
                 } else {
-                  grabFocus();
+                  scanAll(document);
                 }
-                setTimeout(grabFocus, 200);
-                setTimeout(grabFocus, 800);
-                window.addEventListener('popstate', function () { setTimeout(grabFocus, 60); });
-
-                // ── Client-side navigation hook ─────────────────
-                // expo-router uses history.pushState/replaceState which
-                // never trigger popstate. Wrap both to emit a synthetic
-                // "wsf:navigation" event, then grab focus back to body
-                // after every route change (tab click, deep-link, etc.).
                 try {
-                  if (!window.history.__wsf_patched) {
-                    window.history.__wsf_patched = true;
-                    var origPush = window.history.pushState.bind(window.history);
-                    var origReplace = window.history.replaceState.bind(window.history);
-                    window.history.pushState = function () {
-                      var r = origPush.apply(this, arguments);
-                      try { window.dispatchEvent(new Event('wsf:navigation')); } catch (_) {}
-                      return r;
-                    };
-                    window.history.replaceState = function () {
-                      var r = origReplace.apply(this, arguments);
-                      try { window.dispatchEvent(new Event('wsf:navigation')); } catch (_) {}
-                      return r;
-                    };
-                  }
+                  var mo = new MutationObserver(function (mutations) {
+                    for (var i = 0; i < mutations.length; i++) {
+                      var m = mutations[i];
+                      for (var j = 0; j < m.addedNodes.length; j++) {
+                        var n = m.addedNodes[j];
+                        if (n && n.nodeType === 1) {
+                          tagScroller(n);
+                          if (n.querySelectorAll) {
+                            var inner = n.querySelectorAll('div');
+                            for (var k = 0; k < inner.length; k++) tagScroller(inner[k]);
+                          }
+                        }
+                      }
+                    }
+                  });
+                  mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
                 } catch (_) {}
-                window.addEventListener('wsf:navigation', function () {
-                  // Fire multiple times to catch React-Navigation's re-focus
-                  // of the newly-active tab anchor, which lands AFTER our
-                  // initial blur if React defers focus() to a mount effect.
-                  setTimeout(grabFocus, 40);
-                  setTimeout(grabFocus, 150);
-                  setTimeout(grabFocus, 400);
-                });
               })();
             `,
           }}
@@ -283,30 +213,6 @@ export default function Root({ children }: PropsWithChildren) {
           flexDirection: "column",
         }}
       >
-        {/* HTML autofocus grabber — the one browser-sanctioned way to
-            steal keyboard focus back from Chrome's URL bar after a fresh
-            navigation. Chrome honors the `autofocus` attribute even when
-            the URL bar was previously focused, unlike element.focus()
-            from JS. The inline script above blurs this immediately after
-            mount and forwards focus to <body> so tab-order isn't skewed. */}
-        <input
-          id="wsf-focus-grabber"
-          tabIndex={-1}
-          autoFocus
-          readOnly
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: 1,
-            height: 1,
-            opacity: 0,
-            pointerEvents: 'none',
-            border: 0,
-            padding: 0,
-          }}
-        />
         {children}
       </body>
     </html>

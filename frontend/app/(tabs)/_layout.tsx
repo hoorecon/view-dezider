@@ -40,6 +40,17 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      screenListeners={{
+        // Blur whatever's focused (typically the just-clicked tab anchor) BEFORE
+        // the route transition — see WebScrollFix.tsx. Keeps keyboard focus off
+        // the fixed-position tab bar so PageDown/PageUp target the newly-mounted
+        // ScrollView (which itself carries tabIndex="-1" via the MutationObserver).
+        tabPress: () => {
+          if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            try { (document.activeElement as any)?.blur?.(); } catch { /* ignore */ }
+          }
+        },
+      }}
       screenOptions={{
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,

@@ -123,118 +123,47 @@ export default function WebScrollFix() {
     // installed itself, skip — its listeners are identical and it runs
     // before React mounts, so avoiding double-attach keeps behaviour clean.
     if ((window as any).__wsf_html) {
-      (window as any).__wsf = { version: 'v8-2026-07-26-jit-blur-in-keydown', ready: true, delegated_to_html_inline: true };
+      (window as any).__wsf = { version: 'v9-2026-08-tabindex-scrollers', ready: true, delegated_to_html_inline: true };
       return;
     }
 
-    (window as any).__wsf = { version: 'v8-2026-07-26-jit-blur-in-keydown', ready: true };
+    (window as any).__wsf = { version: 'v9-2026-08-tabindex-scrollers', ready: true };
 
-    // ── Auto-focus body so keys route to us WITHOUT any user click first ─
-    // When a user opens the site by typing in the URL bar (or lands via a
-    // redirect / hard-refresh), keyboard focus stays on the browser chrome,
-    // so `keydown` events never reach `document`. Chrome only routes keys
-    // to the page after any DOM interaction. We defeat this by giving the
-    // body a programmatic tabindex and focusing it — allowed because there
-    // is an active user session (login flow already involved DOM clicks).
-    // Runs once on mount and again after each navigation.
-    const grabFocus = () => {
-      try {
-        if (document.body.getAttribute('tabindex') === null) {
-          document.body.setAttribute('tabindex', '-1');
-        }
-        const ae = document.activeElement as HTMLElement | null;
-        // Grabber still focused? Blur it and forward to body.
-        const g = document.getElementById('wsf-focus-grabber');
-        if (g && ae === g) {
-          (g as HTMLInputElement).blur();
-          (document.body as any).focus?.({ preventScroll: true });
-          return;
-        }
-        // Body / html focused → nothing to do.
-        if (!ae || ae === document.body || ae === document.documentElement) {
-          (document.body as any).focus?.({ preventScroll: true });
-          return;
-        }
-        // A tab anchor / button focused (from client-side navigation) →
-        // actively blur and re-focus body so keys route to us.
-        const tag = ae.tagName?.toLowerCase();
-        const role = ae.getAttribute?.('role');
-        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-        if ((ae as any).isContentEditable) return;
-        if (role === 'textbox' || role === 'combobox') return;
-        if (tag === 'a' || tag === 'button' || role === 'tab' || role === 'link' || role === 'button') {
-          ae.blur();
-          (document.body as any).focus?.({ preventScroll: true });
-        }
-      } catch { /* ignore */ }
+    // ── ScrollView tabIndex tagger (August 2026) ────────────────
+    // Make every RN-Web ScrollView container div focusable via
+    // tabIndex=-1. This lets keyboard focus land on the scrollable
+    // content itself so PageDown / PageUp / Space route to the right
+    // scroller without any preemptive focus-stealing. Uses a
+    // MutationObserver so newly-rendered ScrollViews (route change,
+    // modal open, etc.) get the attribute too.
+    const tagScroller = (el: Element) => {
+      if (!el || el.nodeType !== 1) return;
+      if ((el as HTMLElement).hasAttribute('tabindex')) return;
+      let oy: string;
+      try { oy = getComputedStyle(el).overflowY; } catch { return; }
+      if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') return;
+      (el as HTMLElement).setAttribute('tabindex', '-1');
     };
-    grabFocus();
-    setTimeout(grabFocus, 100);
-    setTimeout(grabFocus, 500);
-    // Multiple deferred calls to catch React-Navigation's re-focus.
-    const onNavigate = () => {
-      setTimeout(grabFocus, 40);
-      setTimeout(grabFocus, 150);
-      setTimeout(grabFocus, 400);
+    const scanAll = (root: ParentNode = document) => {
+      const divs = root.querySelectorAll?.('div') || [];
+      divs.forEach(tagScroller);
     };
-    window.addEventListener('popstate', onNavigate);
-
-    // ── Client-side navigation hook (July 2026) ────────────────
-    // expo-router uses history.pushState / replaceState for tab and
-    // stack navigation — neither fires `popstate`, so a fresh useEffect
-    // never runs. Monkey-patch both to emit a synthetic
-    // "wsf:navigation" event that grabFocus can listen for. Idempotent
-    // via a marker on window.history so a second mount can't double-wrap.
+    scanAll();
+    let mo: MutationObserver | null = null;
     try {
-      if (!(window.history as any).__wsf_patched) {
-        (window.history as any).__wsf_patched = true;
-        const origPush = window.history.pushState.bind(window.history);
-        const origReplace = window.history.replaceState.bind(window.history);
-        window.history.pushState = function (...args: any[]) {
-          const r = origPush(...args);
-          try { window.dispatchEvent(new Event('wsf:navigation')); } catch { /* ignore */ }
-          return r;
-        };
-        window.history.replaceState = function (...args: any[]) {
-          const r = origReplace(...args);
-          try { window.dispatchEvent(new Event('wsf:navigation')); } catch { /* ignore */ }
-          return r;
-        };
-      }
+      mo = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          m.addedNodes.forEach((n) => {
+            if (n && (n as Element).nodeType === 1) {
+              tagScroller(n as Element);
+              const inner = (n as Element).querySelectorAll?.('div') || [];
+              inner.forEach(tagScroller);
+            }
+          });
+        }
+      });
+      mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
     } catch { /* ignore */ }
-    window.addEventListener('wsf:navigation', onNavigate);
-
-    // ── Defensive focus-blur (June 2026) ─────────────────────────
-    // When the user clicks a bottom-tab anchor (e.g. "Solution Box"), the
-    // <a role="tab"> keeps keyboard focus. Chrome then routes PageUp/Down
-    // to that anchor's nearest scrollable ancestor — which is the fixed-
-    // position tab bar (not scrollable), so nothing happens until the user
-    // clicks INSIDE the content frame. We proactively defocus any tab
-    // anchor / button that just received focus via mouse, so PageDown/Space
-    // falls through to our window handler cleanly. Keyboard-navigating
-    // users (Tab key) are untouched — we only blur when the focus change
-    // came from a pointer.
-    let lastPointerAt = 0;
-    const onPointerDown = () => { lastPointerAt = Date.now(); };
-    const onFocusIn = (e: FocusEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (!t) return;
-      // Only defocus if the focus was pointer-triggered (< 100 ms since
-      // pointerdown) and the target is a nav-tab role or link — never
-      // touch form fields.
-      if (Date.now() - lastPointerAt > 100) return;
-      const tag = t.tagName?.toLowerCase();
-      const role = t.getAttribute?.('role');
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      if (t.isContentEditable) return;
-      if (role === 'textbox' || role === 'combobox') return;
-      // Blur tab / link anchors so PageDown/Space stops targeting them.
-      if (tag === 'a' || role === 'tab' || role === 'button' || role === 'link') {
-        try { (t as any).blur?.(); } catch { /* ignore */ }
-      }
-    };
-    window.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true });
-    window.addEventListener('focusin', onFocusIn, { capture: true, passive: true });
 
     // Track the pointer so we can scroll whatever the cursor is over. This is
     // what makes modals / bottom-sheets / split panes scroll correctly instead
@@ -272,21 +201,6 @@ export default function WebScrollFix() {
       if ((e.ctrlKey || e.metaKey || e.altKey) && !isJumpKey) return;
       // Plain Alt/Ctrl+ArrowKeys etc. → let the browser handle.
       if (e.altKey && isJumpKey) return;
-
-      // JIT focus cleanup — if a tab anchor / link / button still holds
-      // focus (from a client-side tab click), blur it right now so key
-      // routing normalises. Text inputs are strictly excluded so typing
-      // is never disrupted.
-      const ae = document.activeElement as HTMLElement | null;
-      if (ae && ae !== document.body && ae !== document.documentElement) {
-        const tg = ae.tagName?.toLowerCase();
-        const rl = ae.getAttribute?.('role');
-        const isFormField = tg === 'input' || tg === 'textarea' || tg === 'select'
-          || (ae as any).isContentEditable || rl === 'textbox' || rl === 'combobox';
-        if (!isFormField && (tg === 'a' || tg === 'button' || rl === 'tab' || rl === 'link' || rl === 'button')) {
-          try { ae.blur(); } catch { /* ignore */ }
-        }
-      }
 
       const scroller = pickScroller();
       if (!scroller) return;
@@ -378,10 +292,7 @@ export default function WebScrollFix() {
       window.removeEventListener('keydown', onKeyDown, { capture: true } as any);
       window.removeEventListener('wheel', onWheel, { capture: true } as any);
       window.removeEventListener('mousemove', onMove as any);
-      window.removeEventListener('pointerdown', onPointerDown, { capture: true } as any);
-      window.removeEventListener('focusin', onFocusIn, { capture: true } as any);
-      window.removeEventListener('popstate', onNavigate);
-      window.removeEventListener('wsf:navigation' as any, onNavigate);
+      try { mo?.disconnect(); } catch { /* ignore */ }
     };
   }, []);
 
