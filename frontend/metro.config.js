@@ -5,8 +5,16 @@ const { FileStore } = require('metro-cache');
 
 const config = getDefaultConfig(__dirname);
 
-// Use a stable on-disk store (shared across web/android)
-const root = process.env.METRO_CACHE_ROOT || path.join(__dirname, '.metro-cache');
+// ── Metro on-disk cache (July 2026) ───────────────────────────────────
+// Cache directory namespaced by CACHE_VERSION below. Bump CACHE_VERSION
+// whenever a released build must invalidate Cloudflare Pages' cached
+// transform artifacts (their build worker retains the previous run's
+// `.metro-cache` unless the path itself changes).
+//
+// Alternatively set METRO_CACHE_ROOT in your env to override.
+const CACHE_VERSION = 'v4-2026-07-26';
+const root = process.env.METRO_CACHE_ROOT
+  || path.join(__dirname, `.metro-cache-${CACHE_VERSION}`);
 config.cacheStores = [
   new FileStore({ root: path.join(root, 'cache') }),
 ];
