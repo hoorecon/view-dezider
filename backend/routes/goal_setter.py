@@ -321,6 +321,87 @@ async def update_milestone_status(
 
 
 # ═══════════════════════════════════════════════════════════════
+# EXECUTION TASKS — create CTT / LifeStyle tasks from Goal or Milestone
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/goals/{goal_id}/create-task")
+async def create_execution_task(goal_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Create a universal Action Item from this SMART Goal (or one of its
+    milestones) and port it straight into CTT (one-time) or LifeStyle
+    (routine). Idempotent per goal|milestone|kind."""
+    from routes.action_items import (
+        _normalise, _ctt_doc_from_action, _routine_doc_from_action,
+    )
+    body = await request.json()
+    kind = (body.get("kind") or "ctt").lower()  # 'ctt' | 'lifestyle'
+    if kind not in ("ctt", "lifestyle"):
+        raise HTTPException(400, "kind must be 'ctt' or 'lifestyle'")
+    milestone_id = body.get("milestone_id") or None
+    frequency = body.get("frequency") or "daily"
+
+    goal = await db.smart_goals.find_one({"goal_id": goal_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not goal:
+        raise HTTPException(404, "Goal not found")
+
+    title = goal.get("title") or "SMART Goal"
+    by_when = None
+    if milestone_id:
+        ms = next((m for m in (goal.get("milestones") or []) if m.get("milestone_id") == milestone_id), None)
+        if not ms:
+            raise HTTPException(404, "Milestone not found")
+        title = ms.get("title") or f"Milestone of {title}"
+        by_when = ms.get("target_date") or None
+
+    now = datetime.now(timezone.utc).isoformat()
+    gs_key = f"{goal_id}|{milestone_id or 'goal'}|{kind}"
+    existing = await db.action_items.find_one(
+        {"user_id": user["user_id"], "source_module": "GOAL_SETTER", "gs_key": gs_key},
+        {"_id": 0},
+    )
+    if existing:
+        return {"action_item": existing, "already_exists": True}
+
+    norm = _normalise({
+        "source_module": "GOAL_SETTER",
+        "source_id": goal_id,
+        "source_label": f"Goal Setter · {goal.get('title','')[:60]}",
+        "source_subref": milestone_id,
+        "title": title,
+        "by_when": by_when,
+        "recurrence_type": "recurring" if kind == "lifestyle" else "one_time",
+        "recurrence_frequency": frequency if kind == "lifestyle" else None,
+        "priority": body.get("priority") or "medium",
+        "life_area": goal.get("life_area") or None,
+    }, user)
+    ai = {
+        "action_id": str(uuid.uuid4()),
+        **norm,
+        "gs_key": gs_key,
+        "ported_to": None, "ported_ref_id": None, "ported_at": None,
+        "created_at": now, "updated_at": now,
+    }
+    await db.action_items.insert_one(ai)
+    ai.pop("_id", None)
+
+    # Port immediately so it lands directly in CTT / LifeStyle
+    if kind == "ctt":
+        task = _ctt_doc_from_action(ai, user)
+        await db.ctt_tasks.insert_one(task)
+        task.pop("_id", None)
+        port = {"ported_to": "CTT", "ported_ref_id": task["task_id"]}
+    else:
+        routine = _routine_doc_from_action(ai, user)
+        await db.lifestyle_routines.insert_one(routine)
+        routine.pop("_id", None)
+        port = {"ported_to": "LIFESTYLE", "ported_ref_id": routine["routine_id"]}
+    await db.action_items.update_one(
+        {"action_id": ai["action_id"]},
+        {"$set": {**port, "ported_at": now, "updated_at": now}})
+    ai.update(port, ported_at=now)
+    return {"action_item": ai, "already_exists": False}
+
+
+# ═══════════════════════════════════════════════════════════════
 # DASHBOARD
 # ═══════════════════════════════════════════════════════════════
 

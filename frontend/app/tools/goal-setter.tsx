@@ -1,11 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
   RefreshControl,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,6 +33,7 @@ const SMART_FIELDS = [
 
 export default function GoalSetterScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ goalId?: string }>();
   const [mode, setMode] = useState<'list' | 'create'>('list');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,6 +73,36 @@ export default function GoalSetterScreen() {
 
   useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, []));
   const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
+
+  // Deep-link: /tools/goal-setter?goalId=… (e.g. from GEM's linked-goal card)
+  const openedGoalRef = useRef<string | null>(null);
+  useEffect(() => {
+    const gid = String(params?.goalId || '');
+    if (gid && openedGoalRef.current !== gid) {
+      openedGoalRef.current = gid;
+      openEdit(gid);
+    }
+  }, [params?.goalId]);
+
+  // ── Execution Tasks: Goal/Milestone → CTT or LifeStyle ──
+  const [taskBusy, setTaskBusy] = useState<string | null>(null);
+  const addExecutionTask = async (milestoneId: string | null, kind: 'ctt' | 'lifestyle') => {
+    if (!editingGoalId) return;
+    const key = `${milestoneId || 'goal'}|${kind}`;
+    setTaskBusy(key);
+    try {
+      const r = await api.post(`/goal-setter/goals/${editingGoalId}/create-task`, {
+        milestone_id: milestoneId, kind, frequency: 'daily',
+      });
+      if (r.data?.already_exists) {
+        showAlert('Already added', `This ${milestoneId ? 'milestone' : 'goal'} already has a ${kind === 'ctt' ? 'CTT task' : 'LifeStyle routine'}. Manage it from the Action Center.`);
+      } else {
+        showAlert('Task created', `Added to ${kind === 'ctt' ? 'CTT (one-time task)' : 'LifeStyle (daily routine)'} and tracked in the Action Center.`);
+      }
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to create task');
+    } finally { setTaskBusy(null); }
+  };
 
   const resetForm = () => {
     setTitle(''); setChallenge(''); setSpecific(''); setMeasurable('');
@@ -311,6 +342,48 @@ export default function GoalSetterScreen() {
           onChange={setGoalMilestones}
         />
       </View>
+
+      {/* ── Execution Tasks: create CTT / LifeStyle tasks from Goal & Milestones ── */}
+      {editingGoalId && (
+        <View style={s.execSection}>
+          <View style={s.milestoneHead}>
+            <Ionicons name="flash" size={16} color="#B45309" />
+            <Text style={[s.milestoneTitle, { color: '#B45309' }]}>Execution Tasks</Text>
+          </View>
+          <Text style={[s.milestoneHelp, { color: '#92400E' }]}>
+            Push this goal or any milestone into execution: one-time → CTT, recurring → LifeStyle.
+            Created tasks are tracked centrally in the Action Center.
+          </Text>
+          {[{ id: null as string | null, label: `🎯 ${title || 'This Goal'}` },
+            ...goalMilestones.filter((m: any) => m.milestone_id && !String(m.milestone_id).startsWith('draft')).map((m: any) => ({ id: m.milestone_id as string, label: `🚩 ${m.title || 'Milestone'}` }))].map(row => (
+            <View key={row.id || 'goal'} style={s.execRow}>
+              <Text style={s.execLabel} numberOfLines={1}>{row.label}</Text>
+              <TouchableOpacity
+                style={[s.execBtn, { backgroundColor: '#DBEAFE' }]}
+                disabled={taskBusy === `${row.id || 'goal'}|ctt`}
+                onPress={() => addExecutionTask(row.id, 'ctt')}
+              >
+                {taskBusy === `${row.id || 'goal'}|ctt`
+                  ? <ActivityIndicator size="small" color="#1D4ED8" />
+                  : <><Ionicons name="calendar" size={12} color="#1D4ED8" /><Text style={[s.execBtnText, { color: '#1D4ED8' }]}>→ CTT</Text></>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.execBtn, { backgroundColor: '#FEF3C7' }]}
+                disabled={taskBusy === `${row.id || 'goal'}|lifestyle`}
+                onPress={() => addExecutionTask(row.id, 'lifestyle')}
+              >
+                {taskBusy === `${row.id || 'goal'}|lifestyle`
+                  ? <ActivityIndicator size="small" color="#B45309" />
+                  : <><Ionicons name="repeat" size={12} color="#B45309" /><Text style={[s.execBtnText, { color: '#B45309' }]}>→ LifeStyle</Text></>}
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity style={s.execCenterLink} onPress={() => router.push('/tools/action-center')}>
+            <Ionicons name="albums-outline" size={13} color="#0D9488" />
+            <Text style={s.execCenterLinkText}>Open Action Center</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </>
   );
 
@@ -435,6 +508,14 @@ const s = StyleSheet.create({
   milestoneBadge: { backgroundColor: '#059669', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   milestoneBadgeText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
   milestoneHelp: { fontSize: 11, color: '#065F46', marginBottom: 10, lineHeight: 16 },
+
+  execSection: { marginTop: 14, padding: 12, backgroundColor: '#FFFBEB', borderRadius: 12, borderWidth: 1, borderColor: '#FDE68A' },
+  execRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#FEF3C7' },
+  execLabel: { flex: 1, fontSize: 12, fontWeight: '600', color: '#78350F' },
+  execBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, minWidth: 70, justifyContent: 'center' },
+  execBtnText: { fontSize: 10, fontWeight: '700' },
+  execCenterLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start' },
+  execCenterLinkText: { fontSize: 11, fontWeight: '700', color: '#0D9488', textDecorationLine: 'underline' },
 
   bottom: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 20 : 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.white },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 14, paddingVertical: 16 },

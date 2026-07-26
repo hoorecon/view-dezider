@@ -26,7 +26,7 @@ type ActionItem = {
 };
 
 const STATUS_FILTERS = ['all', ...ACTION_STATUS_OPTS.map(o => o.id)];
-const SOURCE_FILTERS = ['all','MYDEZIDER_MPPS','PROS_CONS','SWOT','PNA','CONFLICT_BREAKER','AIM','MANUAL'];
+const SOURCE_FILTERS = ['all','MYDEZIDER_MPPS','PROS_CONS','SOLUTION_FINDER','SOLUTION_MATRIX','SWOT','PNA','CONFLICT_BREAKER','AIM','GOAL_SETTER','MANUAL'];
 const PORTED_FILTERS = ['all','not_ported','CTT','LIFESTYLE'];
 
 const PRIORITY_COLOR: Record<string,string> = { low:'#94A3B8', medium:'#3B82F6', high:'#F59E0B', urgent:'#EF4444' };
@@ -35,6 +35,7 @@ const SOURCE_LABEL:   Record<string,string> = {
   MYDEZIDER_MPPS:'My Dezider · MPPS', PROS_CONS:'Pros & Cons', SWOT:'SWOT',
   PNA:'PNA', CONFLICT_BREAKER:'Conflict Breaker', CLD:'CLD', GEM:'GEM',
   GOAL_SETTER:'Goal Setter', AALA:'AALA', AIM:'AIM · Emotional Gatekeeper', MANUAL:'Manual',
+  SOLUTION_FINDER:'Solution Finder', SOLUTION_MATRIX:'Solution Matrix', INSTANT_DEZIDER:'Instant Dezider', ATEX:'ATEX',
 };
 
 export default function ActionCenter() {
@@ -111,7 +112,27 @@ export default function ActionCenter() {
     finally { setLoading(false); }
   }, [fStatus, fSource, fPorted]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Consistency sweep — auto-import anything missed from MyDezider MPPS,
+  // Pros & Cons and Solution Finder (idempotent), once per screen visit.
+  const syncedRef = useRef(false);
+  useFocusEffect(useCallback(() => {
+    (async () => {
+      if (!syncedRef.current) {
+        syncedRef.current = true;
+        try {
+          const r = await api.post('/action-items/sync-all');
+          const n = Number(r.data?.total || 0);
+          if (n > 0) {
+            setImportBanner({
+              msg: `Synced ${n} missed item(s) from Pros & Cons / MyDezider / Solution Finder.`,
+              ctt: 0, life: 0,
+            });
+          }
+        } catch { /* non-blocking */ }
+      }
+      load();
+    })();
+  }, [load]));
 
   // Auto-import on deep-link from upstream sources (currently AIM).
   // Idempotent on the backend — safe to call multiple times.
@@ -160,6 +181,33 @@ export default function ActionCenter() {
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Failed');
     } finally { setSavingId(null); }
+  };
+
+  const revoke = (it: ActionItem) => {
+    const where = it.ported_to === 'CTT' ? 'CTT task' : 'LifeStyle routine';
+    showAlert('Revoke port?', `This removes the ${where} created from this item. Any detailed edits made there (dependencies, timings, streaks…) will be lost.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Revoke', style: 'destructive', onPress: async () => {
+        setSavingId(it.action_id);
+        try { await api.post(`/action-items/${it.action_id}/unport`); load(); }
+        catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
+        finally { setSavingId(null); }
+      } },
+    ]);
+  };
+
+  const switchPort = (it: ActionItem) => {
+    const from = it.ported_to === 'CTT' ? 'CTT (one-time task)' : 'LifeStyle (routine)';
+    const to = it.ported_to === 'CTT' ? 'LifeStyle (routine)' : 'CTT (one-time task)';
+    showAlert(`Move to ${it.ported_to === 'CTT' ? 'LifeStyle' : 'CTT'}?`, `This changes the type from ${from} to ${to}. Any detailed edits made on the existing record will be lost.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Move', style: 'destructive', onPress: async () => {
+        setSavingId(it.action_id);
+        try { await api.post(`/action-items/${it.action_id}/switch-port`); load(); }
+        catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
+        finally { setSavingId(null); }
+      } },
+    ]);
   };
 
   return (
@@ -262,12 +310,24 @@ export default function ActionCenter() {
                       <Text style={[s.tagText, { color: statusColor(it.status) }]}>{statusLabel(it.status)}</Text>
                     </View>
                     {it.ported_to ? (
-                      <View style={[s.tag, { backgroundColor: it.ported_to === 'CTT' ? '#DBEAFE' : '#FEF3C7' }]}>
-                        <Ionicons name="link" size={11} color={it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309'} />
-                        <Text style={[s.tagText, { color: it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309' }]}>
-                          {it.ported_to === 'CTT' ? 'In CTT' : 'In LifeStyle'}
-                        </Text>
-                      </View>
+                      <>
+                        <View style={[s.tag, { backgroundColor: it.ported_to === 'CTT' ? '#DBEAFE' : '#FEF3C7' }]}>
+                          <Ionicons name="link" size={11} color={it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309'} />
+                          <Text style={[s.tagText, { color: it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309' }]}>
+                            {it.ported_to === 'CTT' ? 'In CTT' : 'In LifeStyle'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity style={[s.smallBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => revoke(it)} disabled={savingId === it.action_id}>
+                          <Ionicons name="close-circle" size={11} color="#B91C1C" />
+                          <Text style={[s.smallBtnText, { color: '#B91C1C' }]}>Revoke</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[s.smallBtn, { backgroundColor: it.ported_to === 'CTT' ? '#FEF3C7' : '#DBEAFE' }]} onPress={() => switchPort(it)} disabled={savingId === it.action_id}>
+                          <Ionicons name="swap-horizontal" size={11} color={it.ported_to === 'CTT' ? '#B45309' : '#1D4ED8'} />
+                          <Text style={[s.smallBtnText, { color: it.ported_to === 'CTT' ? '#B45309' : '#1D4ED8' }]}>
+                            ⇄ {it.ported_to === 'CTT' ? 'LifeStyle' : 'CTT'}
+                          </Text>
+                        </TouchableOpacity>
+                      </>
                     ) : (
                       <>
                         <TouchableOpacity style={[s.smallBtn, { backgroundColor: '#DBEAFE' }]} onPress={() => port(it, 'CTT')} disabled={savingId === it.action_id}>

@@ -137,6 +137,25 @@ async def update_goal(goal_id: str, p: LegGoalIn, user: dict = Depends(get_curre
         {"id": goal_id},
         {"$set": {**p.model_dump(), "updated_at": _now()}},
     )
+    # ── GEM ↔ Action Center status sync ──
+    # A status change on the goal mirrors onto every Action Center item that
+    # was converted from it (and cascades to ported CTT / Lifestyle records).
+    if p.status and p.status != existing.get("status"):
+        from routes.action_items import SIXLEGS_TO_CANON, _sync_ported_status
+        from core.action_status import progress_for
+        canon = SIXLEGS_TO_CANON.get(p.status)
+        if canon:
+            iso = _now().isoformat()
+            linked = await db.action_items.find(
+                {"user_id": user["user_id"], "source_module": "GOAL_SETTER", "source_id": goal_id},
+                {"_id": 0},
+            ).to_list(50)
+            for ai in linked:
+                await db.action_items.update_one(
+                    {"action_id": ai["action_id"]},
+                    {"$set": {"status": canon, "progress_pct": progress_for(canon), "updated_at": iso}})
+                ai["status"] = canon
+                await _sync_ported_status(ai)
     return {"ok": True}
 
 
@@ -161,6 +180,9 @@ async def convert_goal_to_action(goal_id: str, body: Dict[str, Any], user: dict 
     g = await db.six_legs_goals.find_one({"id": goal_id, "user_id": user["user_id"]}, {"_id": 0})
     if not g:
         raise HTTPException(404, "Not found")
+    from routes.action_items import SIXLEGS_TO_CANON
+    from core.action_status import progress_for
+    init_status = SIXLEGS_TO_CANON.get(g.get("status"), "pending")
     rec_type = (body.get("recurrence_type") or "one_time").lower()
     doc = {
         "action_id": str(uuid.uuid4()),
@@ -180,8 +202,9 @@ async def convert_goal_to_action(goal_id: str, body: Dict[str, Any], user: dict 
         "recurrence_time": None,
         "recurrence_end_date": None,
         "priority": body.get("priority") or "medium",
-        "status": "pending",
-        "progress_pct": 0,
+        # Inherit the goal's current status so GEM & Action Center start in sync.
+        "status": init_status,
+        "progress_pct": progress_for(init_status),
         "life_area": None,
         "notes": g.get("notes") or "",
         "ported_to": None, "ported_ref_id": None, "ported_at": None,

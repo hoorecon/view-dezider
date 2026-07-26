@@ -245,6 +245,12 @@ export default function GEMGoalScreen() {
               <Text style={st.sec}>Launch Action</Text>
               <Text style={{fontSize:12,color:COLORS.textMuted,marginBottom:8}}>Start a new Decision or Solution Finder for this goal</Text>
               <View style={st.launchRow}>
+                <TouchableOpacity style={[st.launchBtn,{backgroundColor:'#4F46E5'}]} onPress={()=>router.push({pathname:'/tools/gem-pm',params:{goalId:editId}} as any)}>
+                  <Ionicons name="git-network" size={18} color="#FFF" />
+                  <Text style={st.launchText}>PM Workspace</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[st.launchRow,{marginTop:8}]}>
                 <TouchableOpacity style={[st.launchBtn,{backgroundColor:'#8E24AA'}]} onPress={launchDecision}>
                   <Ionicons name="git-branch" size={18} color="#FFF" />
                   <Text style={st.launchText}>Decision</Text>

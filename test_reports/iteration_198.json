@@ -1,0 +1,46 @@
+{
+  "summary": "Iter 198 — Full backend+frontend regression for Action Center revoke/switch, sync-all, six_legs↔AC status sync, Goal-Setter create-task, GEM PM (WBS/deps/CPM/kanban/registers/port) and OAuth calendar start. Backend: 12/12 tests passing. Frontend: Action Center loads with stats row (30 Total / 2 WIP / 8 In CTT) and all ported items expose Revoke + ⇄ move buttons; GEM PM goal picker → workspace exposes 5 tabs (WBS/Gantt/Board/Calendar/Registers); WBS renders the full node hierarchy we created via API (M1→D1→WP1→T1→S1→S2) with proper progress + delayed badges; Board tab shows correct kanban columns with items in the right columns; Registers tab lists Risks/Issues/Change Log counts. Goal-Setter page loads (empty state — no SMART goal created via UI, so the amber 'Execution Tasks' section in edit mode was not exercised through UI; backend create-task endpoint verified via pytest). Login flow works via 'Sign In' with just email+password (Organization ID left empty auto-falls back to personal login).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "GEM PM workspace header", "issue": "Long goal title truncates on mobile (390px). e.g. 'TEST_iter198_pm_f123a' is cut off. Non-blocking.", "testID": "", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Action Center", "issues": ["Card content is dense but readable; ported chip + Revoke + ⇄ move buttons all fit and are tappable on 390px viewport"]}
+    ],
+    "react_native_issues": [
+      {"component": "shadow* style prop (global)", "issue": "Console warnings 'shadow* style props are deprecated. Use boxShadow' on every screen. Deprecated RN Web API. Suggest migrating to boxShadow / elevation."},
+      {"component": "TouchableWithoutFeedback", "issue": "Console warning 'TouchableWithoutFeedback is deprecated. Please use Pressable' seen on GEM PM screens."},
+      {"component": "props.pointerEvents", "issue": "Console warning 'props.pointerEvents is deprecated. Use style.pointerEvents'."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter198_action_center_and_gem_pm.py",
+    "/app/test_reports/pytest/iter198.xml",
+    "/app/test_reports/screenshots/iter198_ac.png",
+    "/app/test_reports/screenshots/iter198_pm.png",
+    "/app/test_reports/screenshots/iter198_pm_ws.png",
+    "/app/test_reports/screenshots/iter198_pm_board.png",
+    "/app/test_reports/screenshots/iter198_pm_registers.png",
+    "/app/test_reports/screenshots/iter198_gs.png"
+  ],
+  "action_items": [
+    "Optional: migrate deprecated RN-web usages (shadow* → boxShadow, TouchableWithoutFeedback → Pressable, props.pointerEvents → style.pointerEvents) to silence console noise.",
+    "Optional: seed a SMART goal fixture or add a quick-create flow so the amber 'Execution Tasks' → CTT / → LifeStyle buttons in goal-setter edit mode can be smoke-tested from a fresh account."
+  ],
+  "critical_code_review_comments": [
+    "gem_pm.py workspace rollup: parent progress ignores its own progress_pct when it has children (bottom-up only). This is a valid design choice, but if a user sets a task=wip_50 and later adds subtasks with 0%, the task's UI progress silently drops to 0. Consider max(self, weighted_children) or leaving self editable when there are no children.",
+    "action_items.py switch-port: implemented via a delete-then-re-port pipeline that first clears ported_to and then calls port_to_ctt/port_to_lifestyle. If port_to_lifestyle fails after the CTT record was deleted, the item is left un-ported. Consider wrapping in try/except with rollback.",
+    "action_items.py DELETE hard-delete only for MANUAL+un-ported items; module-sourced items are soft-cancelled which is correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter198_action_center_and_gem_pm.py (new)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "~95% (Action Center, GEM PM WBS/Board/Registers all verified; Goal-Setter 'Execution Tasks' amber section not exercised through UI because no SMART goal exists on this account)"},
+  "seed_data_creation": "During backend pytest run we seeded via API/Mongo: several MANUAL/GEM-sourced action items (some left in DB because tests store IDs cleanly), a six_legs_goal + user_org for super@test.com, a smart_goal with a milestone, and 4 GEM PM projects (TEST_iter198_pm_*) each with WBS nodes/deps/kanban/registers. These are prefixed TEST_iter198_* and visible in the UI screenshots. Main agent may leave them or purge with `db.action_items.delete_many({title:/^TEST_iter198_/})` etc.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login: use just email + password ('Enter your email' / 'Enter your password' placeholders) and click Sign In; leave the Organization ID empty. Backend login returns 'session_token' (not 'access_token' or 'token'); use it as the Bearer token. Six-legs PUT is a full-body endpoint — must include user_org_id + level + title in addition to status. six_legs POST /goals/{id}/convert-to-action requires a JSON body (even empty {}). GEM PM workspace rollup only sums leaves — set the leaf subtask status, not the parent task, to see parent progress > 0.",
+  "rca_of_issue": "N/A — all requested backend paths and frontend surfaces work as specified."
+}

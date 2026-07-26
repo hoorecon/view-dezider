@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
+import { useRouter } from 'expo-router';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
 
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export default function LinkedGoalMilestonesView({ smartGoalId, onUnlink }: Props) {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [goal, setGoal] = useState<any>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -103,9 +105,21 @@ export default function LinkedGoalMilestonesView({ smartGoalId, onUnlink }: Prop
       <View style={s.head}>
         <Ionicons name="link" size={16} color="#059669" />
         <View style={{ flex: 1 }}>
-          <Text style={s.headTitle} numberOfLines={1}>{goal.title}</Text>
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: '/tools/goal-setter', params: { goalId: smartGoalId } } as any)}
+            accessibilityRole="link"
+          >
+            <Text style={[s.headTitle, s.headTitleLink]} numberOfLines={1}>{goal.title}</Text>
+          </TouchableOpacity>
           <Text style={s.headSub}>SMART Goal · {doneMs}/{totalMs} milestones · {avgProgress}% avg</Text>
         </View>
+        <TouchableOpacity
+          onPress={() => router.push({ pathname: '/tools/goal-setter', params: { goalId: smartGoalId } } as any)}
+          style={s.openBtn}
+        >
+          <Ionicons name="open-outline" size={14} color="#059669" />
+          <Text style={s.openText}>Open</Text>
+        </TouchableOpacity>
         {onUnlink && (
           <TouchableOpacity onPress={onUnlink} style={s.unlinkBtn}>
             <Ionicons name="unlink" size={14} color="#B91C1C" />
@@ -232,7 +246,10 @@ const s = StyleSheet.create({
   },
   head: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headTitle: { fontSize: 14, fontWeight: '700', color: '#065F46' },
+  headTitleLink: { textDecorationLine: 'underline' },
   headSub: { fontSize: 11, color: '#047857', marginTop: 1 },
+  openBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#A7F3D0', marginRight: 6 },
+  openText: { fontSize: 11, fontWeight: '600', color: '#059669' },
   unlinkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
   unlinkText: { fontSize: 11, fontWeight: '600', color: '#B91C1C' },
   warnRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

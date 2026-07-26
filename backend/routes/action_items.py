@@ -58,7 +58,7 @@ SOURCE_MODULES = {
     "CONFLICT_BREAKER", "CLD", "GEM", "GOAL_SETTER", "AALA", "MANUAL",
     "AIM",
     # Iter 129 — universal sink hooks
-    "SOLUTION_FINDER", "INSTANT_DEZIDER", "ATEX",
+    "SOLUTION_FINDER", "INSTANT_DEZIDER", "ATEX", "SOLUTION_MATRIX",
 }
 RECURRENCE_TYPES = {"one_time", "recurring"}
 FREQUENCIES = {"daily", "weekly", "biweekly", "monthly", "quarterly", "yearly", "custom"}
@@ -68,6 +68,23 @@ from core.action_status import (
 )
 STATUSES = set(CANONICAL_STATUSES)
 PORT_TARGETS = {"CTT", "LIFESTYLE"}
+
+# 6 LeGs / Goal-Setter status vocabulary ↔ canonical action statuses
+SIXLEGS_TO_CANON = {
+    "pending": "pending", "in_progress": "wip_50", "on_track": "wip_50",
+    "at_risk": "blocked", "done": "done",
+}
+CANON_TO_SIXLEGS = {
+    "pending": "pending", "wip_25": "in_progress", "wip_50": "in_progress",
+    "wip_75": "in_progress", "done": "done", "blocked": "at_risk",
+    "deferred": "pending",
+}
+# smart_goals milestone vocabulary (pending|in_progress|done|blocked)
+CANON_TO_MILESTONE = {
+    "pending": "pending", "wip_25": "in_progress", "wip_50": "in_progress",
+    "wip_75": "in_progress", "done": "done", "blocked": "blocked",
+    "deferred": "pending",
+}
 
 
 async def _sync_ported_status(ai_doc: Dict[str, Any]) -> None:
@@ -94,6 +111,23 @@ async def _sync_ported_status(ai_doc: Dict[str, Any]) -> None:
         await db.lifestyle_routines.update_many(
             {"linked_action_id": action_id},
             {"$set": {"status": st, "is_active": st != "cancelled", "updated_at": now}})
+    # ── Source-module back-sync (GEM ↔ Action Center consistency) ──
+    # Goal-Setter-sourced items mirror status onto the originating 6 LeGs goal
+    # and/or the SMART-Goal milestone so GEM and the Action Center never drift.
+    if (ai_doc.get("source_module") or "").upper() == "GOAL_SETTER" and ai_doc.get("source_id"):
+        sid = ai_doc["source_id"]
+        mapped = CANON_TO_SIXLEGS.get(st)
+        if mapped:
+            await db.six_legs_goals.update_one(
+                {"id": sid},
+                {"$set": {"status": mapped, "updated_at": datetime.now(timezone.utc)}})
+        subref = ai_doc.get("source_subref")
+        ms_mapped = CANON_TO_MILESTONE.get(st)
+        if subref and ms_mapped:
+            await db.smart_goals.update_one(
+                {"goal_id": sid, "milestones.milestone_id": subref},
+                {"$set": {"milestones.$.status": ms_mapped, "milestones.$.updated_at": now,
+                          "updated_at": now}})
 
 
 def _now_iso() -> str:
@@ -374,17 +408,57 @@ async def port_to_lifestyle(action_id: str, user: dict = Depends(get_current_use
 
 @router.post("/action-items/{action_id}/unport")
 async def unport_action(action_id: str, user: dict = Depends(get_current_user)):
-    """Detach the CTT/Lifestyle link (does not delete the downstream record)."""
+    """Revoke a port: deletes the downstream CTT task / Lifestyle routine that
+    was created for this action item, then clears the port link. Any detailed
+    edits made on the downstream record are lost (the UI warns first)."""
     ai = await db.action_items.find_one(
         {"action_id": action_id, "user_id": user.get("user_id")}
     )
     if not ai:
         raise HTTPException(404, "action item not found")
+    await _delete_downstream(ai, user)
     await db.action_items.update_one(
         {"action_id": action_id},
         {"$set": {"ported_to": None, "ported_ref_id": None, "ported_at": None, "updated_at": _now_iso()}},
     )
     return {"status": "unported", "action_id": action_id}
+
+
+async def _delete_downstream(ai: Dict[str, Any], user: dict) -> None:
+    """Remove the CTT task / Lifestyle routine created by a port."""
+    pt = (ai.get("ported_to") or "").upper()
+    ref = ai.get("ported_ref_id")
+    if not ref:
+        return
+    if pt == "CTT":
+        await db.ctt_tasks.delete_one({"task_id": ref, "user_id": user.get("user_id")})
+    elif pt == "LIFESTYLE":
+        await db.lifestyle_routines.delete_one({"routine_id": ref, "user_id": user.get("user_id")})
+
+
+@router.post("/action-items/{action_id}/switch-port")
+async def switch_port(action_id: str, user: dict = Depends(get_current_user)):
+    """Move a ported item CTT ⇄ LifeStyle. Deletes the current downstream
+    record (detailed edits there are lost — UI alerts first) and re-ports to
+    the other target."""
+    ai = await db.action_items.find_one(
+        {"action_id": action_id, "user_id": user.get("user_id")}, {"_id": 0}
+    )
+    if not ai:
+        raise HTTPException(404, "action item not found")
+    current = (ai.get("ported_to") or "").upper()
+    if current not in PORT_TARGETS:
+        raise HTTPException(409, "Item is not ported yet — use → CTT / → LifeStyle instead")
+    await _delete_downstream(ai, user)
+    clear = {"ported_to": None, "ported_ref_id": None, "ported_at": None, "updated_at": _now_iso()}
+    if current == "LIFESTYLE":
+        # Moving back to CTT → treat as a one-time task again.
+        clear["recurrence_type"] = "one_time"
+        clear["recurrence_frequency"] = None
+    await db.action_items.update_one({"action_id": action_id}, {"$set": clear})
+    if current == "CTT":
+        return await port_to_lifestyle(action_id, user)
+    return await port_to_ctt(action_id, user)
 
 
 # ───── BULK INGEST from MPPS / Pros&Cons / SWOT ───────────────────────────
@@ -831,6 +905,93 @@ async def import_from_aim(session_id: str, user: dict = Depends(get_current_user
 
 
 # ───── Aggregate stats (for Action Center widget) ────────────────────────
+
+
+@router.post("/action-items/sync-all")
+async def sync_all_sources(user: dict = Depends(get_current_user)):
+    """Consistency sweep: pull any missed action items from the 3 key source
+    modules (MyDezider MPPS, Pros & Cons, Solution Finder) into the universal
+    store. Idempotent — each underlying import skips already-linked items.
+    Also normalises legacy lowercase source_module values so filters work."""
+    uid = user.get("user_id")
+    results = {"mpps": 0, "pros_cons": 0, "solution_finder": 0}
+
+    # Normalise legacy lowercase source modules (written by older push paths)
+    await db.action_items.update_many(
+        {"user_id": uid, "source_module": "solution_finder"},
+        {"$set": {"source_module": "SOLUTION_FINDER"}})
+    await db.action_items.update_many(
+        {"user_id": uid, "source_module": "solution_matrix"},
+        {"$set": {"source_module": "SOLUTION_MATRIX"}})
+
+    # MyDezider MPPS sweep
+    decs = await db.decisions.find(
+        {"user_id": uid, "mpps_improvements.0": {"$exists": True}}, {"id": 1}
+    ).to_list(300)
+    for d in decs:
+        try:
+            r = await import_from_mpps(d["id"], user)
+            results["mpps"] += r.get("imported_count", 0)
+        except HTTPException:
+            continue
+
+    # Pros & Cons sweep (only analyses with a chosen option)
+    pcs = await db.pros_cons.find(
+        {"user_id": uid, "config.final_choice_option_id": {"$nin": [None, ""]}}, {"id": 1}
+    ).to_list(300)
+    for p in pcs:
+        try:
+            r = await import_from_pros_cons(p["id"], user)
+            results["pros_cons"] += r.get("imported_count", 0)
+        except HTTPException:
+            continue
+
+    # Solution Finder sweep — push any un-pushed action-plan items into the
+    # universal store (no CTT/Lifestyle fan-out; user ports from Action Center)
+    sfs = await db.solution_finders.find(
+        {"user_id": uid, "action_plan_items.0": {"$exists": True}}
+    ).to_list(300)
+    for e in sfs:
+        plan = list(e.get("action_plan_items") or [])
+        changed = False
+        for it in plan:
+            if it.get("pushed_to_action_center"):
+                continue
+            text = (it.get("text") or "").strip()
+            if not text:
+                continue
+            action_id = str(uuid.uuid4())
+            await db.action_items.insert_one({
+                "action_id": action_id,
+                "user_id": uid,
+                "org_id": user.get("org_id"),
+                "title": text,
+                "description": it.get("description", ""),
+                "who": it.get("who", ""),
+                "by_when": it.get("by_when"),
+                "status": normalize_status(it.get("status")),
+                "progress_pct": progress_for(normalize_status(it.get("status"))),
+                "priority": "medium",
+                "source_module": "SOLUTION_FINDER",
+                "source_id": e.get("entry_id"),
+                "source_label": e.get("smart_goal") or "Simple Solution Finder",
+                "source_sub_type": it.get("source_type"),
+                "source_sub_id": it.get("source_id"),
+                "recurrence_type": "one_time",
+                "ported_to": None, "ported_ref_id": None, "ported_at": None,
+                "created_at": _now_iso(), "updated_at": _now_iso(),
+            })
+            it["pushed_to_action_center"] = True
+            it["action_id"] = action_id
+            changed = True
+            results["solution_finder"] += 1
+        if changed:
+            await db.solution_finders.update_one(
+                {"entry_id": e["entry_id"], "user_id": uid},
+                {"$set": {"action_plan_items": plan, "updated_at": _now_iso()}})
+
+    results["total"] = results["mpps"] + results["pros_cons"] + results["solution_finder"]
+    return results
 
 @router.get("/action-items/stats/summary")
 async def action_items_summary(user: dict = Depends(get_current_user)):

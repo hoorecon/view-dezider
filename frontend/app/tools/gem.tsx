@@ -161,6 +161,10 @@ export default function GEMScreen() {
                 </View>
                 {areaMeta && <Text style={[s.areaLabel,{color:areaMeta.c}]}>{areaMeta.name}</Text>}
                 <View style={{flex:1}} />
+                <TouchableOpacity onPress={()=>router.push({pathname:'/tools/gem-pm',params:{goalId:g.goal_id}} as any)} style={{marginRight:10,flexDirection:'row',alignItems:'center',gap:3,backgroundColor:'#EEF2FF',paddingHorizontal:8,paddingVertical:3,borderRadius:8}}>
+                  <Ionicons name="git-network-outline" size={13} color="#4F46E5" />
+                  <Text style={{fontSize:10,fontWeight:'700',color:'#4F46E5'}}>PM</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={()=>handleDelete(g.goal_id)}>
                   <Ionicons name="trash-outline" size={16} color={COLORS.error} />
                 </TouchableOpacity>

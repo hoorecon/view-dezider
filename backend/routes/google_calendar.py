@@ -19,8 +19,10 @@ from core.auth import get_current_user
 
 router = APIRouter()
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+# Accept both naming conventions — production EC2 uses GOOGLE_OAUTH_CLIENT_ID /
+# GOOGLE_OAUTH_CLIENT_SECRET while the dev pod uses GOOGLE_CLIENT_ID / _SECRET.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 # Determine redirect URI dynamically
@@ -47,7 +49,14 @@ def get_redirect_uri(request: Request) -> str:
 async def start_calendar_oauth(request: Request, user: dict = Depends(get_current_user)):
     """Start Google Calendar OAuth flow. Returns the authorization URL."""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-        raise HTTPException(status_code=500, detail="Google Calendar not configured")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Google Calendar sync is not configured on this server. "
+                "Ask the administrator to set GOOGLE_OAUTH_CLIENT_ID and "
+                "GOOGLE_OAUTH_CLIENT_SECRET in the backend .env and restart."
+            ),
+        )
 
     redirect_uri = get_redirect_uri(request)
 
