@@ -505,3 +505,29 @@ Fixed permanently:
   metro cache ns v13-2026-07-27-011-gem-pm-workspace.
 - Prod note: user confirmed EC2 uses GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET in
   /opt/dezider/backend/.env — now supported natively; restart container after deploy.
+
+## Iter 199 — Inter-module Integrations (XLS matrix) (2026-07-27)
+- **Passable Values engine**: NEW `GET /api/integrations/passable-values` (routes/integrations_passable.py)
+  aggregates Option Names (text) + Case-1 Worth % + MPPS Worth % (MyDezider), Option Names + P&C Score %
+  (pros_cons), SF SMART Goals (text, with `/tools/solution-finder?id=` link).
+- **PassableValuePicker** (`src/components/PassableValuePicker.tsx`, default export InsertFromModulesButton ⇄):
+  wired into MyDezider Step2 (factor name + Expected), Step6 (option; SF pick → option with `sf_ref` + open-plan
+  chip), Step7 (custom % via new applyCustomPct); P&C wizard Step1 (factor), Step2 (option + sf_ref + chip),
+  Step5 (Expected), Step7 (Custom %); Solution Finder Q3/Q4b/Q4c add-rows.
+- **SF SMART-Goal as option**: per user requirement, only the one-liner SMART goal is inserted; detailed Q5
+  action plan referenced via link chip navigation (sf_ref persisted on DecisionOption model + pros_cons option).
+- **Recursive SF**: "New SF" pill in ASM control cluster (solution/mitigation/contingency rows) →
+  `/tools/solution-finder?seed=<text>`; solution-finder pre-fills SMART Goal from `?seed=` for new entries.
+- **CTT Classification**: `classification_ref {type: goal|milestone|deliverable|work_package|parent_task,
+  ref_id, label}` on ctt_tasks (create+update); picker in ctt-task.tsx pulls /goal-setter/goals (+milestones),
+  NEW `GET /api/gem-pm/nodes/all?types=…`, /ctt/tasks.
+- **CTT Trigger-from-task**: 6 launcher chips in Dependencies & Help → Solution Finder (seeded), MyDezider,
+  Pros & Cons, Sub Task (`/tools/ctt-task?parent_task_id=&parent_title=` pre-fills parent_task ref),
+  LifeStyle, Goal Setter.
+- Bug fixed during testing: ctt-task render crash (`clsPickerOpen is not defined` — state block missing) caused
+  redirect-to-login; state re-added, verified via screenshot.
+- Testing: iter199 backend 7/7 (tests/test_iter199_passable_and_intermodule.py); frontend verified (seed
+  pre-fill, ⇄ button, ctt-task Classification + Trigger sections). Testing-agent note: add testID to
+  InsertFromModulesButton for automation (LOW, deferred).
+- BUILD → **2026.07.27.012** (`EXPECT_BUILD=2026.07.27.012 ./deploy/sync.sh emergent-v3`),
+  metro cache ns v14-2026-07-27-012-inter-module-integrations.

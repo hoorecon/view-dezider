@@ -103,6 +103,11 @@ export default function CTTTaskScreen() {
   const [sourceType, setSourceType] = useState('manual');
   const [sourceId, setSourceId] = useState('');
   const [linkedFreedoms, setLinkedFreedoms] = useState<string[]>([]);
+  // ── Classification ref: link this task under a pre-existing module item ──
+  const [classificationRef, setClassificationRef] = useState<{ type: string; ref_id: string; label: string } | null>(null);
+  const [clsPickerOpen, setClsPickerOpen] = useState(false);
+  const [clsOptions, setClsOptions] = useState<{ type: string; ref_id: string; label: string }[]>([]);
+  const [clsLoading, setClsLoading] = useState(false);
 
   useEffect(() => {
     if (editId) loadTask();
