@@ -61,7 +61,7 @@ export default function Root({ children }: PropsWithChildren) {
             __html: `
               (function () {
                 if (window.__wsf_html) return;
-                window.__wsf_html = { installed_at: Date.now(), version: 'v9-2026-07-26-tabindex-scrollers' };
+                window.__wsf_html = { installed_at: Date.now(), version: 'v10-2026-07-26-008-julyfix' };
                 var KEYS = ['PageDown','PageUp','Home','End',' ','Spacebar','ArrowDown','ArrowUp'];
                 var lastX = (window.innerWidth||800)/2, lastY = (window.innerHeight||600)/2;
                 document.addEventListener('mousemove', function (e) { lastX = e.clientX; lastY = e.clientY; }, { passive: true, capture: true });
@@ -157,7 +157,7 @@ export default function Root({ children }: PropsWithChildren) {
                 window.addEventListener('keydown', onKey, { capture: true, passive: false });
                 window.addEventListener('wheel', onWheel, { capture: true, passive: false });
 
-                // ── ScrollView tabIndex tagger (August 2026) ─────────────────
+                // ── ScrollView tabIndex tagger (July 2026) ───────────────────
                 // Make every RN-Web ScrollView container div focusable via
                 // tabIndex=-1. This lets keyboard focus land on the scrollable
                 // content itself so PageDown/PageUp/Space route to the right

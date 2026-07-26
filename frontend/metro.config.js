@@ -12,7 +12,7 @@ const config = getDefaultConfig(__dirname);
 // `.metro-cache` unless the path itself changes).
 //
 // Alternatively set METRO_CACHE_ROOT in your env to override.
-const CACHE_VERSION = 'v9-2026-07-26-tabindex-scrollers';
+const CACHE_VERSION = 'v10-2026-07-26-008-julyfix';
 const root = process.env.METRO_CACHE_ROOT
   || path.join(__dirname, `.metro-cache-${CACHE_VERSION}`);
 config.cacheStores = [

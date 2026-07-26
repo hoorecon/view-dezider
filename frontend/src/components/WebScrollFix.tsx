@@ -123,13 +123,13 @@ export default function WebScrollFix() {
     // installed itself, skip — its listeners are identical and it runs
     // before React mounts, so avoiding double-attach keeps behaviour clean.
     if ((window as any).__wsf_html) {
-      (window as any).__wsf = { version: 'v9-2026-07-26-tabindex-scrollers', ready: true, delegated_to_html_inline: true };
+      (window as any).__wsf = { version: 'v10-2026-07-26-008-julyfix', ready: true, delegated_to_html_inline: true };
       return;
     }
 
-    (window as any).__wsf = { version: 'v9-2026-07-26-tabindex-scrollers', ready: true };
+    (window as any).__wsf = { version: 'v10-2026-07-26-008-julyfix', ready: true };
 
-    // ── ScrollView tabIndex tagger (August 2026) ────────────────
+    // ── ScrollView tabIndex tagger (July 2026) ──────────────────
     // Make every RN-Web ScrollView container div focusable via
     // tabIndex=-1. This lets keyboard focus land on the scrollable
     // content itself so PageDown / PageUp / Space route to the right
