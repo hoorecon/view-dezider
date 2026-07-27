@@ -250,6 +250,7 @@ const PUBLIC_SEGMENTS = new Set<string>([
   'p',               // public shared-report viewer (/p/[slug])
   'embed',           // white-label partner embed (/embed/[flow]) — iframed on partner sites
   'admin',           // self-guarded (auth + admin role)
+  'quiz',            // marketing HOOK: guest Decision-Style quiz (quiz.jelcos.ai)
 ]);
 
 export default function RootLayout() {

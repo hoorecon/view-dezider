@@ -1090,8 +1090,12 @@ export const styles = StyleSheet.create({
   actualValueRow: {
     marginTop: 6,
     marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   actualValueInputWrap: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.background,

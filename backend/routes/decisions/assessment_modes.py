@@ -44,11 +44,15 @@ async def submit_assessment(assessment: ModeAssessmentCreate, user: dict = Depen
         subject_type=subject_type,
         subject_name=(assessment.subject_name or "").strip() or None if subject_type == "other" else None,
         subject_whatsapp=(assessment.subject_whatsapp or "").strip() or None if subject_type == "other" else None,
+        subject_email=(assessment.subject_email or "").strip() or None if subject_type == "other" else None,
+        subject_gender=(assessment.subject_gender or "").strip() or None if subject_type == "other" else None,
     )
     await db.assessments.insert_one(result.dict())
     return {"id": result.id, "dominant_mode": dominant_mode, "mode_scores": mode_scores,
             "subject_type": subject_type, "subject_name": result.subject_name,
-            "subject_whatsapp": result.subject_whatsapp}
+            "subject_whatsapp": result.subject_whatsapp,
+            "subject_email": result.subject_email,
+            "subject_gender": result.subject_gender}
 
 
 @router.get("/assessment/history")
@@ -98,16 +102,26 @@ async def generate_ai_insight(assessment_id: str, user: dict = Depends(get_curre
         raise HTTPException(402, "You're out of AI credits. Add balance from Profile → Universal Key.")
 
     scores = a.get("mode_scores", {})
-    scores_txt = ", ".join(f"{_MODE_LABELS.get(k, k)} {v}/5" for k, v in scores.items())
+    # Convert 1-5 raw scores into a user-friendly percentage so the prompt
+    # (and hence the generated insight) speaks in "93%" / "27%" rather than
+    # confusing "4.67 / 1.33" numbers.
+    def _pct(v):
+        try:
+            return int(round(float(v) * 20))
+        except Exception:
+            return 0
+    scores_txt = ", ".join(f"{_MODE_LABELS.get(k, k)} {_pct(v)}%" for k, v in scores.items())
     who = "this person" if a.get("subject_type") == "other" else "the user"
     name = a.get("subject_name") or ("this person" if a.get("subject_type") == "other" else "you")
     prompt = (
         f"A Decision-Making-Style assessment was completed for {name}. "
         f"The dominant style is '{_MODE_LABELS.get(a.get('dominant_mode'), a.get('dominant_mode'))}'. "
-        f"Average scores (1-5) across styles: {scores_txt}. "
-        f"Write a warm, specific, personalized insight (~140-180 words) about {who}'s decision-making style: "
-        f"1) what this blend means in practice, 2) two concrete strengths, 3) two blind spots to watch, "
-        f"4) one practical tip to make better decisions. Use second person if it's the user, third person if about someone else. "
+        f"Scores by style (as percentages, 0-100%): {scores_txt}. "
+        f"Write a warm, specific, personalized insight (~140-180 words) about {who}'s decision-making style. "
+        f"Rules — (a) ALWAYS refer to scores as percentages (e.g. 93%, 27%). NEVER use raw 1-5 numbers like 4.67 or 1.33. "
+        f"(b) Cover: 1) what this blend means in practice, 2) two concrete strengths, "
+        f"3) two blind spots to watch, 4) one practical tip to make better decisions. "
+        f"Use second person if it's the user, third person if about someone else. "
         f"Plain encouraging language, no markdown headers."
     )
 

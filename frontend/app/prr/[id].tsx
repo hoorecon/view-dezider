@@ -136,6 +136,23 @@ function PRRDecisionDetailInner() {
     }
   }, [decision, stepParam, setCurrentStep]);
 
+  // Keep the URL in sync with the currently active step (web only).
+  // This makes browser Back preserve the exact step the user was on when they
+  // navigated away (e.g. via the Inter Modules Connector "Open" icon), instead
+  // of always landing them back on the last persisted step (Step 10).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!decision?.id || !currentStep) return;
+    try {
+      const u = new URL(window.location.href);
+      const already = u.searchParams.get('step');
+      if (already === String(currentStep)) return;
+      u.searchParams.set('step', String(currentStep));
+      // replaceState — we don't want to spam history for every step change.
+      window.history.replaceState({}, '', u.toString());
+    } catch { /* no-op */ }
+  }, [currentStep, decision?.id]);
+
   const handleCLDApply = (results: {
     classifications: { [factorId: string]: 'primary' | 'secondary' };
     priorities: { factorId: string; order: number }[];

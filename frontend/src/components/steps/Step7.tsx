@@ -817,6 +817,15 @@ export default function Step7() {
               </View>
             ) : null}
           </View>
+          {/* Inter Modules Connector for Actual Value — pulls a live value
+              (Option Name, %, SMART Goal etc.) from other modules into this
+              factor's actual field. */}
+          <InsertFromModulesButton
+            accept="all"
+            compact
+            title="Insert as Actual Value"
+            onPick={(it) => handleUnitValueChange(option.id, f.id, it.kind === 'percent' ? `${it.value}%` : it.value)}
+          />
         </View>
 
         <View style={styles.lmhContainer}>

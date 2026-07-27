@@ -52,6 +52,14 @@ export default function ProfileScreen() {
   const [subjectType, setSubjectType] = useState<'self' | 'other'>('self');
   const [subjectName, setSubjectName] = useState('');
   const [subjectWhatsapp, setSubjectWhatsapp] = useState('');
+  const [subjectEmail, setSubjectEmail] = useState('');
+  const [subjectGender, setSubjectGender] = useState('');
+  // Assessment Track Record — collapsible + filter state
+  const [trackOpen, setTrackOpen] = useState(false);
+  const [trackNameQ, setTrackNameQ] = useState('');
+  const [trackWhatsappQ, setTrackWhatsappQ] = useState('');
+  const [trackEmailQ, setTrackEmailQ] = useState('');
+  const [trackGenderQ, setTrackGenderQ] = useState('');
   const [insightBusy, setInsightBusy] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<any>(null);
@@ -138,13 +146,15 @@ export default function ProfileScreen() {
         payload.subject_type = 'other';
         payload.subject_name = subjectName.trim();
         payload.subject_whatsapp = subjectWhatsapp.trim();
+        payload.subject_email = subjectEmail.trim();
+        payload.subject_gender = subjectGender.trim();
       }
       const response = await api.post('/assessment', payload);
       setShowQuiz(false);
       setAnswers({});
       await fetchLatestAssessment();
       if (subjectType === 'self') setAssessmentResult(response.data);
-      setSubjectType('self'); setSubjectName(''); setSubjectWhatsapp('');
+      setSubjectType('self'); setSubjectName(''); setSubjectWhatsapp(''); setSubjectEmail(''); setSubjectGender('');
       setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 120);
       const who = response.data?.subject_name ? ` for ${response.data.subject_name}` : '';
       showAlert('Assessment Complete', `Dominant mode${who}: ${response.data.dominant_mode}`);
@@ -185,7 +195,7 @@ export default function ProfileScreen() {
   };
 
   const startQuiz = (type: 'self' | 'other') => {
-    setSubjectType(type); setSubjectName(''); setSubjectWhatsapp(''); setAnswers({}); setShowQuiz(true);
+    setSubjectType(type); setSubjectName(''); setSubjectWhatsapp(''); setSubjectEmail(''); setSubjectGender(''); setAnswers({}); setShowQuiz(true);
     // Always start the quiz from the very top — otherwise the previous scroll
     // position (e.g. mid-results) makes it look like it begins at Q3/Q4.
     setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: false }), 60);
@@ -308,6 +318,31 @@ export default function ProfileScreen() {
             onChangeText={setSubjectWhatsapp}
             keyboardType="phone-pad"
           />
+          <TextInput
+            style={styles.subjectInput}
+            placeholder="Email (optional — for sharing the result)"
+            placeholderTextColor={COLORS.textMuted}
+            value={subjectEmail}
+            onChangeText={setSubjectEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          <View style={styles.subjectGenderRow}>
+            <Text style={styles.subjectGenderLabel}>Gender</Text>
+            {['Male', 'Female', 'Other', ''].map((g) => {
+              const on = subjectGender === g;
+              const label = g || 'Prefer not to say';
+              return (
+                <TouchableOpacity
+                  key={label}
+                  style={[styles.subjectGenderChip, on && styles.subjectGenderChipOn]}
+                  onPress={() => setSubjectGender(g)}
+                >
+                  <Text style={[styles.subjectGenderChipT, on && styles.subjectGenderChipTOn]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       )}
 
@@ -321,28 +356,32 @@ export default function ProfileScreen() {
           <Text style={styles.questionText}>{question.text}</Text>
           <View style={styles.ratingContainer}>
             {[1, 2, 3, 4, 5].map((value) => (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  styles.ratingButton,
-                  answers[question.id] === value && styles.ratingButtonActive,
-                ]}
-                onPress={() => handleAnswerChange(question.id, value)}
-              >
-                <Text
+              <View key={value} style={styles.ratingCell}>
+                <TouchableOpacity
                   style={[
-                    styles.ratingText,
-                    answers[question.id] === value && styles.ratingTextActive,
+                    styles.ratingButton,
+                    answers[question.id] === value && styles.ratingButtonActive,
                   ]}
+                  onPress={() => handleAnswerChange(question.id, value)}
                 >
-                  {value}
+                  <Text
+                    style={[
+                      styles.ratingText,
+                      answers[question.id] === value && styles.ratingTextActive,
+                    ]}
+                  >
+                    {value}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.ratingScaleLabel} numberOfLines={2}>
+                  {value === 1 ? 'Strongly Disagree'
+                    : value === 2 ? 'Disagree'
+                    : value === 3 ? 'Neutral'
+                    : value === 4 ? 'Agree'
+                    : 'Strongly Agree'}
                 </Text>
-              </TouchableOpacity>
+              </View>
             ))}
-          </View>
-          <View style={styles.ratingLabels}>
-            <Text style={styles.ratingLabel}>Disagree</Text>
-            <Text style={styles.ratingLabel}>Agree</Text>
           </View>
         </Card>
       ))}
@@ -684,14 +723,98 @@ export default function ProfileScreen() {
         </Card>
       )}
 
-      {/* Track record — Self pinned on top, others chronological */}
+      {/* Track record — collapsible with filters (Name autosuggest, WhatsApp, Email, Gender) */}
       {history.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>Assessment Track Record</Text>
-          <Card style={{ marginBottom: 16 }}>
-            {[...history]
-              .sort((a, b) => (a.subject_type === 'other' ? 1 : 0) - (b.subject_type === 'other' ? 1 : 0))
-              .map((a, idx) => (
+          <TouchableOpacity
+            style={styles.trackHeader}
+            onPress={() => setTrackOpen((v) => !v)}
+            accessibilityLabel={trackOpen ? 'Collapse Assessment Track Record' : 'Expand Assessment Track Record'}
+          >
+            <Text style={styles.sectionTitle}>Assessment Track Record</Text>
+            <View style={styles.trackHeaderRight}>
+              <Text style={styles.trackHeaderCount}>{history.length}</Text>
+              <Ionicons name={trackOpen ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.primary} />
+            </View>
+          </TouchableOpacity>
+          {trackOpen && (
+            <Card style={{ marginBottom: 16 }}>
+              {/* Filter row — Name autosuggest + WhatsApp + Email + Gender */}
+              <View style={styles.trackFilterBlock}>
+                <TextInput
+                  style={styles.trackFilterInput}
+                  placeholder="Filter by name…"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={trackNameQ}
+                  onChangeText={setTrackNameQ}
+                />
+                {/* Autosuggest chips – unique names from history */}
+                {(() => {
+                  const q = trackNameQ.trim().toLowerCase();
+                  if (!q) return null;
+                  const suggestions = Array.from(new Set(
+                    history.map((h) => h.subject_name || (h.subject_type === 'self' ? 'You' : '')).filter(Boolean)
+                  )).filter((n) => n.toLowerCase().includes(q) && n.toLowerCase() !== q).slice(0, 4);
+                  if (suggestions.length === 0) return null;
+                  return (
+                    <View style={styles.trackSuggestRow}>
+                      {suggestions.map((s) => (
+                        <TouchableOpacity key={s} style={styles.trackSuggestChip} onPress={() => setTrackNameQ(s)}>
+                          <Text style={styles.trackSuggestT}>{s}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })()}
+                <View style={styles.trackFilterRow}>
+                  <TextInput
+                    style={[styles.trackFilterInput, styles.trackFilterHalf]}
+                    placeholder="WhatsApp…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={trackWhatsappQ}
+                    onChangeText={setTrackWhatsappQ}
+                    keyboardType="phone-pad"
+                  />
+                  <TextInput
+                    style={[styles.trackFilterInput, styles.trackFilterHalf]}
+                    placeholder="Email…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={trackEmailQ}
+                    onChangeText={setTrackEmailQ}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={styles.trackGenderRow}>
+                  {['', 'Male', 'Female', 'Other'].map((g) => {
+                    const on = trackGenderQ === g;
+                    const label = g || 'Any';
+                    return (
+                      <TouchableOpacity key={label} style={[styles.trackGenderChip, on && styles.trackGenderChipOn]} onPress={() => setTrackGenderQ(g)}>
+                        <Text style={[styles.trackGenderChipT, on && styles.trackGenderChipTOn]}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+              {(() => {
+                const rows = [...history]
+                  .sort((a, b) => (a.subject_type === 'other' ? 1 : 0) - (b.subject_type === 'other' ? 1 : 0))
+                  .filter((a) => {
+                    const nq = trackNameQ.trim().toLowerCase();
+                    if (nq) {
+                      const nm = (a.subject_name || (a.subject_type === 'self' ? 'You' : '')).toLowerCase();
+                      if (!nm.includes(nq)) return false;
+                    }
+                    if (trackWhatsappQ.trim() && !(a.subject_whatsapp || '').includes(trackWhatsappQ.trim())) return false;
+                    if (trackEmailQ.trim() && !(a.subject_email || '').toLowerCase().includes(trackEmailQ.trim().toLowerCase())) return false;
+                    if (trackGenderQ && (a.subject_gender || '').toLowerCase() !== trackGenderQ.toLowerCase()) return false;
+                    return true;
+                  });
+                if (rows.length === 0) {
+                  return <Text style={styles.trackEmpty}>No records match your filters.</Text>;
+                }
+                return rows.map((a, idx) => (
                 <View key={a.id} style={[styles.trackRow, idx > 0 && styles.trackRowBorder]}>
                   <View style={[styles.trackDot, { backgroundColor: getModeColor(a.dominant_mode) }]} />
                   <View style={{ flex: 1 }}>
@@ -714,8 +837,10 @@ export default function ProfileScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-              ))}
-          </Card>
+                ));
+              })()}
+            </Card>
+          )}
         </>
       )}
 
@@ -1442,6 +1567,12 @@ const styles = StyleSheet.create({
   ratingContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  ratingCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 2,
   },
   ratingButton: {
     width: 44,
@@ -1465,6 +1596,14 @@ const styles = StyleSheet.create({
   ratingTextActive: {
     color: COLORS.white,
   },
+  ratingScaleLabel: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 12,
+    minHeight: 24,
+  },
   ratingLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1477,4 +1616,27 @@ const styles = StyleSheet.create({
   submitButton: {
     marginTop: 24,
   },
+  // Assessor subject Email + Gender + Track Record filters
+  subjectGenderRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 2 },
+  subjectGenderLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600', marginRight: 4 },
+  subjectGenderChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  subjectGenderChipOn: { backgroundColor: '#EEF2FF', borderColor: COLORS.primary },
+  subjectGenderChipT: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
+  subjectGenderChipTOn: { color: COLORS.primary },
+  trackHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  trackHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  trackHeaderCount: { fontSize: 12, fontWeight: '700', color: COLORS.primary, backgroundColor: '#EEF2FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  trackFilterBlock: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4, gap: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  trackFilterInput: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: COLORS.textPrimary, backgroundColor: COLORS.white },
+  trackFilterRow: { flexDirection: 'row', gap: 6 },
+  trackFilterHalf: { flex: 1 },
+  trackSuggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  trackSuggestChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE' },
+  trackSuggestT: { fontSize: 11, color: COLORS.primary, fontWeight: '600' },
+  trackGenderRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 },
+  trackGenderChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  trackGenderChipOn: { backgroundColor: '#EEF2FF', borderColor: COLORS.primary },
+  trackGenderChipT: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
+  trackGenderChipTOn: { color: COLORS.primary },
+  trackEmpty: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center', paddingVertical: 18 },
 });

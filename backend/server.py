@@ -374,6 +374,10 @@ api_router.include_router(gem_pm_router)
 from routes.integrations_passable import router as integrations_passable_router  # noqa: E402
 api_router.include_router(integrations_passable_router)
 
+# Guest Decision-Style Quiz (marketing hook — quiz.jelcos.ai)
+from routes.guest_quiz import router as guest_quiz_router  # noqa: E402
+api_router.include_router(guest_quiz_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 

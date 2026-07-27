@@ -83,7 +83,7 @@ class TestPassableValues:
         # Also each item must have module, link, ref_id
         item = option_texts[0]
         assert item.get("module") == "MYDEZIDER"
-        assert item.get("link", "").startswith("/decision/")
+        assert item.get("link", "").startswith("/prr/")
         assert item.get("ref_id") == seed_decision["id"]
 
     def test_smart_goal_link_shape(self, h):

@@ -13,6 +13,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  */
 export async function getPostAuthRoute(): Promise<string> {
   try {
+    // Guest quiz taken on quiz.jelcos.ai / /quiz — after sign-in we must
+    // claim the token and reveal the result.
+    const quizToken = await AsyncStorage.getItem('pending_quiz_token');
+    if (quizToken) {
+      await AsyncStorage.removeItem('pending_quiz_token');
+      return `/quiz/result?token=${quizToken}`;
+    }
     // A logged-out visitor tapped "Use this template" in The Decider Store.
     const clone = await AsyncStorage.getItem('pending_decider_clone');
     if (clone) {

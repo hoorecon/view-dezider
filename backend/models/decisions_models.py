@@ -303,6 +303,8 @@ class ModeAssessmentCreate(BaseModel):
     subject_type: str = "self"          # "self" | "other"
     subject_name: Optional[str] = None  # name of the person assessed (when "other")
     subject_whatsapp: Optional[str] = None  # optional WhatsApp number for sharing
+    subject_email: Optional[str] = None     # optional email — enables Email share
+    subject_gender: Optional[str] = None    # "male" | "female" | "other" | ""
 
 
 class ModeAssessmentResult(BaseModel):
@@ -314,6 +316,8 @@ class ModeAssessmentResult(BaseModel):
     subject_type: str = "self"
     subject_name: Optional[str] = None
     subject_whatsapp: Optional[str] = None
+    subject_email: Optional[str] = None
+    subject_gender: Optional[str] = None
     ai_insight: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -443,13 +447,18 @@ ASSESSMENT_QUESTIONS = [
     {"id": "q1", "text": "When faced with a decision, I usually go with my gut feeling.", "mode": "intuitive"},
     {"id": "q2", "text": "I prefer to analyze all available data before deciding.", "mode": "logical"},
     {"id": "q3", "text": "My decisions are often influenced by how I feel at the moment.", "mode": "emotional"},
-    {"id": "q4", "text": "I can detach myself from emotions when making important decisions.", "mode": "consciousness"},
+    {"id": "q4", "text": "Before deciding, I pause to notice what values or intentions the choice is really serving.", "mode": "consciousness"},
     {"id": "q5", "text": "I trust my instincts even when logic suggests otherwise.", "mode": "intuitive"},
     {"id": "q6", "text": "I create pros and cons lists for major decisions.", "mode": "logical"},
     {"id": "q7", "text": "I often regret decisions made when I was upset or excited.", "mode": "emotional"},
-    {"id": "q8", "text": "I can observe my thoughts without being controlled by them.", "mode": "consciousness"},
+    {"id": "q8", "text": "I can observe my thoughts and reactions without immediately acting on them.", "mode": "consciousness"},
     {"id": "q9", "text": "I often know the right decision without knowing why.", "mode": "intuitive"},
     {"id": "q10", "text": "I need concrete evidence to make a decision.", "mode": "logical"},
     {"id": "q11", "text": "My mood significantly affects my decision-making.", "mode": "emotional"},
-    {"id": "q12", "text": "I practice mindfulness or meditation regularly.", "mode": "consciousness"},
+    {"id": "q12", "text": "When I make a decision I am clearly aware of the motive (fear, ego, love, purpose) behind it.", "mode": "consciousness"},
+    # ── 4 additional questions (1 per mode) for higher accuracy ──
+    {"id": "q13", "text": "I sense which option feels right in my body (calm, expansion) versus wrong (tension, contraction).", "mode": "intuitive"},
+    {"id": "q14", "text": "I weigh trade-offs and expected outcomes systematically before I commit.", "mode": "logical"},
+    {"id": "q15", "text": "My feelings toward the people involved shape which option I ultimately pick.", "mode": "emotional"},
+    {"id": "q16", "text": "I ask myself whether this decision is aligned with the person I want to become in the long run.", "mode": "consciousness"},
 ]
