@@ -151,6 +151,10 @@ class ProsConsUpdate(BaseModel):
 @router.post("")
 async def create_pros_cons(data: ProsConsCreate, user: dict = Depends(get_current_user)):
     """Create a new Pros & Cons analysis (also seeds the 8-step framework containers)."""
+    # Enforce free-use quota (WOWO Access Control add-on).
+    from routes.module_limits import check_and_reserve_usage
+    await check_and_reserve_usage(user, "pros_cons")
+
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],

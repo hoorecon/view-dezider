@@ -19,6 +19,10 @@ router = APIRouter(tags=["Decisions"])
 
 @router.post("/decisions", response_model=dict)
 async def create_decision(decision: PRRDecisionCreate, user: dict = Depends(get_current_user)):
+    # Enforce free-use quota (WOWO Access Control add-on).
+    from routes.module_limits import check_and_reserve_usage
+    await check_and_reserve_usage(user, "my_dezider")
+
     user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     org_id = user_doc.get("org_id") if user_doc else None
     decision_doc = PRRDecision(

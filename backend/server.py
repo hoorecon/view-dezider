@@ -382,6 +382,10 @@ api_router.include_router(guest_quiz_router)
 from routes.razorpay_offers import router as razorpay_offers_router  # noqa: E402
 api_router.include_router(razorpay_offers_router)
 
+# Module Free-Use Limits (Access Control add-on)
+from routes.module_limits import router as module_limits_router  # noqa: E402
+api_router.include_router(module_limits_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 

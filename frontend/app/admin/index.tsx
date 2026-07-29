@@ -66,6 +66,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'dashboard-layout', label: 'Dashboard Sections', description: 'Rename section titles · drag to reorder sections · move modules between sections · auto-numbered', icon: 'grid', color: '#0D9488', href: '/admin/dashboard-layout' },
   { key: 'subscription-plans', label: 'Subscription Plans', description: 'Plan credits/month · Active toggle · Sync live pricing & plan IDs from Razorpay', icon: 'diamond', color: '#7C3AED', href: '/admin/subscription-plans' },
   { key: 'razorpay-offers', label: 'Razorpay Offers', description: 'Sync live Payment & Subscription offers from Razorpay · toggle apply-flows · auto-attach at checkout', icon: 'pricetag', color: '#DC2626', href: '/admin/razorpay-offers' },
+  { key: 'module-limits', label: 'Module Free-Use Limits', description: 'Cap Solution Finder / Pros & Cons / MyDezider creations per tier · default 2 free for new users', icon: 'infinite-outline', color: '#0EA5E9', href: '/admin/module-limits' },
   { key: 'decider-store', label: 'The Decider Store', description: 'Author & authorize public Decision Templates · import 55×10 grids from Excel/Google Sheet · pricing & clone modes', icon: 'storefront', color: '#4F46E5', href: '/admin/decider-store' },
   { key: 'ad-programs', label: 'AdMaker & AdTaker', description: 'Sponsored Solutions auction (AdRank × GSP) · region/time-slot bids · publisher widgets · tracker IDs · cutoffs', icon: 'megaphone', color: '#B45309', href: '/admin/ad-programs' },
 ];
@@ -73,7 +74,7 @@ const QUICK_ACTIONS: QuickAction[] = [
 // Meaningful grouping of the 32 admin modules into 6 collapsible sections.
 // 'Essentials' is expanded by default; all others start collapsed.
 const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] }[] = [
-  { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'dashboard-layout', 'signup-gate', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
+  { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'module-limits', 'dashboard-layout', 'signup-gate', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
   { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'razorpay-offers', 'payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma', 'ad-programs'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },

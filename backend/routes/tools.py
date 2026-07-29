@@ -45,6 +45,11 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
     to fan out Q5 items into the universal Action Center.
     """
     body = await request.json()
+
+    # Enforce free-use quota (WOWO Access Control add-on).
+    from routes.module_limits import check_and_reserve_usage
+    await check_and_reserve_usage(user, "solution_finder")
+
     entry_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
