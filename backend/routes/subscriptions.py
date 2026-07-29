@@ -215,21 +215,33 @@ async def create_subscription(body: Dict[str, Any], user: dict = Depends(get_cur
     if not plan or not plan.get("active", True):
         raise HTTPException(status_code=400, detail="Invalid or inactive plan.")
 
-    # 1) Attempt recurring subscription
+    # 1) Attempt recurring subscription — auto-attach highest-priority
+    # Razorpay subscription offer if the admin has flagged one for
+    # apply_flows = ['recurring']. Silently no-op if none configured.
     try:
-        sub = rzp_client.subscription.create({
+        from routes.razorpay_offers import get_best_offer_for_flow
+        recurring_offer_id = await get_best_offer_for_flow("recurring")
+    except Exception:
+        recurring_offer_id = None
+
+    try:
+        sub_payload: Dict[str, Any] = {
             "plan_id": plan_id,
             "total_count": 120,          # up to 10 years of monthly cycles
             "quantity": 1,
             "customer_notify": 1,
             "notes": {"user_id": user["user_id"], "tier": plan["tier"], "name": user.get("name", "")},
-        })
+        }
+        if recurring_offer_id:
+            sub_payload["offer_id"] = recurring_offer_id
+        sub = rzp_client.subscription.create(sub_payload)
         await db.subscriptions.update_one(
             {"subscription_id": sub["id"]},
             {"$set": {
                 "subscription_id": sub["id"], "user_id": user["user_id"], "plan_id": plan_id,
                 "tier": plan["tier"], "status": sub.get("status", "created"),
                 "mode": "recurring", "short_url": sub.get("short_url"),
+                "offer_id": recurring_offer_id,
                 "created_at": _iso(_now()), "processed_payments": [],
             }},
             upsert=True,
@@ -237,7 +249,7 @@ async def create_subscription(body: Dict[str, Any], user: dict = Depends(get_cur
         return {
             "mode": "recurring", "subscription_id": sub["id"], "short_url": sub.get("short_url"),
             "key_id": key_id, "plan": {"name": plan["name"], "price_inr": plan["price_inr"]},
-            "status": sub.get("status"),
+            "status": sub.get("status"), "offer_id": recurring_offer_id,
         }
     except Exception as e:
         log.warning(f"subscription.create failed ({str(e)[:160]}); falling back to one-time order.")
@@ -249,20 +261,35 @@ async def create_subscription(body: Dict[str, Any], user: dict = Depends(get_cur
 async def _make_onetime_order(rzp_client, key_id, plan, user) -> Dict[str, Any]:
     amount_paise = int(plan["price_inr"]) * 100
     ts = int(_now().timestamp())
-    order = rzp_client.order.create({
+
+    # Auto-attach any active Razorpay one-time offers (bank / card / UPI
+    # instant-discount + cashback) admin has flagged for this flow.
+    try:
+        from routes.razorpay_offers import get_offers_for_flow
+        onetime_offer_ids = await get_offers_for_flow("onetime")
+    except Exception:
+        onetime_offer_ids = []
+
+    order_payload: Dict[str, Any] = {
         "amount": amount_paise, "currency": "INR", "payment_capture": 1,
         "receipt": f"sub1_{user['user_id'][:8]}_{ts}"[:40],
         "notes": {"user_id": user["user_id"], "plan_id": plan["plan_id"], "tier": plan["tier"], "type": "subscription_onetime"},
-    })
+    }
+    if onetime_offer_ids:
+        order_payload["offers"] = onetime_offer_ids
+
+    order = rzp_client.order.create(order_payload)
     await db.payment_orders.insert_one({
         "order_id": order["id"], "user_id": user["user_id"], "type": "subscription_onetime",
         "plan_id": plan["plan_id"], "tier": plan["tier"], "credits": plan["credits_per_month"],
         "amount_paise": amount_paise, "status": "created", "created_at": _iso(_now()),
+        "offer_ids": onetime_offer_ids,
     })
     return {
         "mode": "onetime", "order_id": order["id"], "amount": amount_paise, "key_id": key_id,
         "credits": plan["credits_per_month"], "plan": {"name": plan["name"], "price_inr": plan["price_inr"]},
         "user_name": user.get("name", ""), "user_email": user.get("email", ""),
+        "offer_ids": onetime_offer_ids,
     }
 
 

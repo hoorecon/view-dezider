@@ -378,6 +378,10 @@ api_router.include_router(integrations_passable_router)
 from routes.guest_quiz import router as guest_quiz_router  # noqa: E402
 api_router.include_router(guest_quiz_router)
 
+# Razorpay Offers — Admin Sync + auto-attach engine
+from routes.razorpay_offers import router as razorpay_offers_router  # noqa: E402
+api_router.include_router(razorpay_offers_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 
