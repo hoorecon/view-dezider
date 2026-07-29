@@ -11,6 +11,11 @@ Offers). This module lets an admin **sync** the live list into a local
 to. Downstream, `_make_onetime_order()` and `create_subscription()` read this
 config to auto-apply the right offer per transaction.
 
+NOTE: The Razorpay Python SDK (razorpay==1.x) does NOT expose a `client.offer`
+resource — that resource was never wrapped. We therefore hit the REST API
+directly at GET https://api.razorpay.com/v1/offers using HTTP Basic Auth with
+the same (key_id, key_secret) credentials the SDK client is built from.
+
 Endpoints:
   POST /api/admin/razorpay-offers/sync        Pull latest from Razorpay
   GET  /api/admin/razorpay-offers             List stored offers
@@ -18,6 +23,7 @@ Endpoints:
 """
 from typing import Any, Dict, List
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -26,6 +32,10 @@ from core.integrations import get_razorpay_client
 from core.auth import require_super_admin
 
 router = APIRouter(prefix="/admin/razorpay-offers", tags=["Razorpay Offers"])
+
+# Razorpay REST base — offers resource isn't in the Python SDK so we call it
+# directly. Same host/auth as the SDK uses internally.
+_RZP_BASE = "https://api.razorpay.com/v1"
 
 
 class OfferPatch(BaseModel):
@@ -44,6 +54,23 @@ def _map_flow(offer: Dict[str, Any]) -> List[str]:
     return ["onetime", "sku", "topup"]
 
 
+async def _fetch_razorpay_offers(key_id: str, key_secret: str) -> List[Dict[str, Any]]:
+    """Call GET /v1/offers directly with basic auth (SDK doesn't wrap this).
+    Razorpay returns all offers in a single response — no pagination cursor
+    is documented for this endpoint, so we just take `items`."""
+    async with httpx.AsyncClient(timeout=15.0) as ac:
+        r = await ac.get(f"{_RZP_BASE}/offers", auth=(key_id, key_secret))
+    if r.status_code != 200:
+        # Bubble up Razorpay's message so admin can see WHY (e.g. API not enabled).
+        try:
+            err = r.json().get("error", {}).get("description") or r.text[:180]
+        except Exception:
+            err = r.text[:180]
+        raise HTTPException(r.status_code, f"Razorpay offers API returned {r.status_code}: {err}")
+    body = r.json() or {}
+    return body.get("items", []) or []
+
+
 @router.post("/sync")
 async def sync_offers(user: dict = Depends(require_super_admin)):
     """Pull the live list of offers from Razorpay and upsert to Mongo.
@@ -52,9 +79,9 @@ async def sync_offers(user: dict = Depends(require_super_admin)):
       (apply_flows, active, priority)
     - Offers deleted on Razorpay side: marked inactive locally with source='orphaned'
     """
-    rzp, _, _ = await get_razorpay_client()
-    if not rzp:
-        raise HTTPException(500, "Razorpay not configured.")
+    rzp, key_id, key_secret = await get_razorpay_client()
+    if not rzp or not key_id or not key_secret:
+        raise HTTPException(500, "Razorpay not configured. Set Key ID + Secret in Admin → Payments.")
 
     from datetime import datetime, timezone
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -62,63 +89,57 @@ async def sync_offers(user: dict = Depends(require_super_admin)):
     inserted = updated = 0
     seen: List[str] = []
     try:
-        # Razorpay's offer.all() is not paginated as heavily as subscriptions;
-        # the API returns up to 100 by default. We defensively page anyway.
-        skip = 0
-        while True:
-            page = rzp.offer.all({"count": 100, "skip": skip})
-            items = page.get("items", [])
-            if not items:
-                break
-            for o in items:
-                oid = o["id"]
-                seen.append(oid)
-                existing = await db.razorpay_offers.find_one({"offer_id": oid}, {"_id": 0})
-                # Razorpay-side fields (always refreshed)
-                rzp_fields = {
-                    "offer_id": oid,
-                    "name": o.get("name") or "",
-                    "display_text": o.get("display_text") or "",
-                    "payment_method": o.get("payment_method") or "",
-                    "type": o.get("type") or "",
-                    "discount_amount": o.get("discount_amount"),
-                    "discount_percentage": o.get("percent_rate"),
-                    "min_order_value": o.get("min_amount"),
-                    "max_offer_amount": o.get("max_cashback"),
-                    "issuer": o.get("issuer") or "",
-                    "starts_at": o.get("starts_at"),
-                    "ends_at": o.get("ends_at"),
-                    "status": o.get("status") or "",
-                    "raw": o,
-                    "synced_at": now_iso,
-                    "source": "razorpay_sync",
-                }
-                if existing:
-                    await db.razorpay_offers.update_one(
-                        {"offer_id": oid}, {"$set": rzp_fields}
-                    )
-                    updated += 1
-                else:
-                    # Brand-new offer → seed defaults, admin can tweak.
-                    rzp_fields.update({
-                        "apply_flows": _map_flow(o),
-                        "active": True,
-                        "priority": 100,
-                        "created_at": now_iso,
-                    })
-                    await db.razorpay_offers.update_one(
-                        {"offer_id": oid}, {"$set": rzp_fields}, upsert=True
-                    )
-                    inserted += 1
-            if len(items) < 100:
-                break
-            skip += 100
+        items = await _fetch_razorpay_offers(key_id, key_secret)
+        for o in items:
+            oid = o.get("id")
+            if not oid:
+                continue
+            seen.append(oid)
+            existing = await db.razorpay_offers.find_one({"offer_id": oid}, {"_id": 0})
+            # Razorpay-side fields (always refreshed).
+            rzp_fields = {
+                "offer_id": oid,
+                "name": o.get("name") or "",
+                "display_text": o.get("display_text") or "",
+                "payment_method": o.get("payment_method") or "",
+                "type": o.get("type") or "",
+                "discount_amount": o.get("discount_amount"),
+                "discount_percentage": o.get("percent_rate"),
+                "min_order_value": o.get("min_amount"),
+                "max_offer_amount": o.get("max_cashback"),
+                "issuer": o.get("issuer") or "",
+                "starts_at": o.get("starts_at"),
+                "ends_at": o.get("ends_at"),
+                "status": o.get("status") or "",
+                "raw": o,
+                "synced_at": now_iso,
+                "source": "razorpay_sync",
+            }
+            if existing:
+                await db.razorpay_offers.update_one(
+                    {"offer_id": oid}, {"$set": rzp_fields}
+                )
+                updated += 1
+            else:
+                # Brand-new offer → seed defaults, admin can tweak.
+                rzp_fields.update({
+                    "apply_flows": _map_flow(o),
+                    "active": True,
+                    "priority": 100,
+                    "created_at": now_iso,
+                })
+                await db.razorpay_offers.update_one(
+                    {"offer_id": oid}, {"$set": rzp_fields}, upsert=True
+                )
+                inserted += 1
 
         # Mark orphaned (deleted-on-Razorpay) offers inactive.
         orphaned = await db.razorpay_offers.update_many(
             {"offer_id": {"$nin": seen}, "source": {"$ne": "orphaned"}},
             {"$set": {"active": False, "source": "orphaned", "synced_at": now_iso}},
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Sync failed: {str(e)[:180]}")
 
