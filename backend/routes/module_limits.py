@@ -4,10 +4,19 @@ Free-Usage Limits per Module (WOWO Access Control add-on)
 Enables an admin to cap the number of times a new user can create records in
 key modules before hitting a paywall / upgrade prompt.
 
+Tier resolution (checked in this order):
+  1. `users.user_type` — set via /admin/acm/user/{id}/type — covers guest,
+     free, trial, paid, starter_trial, pro_trial, premium_trial, alpha, beta,
+     unit_tester (ut), integration_tester (it), on_demand_retail_buyer, etc.
+  2. `credit_wallets.current_plan` — set by `apply_charge()` on payment
+     success — covers the four subscription tiers seeded from
+     `subscription_plans.tier`: free / basic / pro / premium / enterprise.
+  3. Fallback → "free".
+
 Default configuration (seeded on first read):
-  free / guest / trial tiers → solution_finder=2, pros_cons=2, my_dezider=2
-                                (all other modules = unlimited)
-  paid tiers                   → all modules unlimited
+  guest / free / trial / *_trial tiers → solution_finder=2, pros_cons=2, my_dezider=2
+  Everyone else (paid, basic, pro, premium, enterprise, alpha, beta,
+    unit_tester, integration_tester, admin, super_admin) → unlimited
 
 Endpoints:
   GET  /api/admin/module-limits                Full config table
@@ -16,8 +25,6 @@ Endpoints:
 
 Public helper:
   await check_and_reserve_usage(user, module_key)
-      → raises HTTPException(402) when the caller has hit their limit
-      → otherwise increments the counter atomically
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -34,16 +41,36 @@ router = APIRouter(tags=["Module Free-Use Limits"])
 # resolves to unlimited unless an admin adds a config row for it.
 GATED_MODULES = ["solution_finder", "pros_cons", "my_dezider"]
 
-# Tiers we ship defaults for. `-1` = unlimited.
+# ── Default seed. Uses the ACTUAL tier / user_type values that live in the
+#    system (see /admin/acm/user/{id}/type valid_types list). `-1` = unlimited.
+_GATED_DEFAULT_2 = {"solution_finder": 2, "pros_cons": 2, "my_dezider": 2}
+_GATED_UNLIMITED = {"solution_finder": -1, "pros_cons": -1, "my_dezider": -1}
 _DEFAULT_LIMITS: Dict[str, Dict[str, int]] = {
-    "guest":          {"solution_finder": 2, "pros_cons": 2, "my_dezider": 2},
-    "free":           {"solution_finder": 2, "pros_cons": 2, "my_dezider": 2},
-    "trial":          {"solution_finder": 2, "pros_cons": 2, "my_dezider": 2},
-    "paid_starter":   {"solution_finder": -1, "pros_cons": -1, "my_dezider": -1},
-    "paid_pro":       {"solution_finder": -1, "pros_cons": -1, "my_dezider": -1},
-    "paid_enterprise":{"solution_finder": -1, "pros_cons": -1, "my_dezider": -1},
-    "super_admin":    {"solution_finder": -1, "pros_cons": -1, "my_dezider": -1},
-    "admin":          {"solution_finder": -1, "pros_cons": -1, "my_dezider": -1},
+    # Free-tier-ish → capped 2/each
+    "guest":                    _GATED_DEFAULT_2,
+    "free":                     _GATED_DEFAULT_2,
+    "trial":                    _GATED_DEFAULT_2,
+    "starter_trial":            _GATED_DEFAULT_2,
+    "pro_trial":                _GATED_DEFAULT_2,
+    "premium_trial":            _GATED_DEFAULT_2,
+    # Real paying users → unlimited. `basic/pro/premium/enterprise` come from
+    # credit_wallets.current_plan (subscription_plans.tier).
+    "paid":                     _GATED_UNLIMITED,
+    "basic":                    _GATED_UNLIMITED,
+    "pro":                      _GATED_UNLIMITED,
+    "premium":                  _GATED_UNLIMITED,
+    "enterprise":               _GATED_UNLIMITED,
+    # On-demand storefront buyers → unlimited (they've paid per unit).
+    "on_demand_retail_buyer":   _GATED_UNLIMITED,
+    "on_demand_bulk_buyer":     _GATED_UNLIMITED,
+    # Internal QA / testers → unlimited by convention.
+    "alpha":                    _GATED_UNLIMITED,
+    "beta":                     _GATED_UNLIMITED,
+    "unit_tester":              _GATED_UNLIMITED,
+    "integration_tester":       _GATED_UNLIMITED,
+    # Staff — also caught earlier by the role check but seeded for grid display.
+    "super_admin":              _GATED_UNLIMITED,
+    "admin":                    _GATED_UNLIMITED,
 }
 
 _seeded = False
@@ -67,6 +94,22 @@ async def _ensure_seed():
     _seeded = True
 
 
+async def _resolve_tier(user: dict) -> str:
+    """Find the caller's ACTIVE tier by checking users.user_type first,
+    then credit_wallets.current_plan, then falling back to 'free'."""
+    uid = user.get("user_id")
+    # 1) users.user_type (admin-managed via /admin/acm/user/{id}/type)
+    doc = await db.users.find_one({"user_id": uid}, {"_id": 0, "user_type": 1})
+    if doc and doc.get("user_type"):
+        return str(doc["user_type"]).lower()
+    # 2) credit_wallets.current_plan (paid subscriptions)
+    w = await db.credit_wallets.find_one({"user_id": uid}, {"_id": 0, "current_plan": 1})
+    if w and w.get("current_plan"):
+        return str(w["current_plan"]).lower()
+    # 3) fallback
+    return (user.get("tier") or user.get("plan_tier") or "free").lower()
+
+
 async def _get_limit(tier: str, module_key: str) -> int:
     """Return the free-use limit for (tier, module). -1 = unlimited."""
     await _ensure_seed()
@@ -75,7 +118,7 @@ async def _get_limit(tier: str, module_key: str) -> int:
     )
     if row:
         return int(row.get("limit", -1))
-    # Unknown module → unlimited by design (user asked: only 3 modules gated).
+    # Unknown module → unlimited (only 3 modules are gated by design).
     return -1
 
 
@@ -95,7 +138,7 @@ async def check_and_reserve_usage(user: dict, module_key: str) -> None:
     role = (user.get("role") or "").lower()
     if role in {"super_admin", "admin"}:
         return
-    tier = (user.get("tier") or user.get("plan_tier") or "free").lower()
+    tier = await _resolve_tier(user)
     limit = await _get_limit(tier, module_key)
     if limit < 0:
         return  # unlimited
@@ -123,7 +166,7 @@ async def check_and_reserve_usage(user: dict, module_key: str) -> None:
 @router.get("/me/module-usage")
 async def my_usage(user: dict = Depends(get_current_user)):
     await _ensure_seed()
-    tier = (user.get("tier") or user.get("plan_tier") or "free").lower()
+    tier = await _resolve_tier(user)
     out = []
     for m in GATED_MODULES:
         lim = await _get_limit(tier, m)
@@ -153,7 +196,7 @@ class LimitsBulkUpdate(BaseModel):
 async def admin_get_limits(user: dict = Depends(require_super_admin)):
     await _ensure_seed()
     rows = await db.module_free_limits.find({}, {"_id": 0}).to_list(500)
-    tiers = sorted({r["tier"] for r in rows})
+    tiers = sorted({r["tier"] for r in rows} | set(_DEFAULT_LIMITS.keys()))
     modules = sorted({r["module"] for r in rows} | set(GATED_MODULES))
     return {"rows": rows, "tiers": tiers, "modules": modules,
             "gated_modules": GATED_MODULES}
