@@ -55,6 +55,7 @@ export default function AdminSubscriptionPlansScreen() {
         active: !!p.active,
         name: p.name,
         features,
+        display_order: Number(p.display_order ?? 99),
       });
       setPlans(prev => prev.map(x => x.plan_id === p.plan_id ? res.data : x));
       setFeaturesDraft(prev => ({ ...prev, [p.plan_id]: (res.data.features || []).join('\n') }));
@@ -63,6 +64,48 @@ export default function AdminSubscriptionPlansScreen() {
       showAlert('Save failed', e?.response?.data?.detail || 'Could not update plan.');
     } finally {
       setSavingId(null);
+    }
+  };
+
+  /**
+   * Reorder — swaps this plan's display_order with its neighbour and persists
+   * both changes so the user-facing pricing page reflects the new order.
+   */
+  const reorderPlan = async (planId: string, direction: 'up' | 'down') => {
+    // Work on a locally-sorted snapshot so index math matches the visible list.
+    const sorted = [...plans].sort(
+      (a, b) => (a.display_order ?? 99) - (b.display_order ?? 99),
+    );
+    const idx = sorted.findIndex((x) => x.plan_id === planId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    const aOrder = a.display_order ?? 99;
+    const bOrder = b.display_order ?? 99;
+    // If they collide, seed unique values so subsequent swaps still work.
+    const newA = bOrder === aOrder ? aOrder + (direction === 'up' ? -1 : 1) : bOrder;
+    const newB = aOrder;
+
+    // Optimistic UI update, then persist both.
+    setPlans((prev) =>
+      prev.map((x) => {
+        if (x.plan_id === a.plan_id) return { ...x, display_order: newA };
+        if (x.plan_id === b.plan_id) return { ...x, display_order: newB };
+        return x;
+      }),
+    );
+    try {
+      await Promise.all([
+        api.put(`/admin/subscriptions/plans/${a.plan_id}`, { display_order: newA }),
+        api.put(`/admin/subscriptions/plans/${b.plan_id}`, { display_order: newB }),
+      ]);
+    } catch (e: any) {
+      showAlert('Reorder failed', e?.response?.data?.detail || 'Could not save order.');
+      // Roll back to server truth on failure.
+      fetchData();
     }
   };
 
@@ -109,13 +152,50 @@ export default function AdminSubscriptionPlansScreen() {
               <Ionicons name="information-circle" size={18} color={COLORS.primary} />
               <Text style={styles.infoText}>
                 <Text style={{ fontWeight: '700' }}>Sync</Text> pulls the latest plan IDs and ₹ pricing from
-                Razorpay so local records match the gateway. Set monthly credits and toggle a
-                plan Active/Inactive (inactive plans are hidden from users), then Save.
+                Razorpay so local records match the gateway. Set monthly credits, use the ↑/↓ arrows (or the
+                Order # field) to change the display order shown on the user pricing page, and toggle
+                Active/Inactive (inactive plans are hidden from users), then Save.
+                {"\n\n"}
+                <Text style={{ fontWeight: '700' }}>Auto-renew (recurring)</Text> is controlled in{' '}
+                <Text style={{ fontWeight: '700' }}>Admin → Access Control → Credits & Subscription → “Subscribe — Auto-Renew”</Text>
+                {' '}(not here). Toggle the tiers you want to enable, then Save.
               </Text>
             </View>
 
-            {plans.map((p) => (
+            {[...plans]
+              .sort((a, b) => (a.display_order ?? 99) - (b.display_order ?? 99))
+              .map((p, idx, arr) => (
               <View key={p.plan_id} style={styles.card}>
+                {/* Reorder header — Up / Down arrows + numeric Order # input */}
+                <View style={styles.reorderRow}>
+                  <Text style={styles.reorderPos}>#{idx + 1}</Text>
+                  <TouchableOpacity
+                    style={[styles.reorderBtn, idx === 0 && styles.reorderBtnDisabled]}
+                    onPress={() => reorderPlan(p.plan_id, 'up')}
+                    disabled={idx === 0}
+                    accessibilityLabel="Move plan up"
+                  >
+                    <Ionicons name="chevron-up" size={16} color={idx === 0 ? COLORS.textMuted : COLORS.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.reorderBtn, idx === arr.length - 1 && styles.reorderBtnDisabled]}
+                    onPress={() => reorderPlan(p.plan_id, 'down')}
+                    disabled={idx === arr.length - 1}
+                    accessibilityLabel="Move plan down"
+                  >
+                    <Ionicons name="chevron-down" size={16} color={idx === arr.length - 1 ? COLORS.textMuted : COLORS.primary} />
+                  </TouchableOpacity>
+                  <View style={{ flex: 1 }} />
+                  <Text style={styles.reorderNumLabel}>Order #</Text>
+                  <TextInput
+                    style={styles.reorderNumInput}
+                    keyboardType="numeric"
+                    value={String(p.display_order ?? 99)}
+                    onChangeText={(t) =>
+                      setPlans((prev) => prev.map((x) => (x.plan_id === p.plan_id ? { ...x, display_order: t } : x)))
+                    }
+                  />
+                </View>
                 <Text style={styles.planName}>{p.name} · ₹{p.price_inr}</Text>
                 <Text style={styles.planId}>{p.plan_id}</Text>
                 <Text style={styles.fieldLabel}>Credits / month</Text>
@@ -180,4 +260,10 @@ const styles = StyleSheet.create({
   activeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   saveBtn: { backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 10 },
   saveBtnText: { color: COLORS.white, fontWeight: '700', fontSize: 13 },
+  reorderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  reorderPos: { fontSize: 12, fontWeight: '800', color: COLORS.primary, backgroundColor: COLORS.primary + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  reorderBtn: { width: 26, height: 26, borderRadius: 6, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.white },
+  reorderBtnDisabled: { opacity: 0.4, backgroundColor: COLORS.background },
+  reorderNumLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary },
+  reorderNumInput: { width: 54, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 12, textAlign: 'center', color: COLORS.textPrimary, backgroundColor: COLORS.white },
 });
