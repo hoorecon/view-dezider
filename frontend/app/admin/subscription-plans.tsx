@@ -71,7 +71,13 @@ export default function AdminSubscriptionPlansScreen() {
     try {
       const res = await api.post('/admin/subscriptions/sync', {});
       setPlans(res.data?.plans || []);
-      showAlert('Synced', `Pulled latest pricing & plan IDs from Razorpay (${res.data?.updated ?? 0} updated).`);
+      const ins = res.data?.inserted ?? 0;
+      const upd = res.data?.updated ?? 0;
+      const orp = res.data?.orphaned ?? 0;
+      showAlert(
+        'Synced from Razorpay',
+        `${ins} new plan${ins === 1 ? '' : 's'} added, ${upd} updated, ${orp} orphaned (marked inactive).`,
+      );
     } catch (e: any) {
       showAlert('Sync failed', e?.response?.data?.detail || 'Could not sync.');
     } finally {

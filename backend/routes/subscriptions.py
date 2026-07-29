@@ -420,26 +420,105 @@ async def admin_update_plan(plan_id: str, body: Dict[str, Any], user: dict = Dep
 
 @router.post("/admin/subscriptions/sync")
 async def admin_sync_plans(user: dict = Depends(require_super_admin)):
-    """Pull live plan name/price from Razorpay so the catalog stays accurate."""
+    """Pull live plans from Razorpay so the local catalog *actually* mirrors
+    the gateway.
+
+    Behaviour:
+      - UPSERTS every Razorpay plan (previously we only UPDATE'd existing rows,
+        so brand-new Razorpay plans were silently skipped — that was the bug
+        the user reported).
+      - New plans are inserted as ACTIVE with sensible defaults so admin can
+        immediately set 'credits_per_month' and Save.
+      - Plans that no longer exist on Razorpay are marked orphaned+inactive so
+        they disappear from the user-facing pricing page but stay in DB for
+        history/audit.
+      - Paginates over Razorpay in batches of 100 (was hardcoded 25 → could
+        silently truncate once catalog grows).
+      - Returns counts so the admin UI can show a real result.
+    """
     rzp_client, _, _ = await get_razorpay_client()
     if not rzp_client:
         raise HTTPException(status_code=500, detail="Payment gateway not configured.")
     await get_plans()  # ensure seeded
-    updated = 0
+
+    inserted = updated = 0
+    seen_ids: List[str] = []
     try:
-        rp = rzp_client.plan.all({"count": 25})
-        for p in rp.get("items", []):
-            item = p.get("item", {})
-            res = await db.subscription_plans.update_one(
-                {"plan_id": p["id"]},
-                {"$set": {"price_inr": int(item.get("amount", 0) / 100),
-                          "razorpay_name": item.get("name", ""), "source": "razorpay_sync",
-                          "synced_at": _iso(_now())}},
-            )
-            updated += res.modified_count
+        # Paginate to be safe once the catalog grows past 25 plans.
+        skip = 0
+        while True:
+            page = rzp_client.plan.all({"count": 100, "skip": skip})
+            items = page.get("items", [])
+            if not items:
+                break
+            for p in items:
+                pid = p["id"]
+                seen_ids.append(pid)
+                item = p.get("item", {})
+                name = item.get("name", "") or "Unnamed plan"
+                price_inr = int(int(item.get("amount", 0)) / 100)
+                interval_unit = p.get("period") or "monthly"
+                billing_cycle = "monthly" if interval_unit.startswith("mon") else interval_unit
+                now_iso = _iso(_now())
+
+                existing = await db.subscription_plans.find_one({"plan_id": pid}, {"_id": 0})
+                if existing:
+                    # Refresh price/name; do NOT clobber admin-set fields
+                    # (credits_per_month, key_benefits, active toggle, tier).
+                    await db.subscription_plans.update_one(
+                        {"plan_id": pid},
+                        {"$set": {
+                            "price_inr": price_inr,
+                            "razorpay_name": name,
+                            "billing_cycle": billing_cycle,
+                            "source": "razorpay_sync",
+                            "synced_at": now_iso,
+                        }},
+                    )
+                    updated += 1
+                else:
+                    # Brand-new Razorpay plan → INSERT with safe defaults so
+                    # admin can immediately edit credits & benefits.
+                    slug = name.lower().replace(" ", "_")[:40] or pid
+                    await db.subscription_plans.update_one(
+                        {"plan_id": pid},
+                        {"$set": {
+                            "plan_id": pid,
+                            "tier": slug,
+                            "name": name,
+                            "razorpay_name": name,
+                            "price_inr": price_inr,
+                            "billing_cycle": billing_cycle,
+                            "credits_per_month": 0,
+                            "key_benefits": [],
+                            "active": True,
+                            "display_order": 99,
+                            "source": "razorpay_sync",
+                            "synced_at": now_iso,
+                            "created_at": now_iso,
+                        }},
+                        upsert=True,
+                    )
+                    inserted += 1
+            if len(items) < 100:
+                break
+            skip += 100
+
+        # Mark any DB plan not seen on Razorpay as orphaned+inactive.
+        orphaned = await db.subscription_plans.update_many(
+            {"plan_id": {"$nin": seen_ids}, "source": {"$ne": "seed_manual"}},
+            {"$set": {"active": False, "source": "orphaned", "synced_at": _iso(_now())}},
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)[:160]}")
-    return {"message": "Synced from Razorpay", "updated": updated, "plans": await get_plans()}
+
+    return {
+        "message": f"Synced from Razorpay — {inserted} new, {updated} updated, {orphaned.modified_count} orphaned.",
+        "inserted": inserted,
+        "updated": updated,
+        "orphaned": orphaned.modified_count,
+        "plans": await get_plans(),
+    }
 
 
 # ───────────────────────── dunning background task ─────────────────────────
