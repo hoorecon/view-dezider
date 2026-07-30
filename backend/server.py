@@ -386,6 +386,10 @@ api_router.include_router(razorpay_offers_router)
 from routes.module_limits import router as module_limits_router  # noqa: E402
 api_router.include_router(module_limits_router)
 
+# Admin-CRUD custom landing pages (short URLs like /tps)
+from routes.landing_pages import router as landing_pages_router  # noqa: E402
+api_router.include_router(landing_pages_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 
