@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  ImageBackground, Image, useWindowDimensions, Platform,
+  ImageBackground, Image, useWindowDimensions, Platform, TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,6 +41,44 @@ export default function Index() {
   const isWide = width >= 900;
   const isMid = width >= 640;
   const featureCols = isWide ? 3 : isMid ? 2 : 1;
+
+  // Rotating headline word (fwdslash.ai-style animated typing effect).
+  const rotatingWords = ['Decisions', 'Choices', 'Career Moves', 'Investments', 'Life'];
+  const [rotatingIdx, setRotatingIdx] = React.useState(0);
+  const [typedWord, setTypedWord] = React.useState('');
+  React.useEffect(() => {
+    const full = rotatingWords[rotatingIdx];
+    let i = 0;
+    let deleting = false;
+    const tick = () => {
+      if (!deleting) {
+        i += 1;
+        setTypedWord(full.slice(0, i));
+        if (i === full.length) { deleting = true; setTimeout(tick, 1600); return; }
+      } else {
+        i -= 1;
+        setTypedWord(full.slice(0, i));
+        if (i === 0) { setRotatingIdx((v) => (v + 1) % rotatingWords.length); return; }
+      }
+      setTimeout(tick, deleting ? 60 : 120);
+    };
+    const id = setTimeout(tick, 300);
+    return () => clearTimeout(id);
+  }, [rotatingIdx]);
+
+  const [heroPrompt, setHeroPrompt] = React.useState('');
+  const submitHeroPrompt = () => {
+    // Route logged-out visitors into signup with the prompt preserved so the
+    // first-experience feels product-led (they're already framing a decision).
+    const q = heroPrompt.trim();
+    router.push(q ? `/auth/register?ref=hero&q=${encodeURIComponent(q)}` : '/auth/register?ref=hero' as any);
+  };
+  const suggestedPrompts = [
+    'Should I quit my job for a startup?',
+    'Which phone should I buy under ₹50k?',
+    'Should I move to a new city?',
+    'Which MBA offer to pick?',
+  ];
 
   // ── OAuth deep-link / hash handling (unchanged behaviour) ──
   useEffect(() => {
@@ -113,39 +151,79 @@ export default function Index() {
       />
       <MarketingHeader />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator>
-        {/* HERO */}
-        <ImageBackground source={{ uri: HERO_IMG }} style={styles.hero} resizeMode="cover">
-          <LinearGradient
-            colors={['rgba(26,35,126,0.86)', 'rgba(94,53,177,0.88)', 'rgba(142,36,170,0.92)']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill as any}
-          />
-          <View style={[styles.heroInner, { paddingVertical: isWide ? 88 : 56 }]}>
-            <View style={styles.eyebrow}>
-              <Ionicons name="sparkles" size={13} color="#FFD8F2" />
-              <Text style={styles.eyebrowText}>Powered by AI</Text>
+        {/* HERO — fwdslash.ai-inspired: grid background, pill badge, rotating headline word, chat-input CTA, suggested prompts */}
+        <View style={[styles.hero2, { paddingVertical: isWide ? 96 : 60 }]}>
+          {/* Faint graph-paper grid via SVG data URI — evokes "product-y" polish */}
+          <View style={styles.hero2Grid as any} pointerEvents="none" />
+          <View style={styles.hero2Inner}>
+            <View style={styles.pillBadge}>
+              <Ionicons name="sparkles" size={13} color="#4F46E5" />
+              <Text style={styles.pillBadgeT}>Decision Intelligence for Modern Lives</Text>
             </View>
-            <Text style={[styles.h1, { fontSize: isWide ? 48 : isMid ? 38 : 30 }]}>
-              Make every life choice with clarity & confidence
+
+            <Text style={[styles.hero2H1, { fontSize: isWide ? 76 : isMid ? 54 : 40 }]}>
+              Make better{'\n'}
+              <Text style={styles.hero2H1Accent}>{typedWord}</Text>
+              <Text style={styles.hero2Cursor}>|</Text>
+              {' '}in minutes.
             </Text>
-            <Text style={styles.heroSub}>
-              {company.product} — {company.tagline}. Structured decision tools and AI insights
-              that turn complex choices into clear, actionable plans.
+
+            <Text style={[styles.hero2Sub, { fontSize: isWide ? 20 : 16, maxWidth: 780 }]}>
+              JELCOS AI gives you structured decision engines — MyDezider, weighted Pros &amp; Cons,
+              SWOT, Solution Finder — plus GPT-grade insights that turn any complex life or work
+              choice into a clear, actionable plan.
             </Text>
-            <View style={styles.heroCtas}>
-              <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/auth/register')}>
-                <View style={styles.heroPrimary}>
-                  <Text style={styles.heroPrimaryText}>Get started free</Text>
-                  <Ionicons name="arrow-forward" size={18} color={COLORS.primary} />
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity activeOpacity={0.9} style={styles.heroSecondary} onPress={() => router.push('/auth/login')}>
-                <Text style={styles.heroSecondaryText}>Sign in</Text>
+
+            {/* Chat-like hero input (product-led first touch) */}
+            <View style={[styles.hero2Chat, { maxWidth: 760 }]}>
+              <View style={styles.hero2ChatIcon}><Ionicons name="chatbubble-ellipses" size={16} color="#4F46E5" /></View>
+              <TextInput
+                style={styles.hero2ChatInput}
+                placeholder="Type any decision you're facing…  e.g. Should I take the ₹35L offer?"
+                placeholderTextColor="#94A3B8"
+                value={heroPrompt}
+                onChangeText={setHeroPrompt}
+                onSubmitEditing={submitHeroPrompt}
+                returnKeyType="send"
+              />
+              <TouchableOpacity onPress={submitHeroPrompt} style={styles.hero2ChatSend} accessibilityLabel="Start decision">
+                <Ionicons name="arrow-up" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.heroNote}>No credit card required to begin · Cancel anytime</Text>
+
+            {/* Suggested prompt chips */}
+            <View style={styles.hero2Chips}>
+              {suggestedPrompts.map((p) => (
+                <TouchableOpacity key={p} style={styles.hero2Chip} onPress={() => { setHeroPrompt(p); }}>
+                  <Text style={styles.hero2ChipT}>{p}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Secondary CTAs */}
+            <View style={styles.hero2Ctas}>
+              <TouchableOpacity onPress={() => router.push('/auth/register')} style={styles.hero2Primary}>
+                <Text style={styles.hero2PrimaryT}>Start Deciding Free</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/quiz')} style={styles.hero2Secondary}>
+                <Text style={styles.hero2SecondaryT}>Take the 2-minute Style Quiz</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.hero2Note}>No credit card · Free forever tier · Cancel anytime</Text>
           </View>
-        </ImageBackground>
+        </View>
+
+        {/* TRUSTED-BY strip (grayscale, subtle — fwdslash.ai signature) */}
+        <View style={styles.trustedStrip}>
+          <Text style={styles.trustedT}>Trusted by founders, executives and creators across India &amp; the diaspora</Text>
+          <View style={styles.trustedLogos}>
+            {['Tamilpreneur', 'VEALES', 'Bloom Hub', 'IIM Alumni', 'Chennai Angels'].map((n) => (
+              <Text key={n} style={styles.trustedLogo}>{n}</Text>
+            ))}
+          </View>
+        </View>
 
         {/* STAT STRIP */}
         <View style={[styles.stats, !isMid && { flexDirection: 'column', gap: 14 }]}>
@@ -209,7 +287,7 @@ export default function Index() {
         {/* PRICING TEASER */}
         <View style={styles.section}>
           <Text style={styles.kicker}>SIMPLE PRICING</Text>
-          <Text style={styles.h2}>Start free. Upgrade when you're ready.</Text>
+          <Text style={styles.h2}>Start free. Upgrade when you&apos;re ready.</Text>
           <View style={[styles.priceRow, isMid && { flexDirection: 'row', gap: 18 }]}>
             <View style={[styles.priceCard, isMid && { flex: 1 }]}>
               <Ionicons name="infinite" size={24} color={COLORS.primary} />
@@ -336,4 +414,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24, paddingVertical: 15, borderRadius: 12, marginTop: 24,
   },
   ctaBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
+  // ── HERO 2 (fwdslash.ai-inspired) ──
+  hero2: { backgroundColor: '#F8FAFC', paddingHorizontal: 20, overflow: 'hidden', position: 'relative' },
+  hero2Grid: {
+    position: 'absolute', inset: 0,
+    // SVG data-URI grid pattern — 40x40 cells with thin cool-grey lines
+    ...(Platform.OS === 'web' ? {
+      backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"40\\" height=\\"40\\"><path d=\\"M40 0H0V40\\" stroke=\\"%23E2E8F0\\" stroke-width=\\"1\\" fill=\\"none\\"/></svg>")',
+      backgroundSize: '40px 40px',
+      maskImage: 'radial-gradient(ellipse 80% 60% at 50% 30%, black 30%, transparent 90%)',
+      WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 30%, black 30%, transparent 90%)',
+    } : {}),
+  } as any,
+  hero2Inner: { width: '100%', maxWidth: 1120, alignSelf: 'center', alignItems: 'center', zIndex: 2 },
+  pillBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#FFFFFF' },
+  pillBadgeT: { fontSize: 12, fontWeight: '700', color: '#4F46E5', letterSpacing: 0.3 },
+  hero2H1: { fontWeight: '900', color: '#0F172A', textAlign: 'center', marginTop: 22, lineHeight: 1.05 * 76 as any, letterSpacing: -1.5 },
+  hero2H1Accent: { color: '#4F46E5' },
+  hero2Cursor: { color: '#4F46E5', fontWeight: '400', opacity: 0.7 },
+  hero2Sub: { fontSize: 18, color: '#475569', textAlign: 'center', marginTop: 18, fontStyle: 'italic', lineHeight: 28 },
+  hero2Chat: { flexDirection: 'row', alignItems: 'center', gap: 6, width: '100%', backgroundColor: '#FFFFFF', borderRadius: 999, borderWidth: 1, borderColor: '#E2E8F0', paddingLeft: 14, paddingRight: 6, paddingVertical: 6, marginTop: 30, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+  hero2ChatIcon: { padding: 4 },
+  hero2ChatInput: { flex: 1, fontSize: 15, color: '#0F172A', paddingVertical: 12 },
+  hero2ChatSend: { width: 40, height: 40, borderRadius: 999, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
+  hero2Chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16, maxWidth: 720 },
+  hero2Chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
+  hero2ChipT: { fontSize: 12, color: '#475569', fontWeight: '600' },
+  hero2Ctas: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 30, alignItems: 'center', justifyContent: 'center' },
+  hero2Primary: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#0F172A', paddingHorizontal: 22, paddingVertical: 13, borderRadius: 999 },
+  hero2PrimaryT: { color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 0.3 },
+  hero2Secondary: { paddingHorizontal: 18, paddingVertical: 13, borderRadius: 999, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF' },
+  hero2SecondaryT: { color: '#334155', fontWeight: '700', fontSize: 14 },
+  hero2Note: { fontSize: 12, color: '#64748B', marginTop: 16 },
+  trustedStrip: { paddingVertical: 40, paddingHorizontal: 20, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F1F5F9', alignItems: 'center' },
+  trustedT: { fontSize: 12, color: '#64748B', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1.5 },
+  trustedLogos: { flexDirection: 'row', flexWrap: 'wrap', gap: 32, justifyContent: 'center', alignItems: 'center', marginTop: 20 },
+  trustedLogo: { fontSize: 16, color: '#94A3B8', fontWeight: '800', letterSpacing: 1, opacity: 0.75 },
 });

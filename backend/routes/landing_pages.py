@@ -165,23 +165,63 @@ _DEFAULT_TPS_CSS = """.lp-wrap{max-width:900px;margin:0 auto;padding:24px 16px 4
 
 
 async def _ensure_seed_tps() -> None:
-    """Seed the /tps landing page once."""
-    if await db.landing_pages.find_one({"slug": "tps"}, {"_id": 1}):
-        return
+    """Seed the /tps landing page once, or refresh it if it's still on the
+    old dark theme (source='seed' or missing template_data)."""
     now = datetime.now(timezone.utc).isoformat()
-    await db.landing_pages.insert_one({
-        "slug": "tps",
-        "title": "Tamilpreneur Sangamam #26 · Jelcos AI Launch",
-        "meta_description": "Join us at Tamilpreneur Sangamam #26 on 1st Aug 2026 — Bloom Hub, Guindy, Chennai. Launch of Jelcos AI, a Decision Intelligence Platform. First 100 spots open now.",
-        "meta_og_image": "",
-        "html": _DEFAULT_TPS_HTML,
-        "css": _DEFAULT_TPS_CSS,
-        "js": "",
-        "active": True,
-        "source": "seed",
-        "created_at": now,
-        "updated_at": now,
-    })
+    existing = await db.landing_pages.find_one({"slug": "tps"}, {"_id": 0, "source": 1, "template_data": 1})
+    # Fresh rendering using the new fwdslash-inspired CSS so every existing
+    # /tps deployment auto-upgrades on first read after this release.
+    default_tpl = EventTemplateData(
+        ribbon="THE WAIT IS OVER — SANGAMAM #26 IS HERE!",
+        tamil_title="சங்கமம்", tamil_hash="#26",
+        english_title="Tamilpreneur Sangamam #26",
+        subtitle="Startup Networking Event · Chennai",
+        divider_text="Launch & Recognition",
+        tagline="Connecting Founders. Creating Opportunities.",
+        details=[
+            DetailCard(icon="📅", label="Date", value="1st Aug, 2026 · Saturday"),
+            DetailCard(icon="⏰", label="Time", value="3:00 PM – 7:00 PM"),
+            DetailCard(icon="📍", label="Venue", value="Bloom Hub, Guindy, Chennai"),
+            DetailCard(icon="⭐", label="Limited", value="First 100 spots open now!", highlight=True),
+        ],
+        person_left=PersonItem(role_label="Launched by", name="Shyam Siddarth", org="Founder, Tamilpreneur"),
+        app_card=AppCardItem(name="JELCOS AI", subtitle="A Decision Intelligence Platform",
+                             description="For Founders, Business Owners, CXOs & Leaders"),
+        person_right=PersonItem(role_label="Received by", name="Ad Shezhiyan Raj",
+                                org="Founder & CEO, VEALES Vedic Decisions Pvt. Ltd."),
+        gold_band_text="சங்கமத்தில் சந்திப்போம்! ❤",
+        chips=[
+            ChipItem(emoji="🧠", text="AI Powered"),
+            ChipItem(emoji="🎯", text="Smarter Decisions"),
+            ChipItem(emoji="📈", text="Better Outcomes"),
+            ChipItem(emoji="🪷", text="Conscious Living"),
+        ],
+        primary_cta_text="Book Your Spot Now",
+        primary_cta_href="/auth/register?ref=tps",
+        secondary_cta_text="Try the free Decision-Style Quiz →",
+        secondary_cta_href="/quiz",
+        footer_text="© 2026 Jelcos AI · Chennai · <a href=\"https://jelcos.ai\">jelcos.ai</a>",
+    )
+    rendered = _render_event_template(default_tpl)
+    if not existing:
+        await db.landing_pages.insert_one({
+            "slug": "tps",
+            "title": "Tamilpreneur Sangamam #26 · Jelcos AI Launch",
+            "meta_description": "Join us at Tamilpreneur Sangamam #26 on 1st Aug 2026 — Bloom Hub, Guindy, Chennai. Launch of Jelcos AI, a Decision Intelligence Platform. First 100 spots open now.",
+            "meta_og_image": "",
+            "html": rendered["html"], "css": rendered["css"], "js": "",
+            "template_data": default_tpl.dict(),
+            "active": True, "source": "seed_v2_fwdslash",
+            "created_at": now, "updated_at": now,
+        })
+    elif existing.get("source") == "seed" and not existing.get("template_data"):
+        # Auto-migrate any legacy dark-theme seed to the new light theme.
+        await db.landing_pages.update_one(
+            {"slug": "tps"},
+            {"$set": {"html": rendered["html"], "css": rendered["css"],
+                      "template_data": default_tpl.dict(),
+                      "source": "seed_v2_fwdslash", "updated_at": now}},
+        )
 
 
 # ─────────────────── Public ───────────────────
@@ -393,41 +433,44 @@ def _render_event_template(d: EventTemplateData) -> Dict[str, str]:
   <div class="lp-footer">{d.footer_text}</div>
 </div>"""
 
-    css = f""".lp-wrap{{max-width:900px;margin:0 auto;padding:24px 16px 48px;background:{d.bg_gradient};color:{d.text_light};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;border-radius:16px}}
-.lp-hero{{text-align:center;padding:24px 8px 8px}}
-.lp-ribbon{{display:inline-block;background:linear-gradient(90deg,{d.accent_gold},#f2d36b);color:#3d0a12;font-weight:800;font-size:12px;letter-spacing:.5px;padding:6px 14px;border-radius:999px;margin-bottom:14px}}
-.lp-title-tam{{font-size:52px;font-weight:900;color:{d.text_light};text-shadow:0 2px 8px rgba(0,0,0,.5);line-height:1;margin:6px 0}}
+    css = f""".lp-wrap{{max-width:1120px;margin:0 auto;padding:56px 24px 72px;background:#F8FAFC;color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Inter',sans-serif;position:relative;overflow:hidden}}
+.lp-wrap::before{{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M40 0H0V40' stroke='%23E2E8F0' stroke-width='1' fill='none'/></svg>");background-size:40px 40px;-webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 20%,black 30%,transparent 85%);mask-image:radial-gradient(ellipse 80% 60% at 50% 20%,black 30%,transparent 85%);pointer-events:none;z-index:0}}
+.lp-wrap > *{{position:relative;z-index:1}}
+.lp-hero{{text-align:center;padding:16px 8px 8px}}
+.lp-ribbon{{display:inline-flex;align-items:center;gap:6px;background:#fff;color:{d.accent_red};font-weight:700;font-size:12px;letter-spacing:.3px;padding:7px 14px;border-radius:999px;border:1px solid #E2E8F0;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
+.lp-title-tam{{font-size:clamp(48px,8vw,84px);font-weight:900;color:#0F172A;line-height:1.02;letter-spacing:-1.5px;margin:22px 0 6px}}
 .lp-hash{{color:{d.accent_red}}}
-.lp-title-en{{font-size:15px;color:{d.text_light};opacity:.85;letter-spacing:1.2px;text-transform:uppercase;margin-top:4px}}
-.lp-subtitle{{font-size:14px;color:{d.text_light};opacity:.75;margin-top:2px}}
-.lp-divider{{color:{d.accent_gold};margin:16px 0 6px;letter-spacing:2px;font-size:13px}}
-.lp-tagline{{color:{d.text_light};font-size:14px;font-style:italic;opacity:.9;margin-bottom:8px}}
-.lp-detail-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:22px 0}}
-.lp-detail-card{{background:rgba(255,255,255,.06);border:1px solid {d.accent_gold}59;border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center;backdrop-filter:blur(6px)}}
-.lp-detail-ico{{font-size:22px}}
-.lp-detail-label{{color:{d.accent_gold};font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase}}
-.lp-detail-val{{color:#fff;font-size:13px;font-weight:600;margin-top:2px}}
-.lp-spots{{background:linear-gradient(90deg,{d.accent_red}22,{d.accent_gold}22);border-color:{d.accent_red}}}
-.lp-people{{display:grid;grid-template-columns:1fr;gap:12px;margin:20px 0}}
-@media(min-width:720px){{.lp-people{{grid-template-columns:1fr 1.15fr 1fr;align-items:center}}}}
-.lp-person{{background:rgba(0,0,0,.35);border:1px solid {d.accent_gold}88;border-radius:12px;padding:14px;text-align:center}}
-.lp-person-role{{color:{d.accent_gold};font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase}}
-.lp-person-name{{color:#fff;font-size:17px;font-weight:800;margin-top:6px}}
-.lp-person-org{{color:{d.text_light};font-size:11px;margin-top:4px;opacity:.85;line-height:1.3}}
-.lp-app-card{{background:radial-gradient(circle at 50% 40%,#8b5cf6 0%,#4c1d95 55%,#1e1b4b 100%);border-radius:16px;padding:20px 14px;text-align:center;box-shadow:0 8px 24px rgba(76,29,149,.5)}}
-.lp-app-name{{font-size:22px;font-weight:900;color:#fff;letter-spacing:1px}}
-.lp-app-sub{{color:{d.text_light};font-size:11px;font-style:italic;margin-top:4px}}
-.lp-app-for{{color:#fff;font-size:11px;margin-top:8px;opacity:.85;line-height:1.4}}
-.lp-band{{background:linear-gradient(90deg,{d.accent_gold},#f2d36b,{d.accent_gold});color:#3d0a12;text-align:center;font-weight:900;font-size:17px;padding:12px;border-radius:10px;margin:16px 0;letter-spacing:.3px}}
-.lp-chips{{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:16px 0 20px}}
-.lp-chip{{background:rgba(255,255,255,.08);border:1px solid {d.accent_gold}66;border-radius:999px;padding:6px 12px;font-size:12px;color:{d.text_light};font-weight:600}}
-.lp-chip-ico{{margin-right:4px}}
-.lp-cta-wrap{{text-align:center;margin:22px 0 10px}}
-.lp-cta{{display:inline-block;background:linear-gradient(135deg,{d.accent_red},#f43f5e);color:#fff;font-weight:800;font-size:16px;letter-spacing:.5px;text-transform:uppercase;text-decoration:none;padding:14px 30px;border-radius:999px;box-shadow:0 6px 20px {d.accent_red}80;transition:transform .15s ease}}
-.lp-cta:hover{{transform:translateY(-2px)}}
-.lp-cta-secondary{{display:block;color:{d.text_light};margin-top:14px;font-size:13px;text-decoration:underline;opacity:.9}}
-.lp-footer{{text-align:center;color:{d.text_light};font-size:11px;margin-top:24px;opacity:.6}}
-.lp-footer a{{color:{d.accent_gold};text-decoration:none}}"""
+.lp-title-en{{font-size:14px;color:#4F46E5;letter-spacing:1.4px;text-transform:uppercase;margin-top:6px;font-weight:700}}
+.lp-subtitle{{font-size:15px;color:#64748B;margin-top:4px}}
+.lp-divider{{color:{d.accent_gold};margin:20px 0 8px;letter-spacing:2px;font-size:12px;font-weight:700}}
+.lp-tagline{{color:#475569;font-size:18px;font-style:italic;line-height:1.55;max-width:680px;margin:0 auto}}
+.lp-detail-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:44px auto;max-width:920px}}
+.lp-detail-card{{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;display:flex;gap:12px;align-items:center;box-shadow:0 1px 2px rgba(0,0,0,.03)}}
+.lp-detail-ico{{font-size:26px}}
+.lp-detail-label{{color:#94A3B8;font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase}}
+.lp-detail-val{{color:#0F172A;font-size:14px;font-weight:700;margin-top:3px}}
+.lp-spots{{background:linear-gradient(135deg,{d.accent_red}0f,{d.accent_gold}12);border-color:{d.accent_red}55}}
+.lp-people{{display:grid;grid-template-columns:1fr;gap:14px;margin:36px auto;max-width:1000px}}
+@media(min-width:820px){{.lp-people{{grid-template-columns:1fr 1.2fr 1fr;align-items:center}}}}
+.lp-person{{background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:22px 18px;text-align:center;box-shadow:0 2px 8px rgba(15,23,42,.04)}}
+.lp-person-role{{color:#94A3B8;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase}}
+.lp-person-name{{color:#0F172A;font-size:19px;font-weight:800;margin-top:8px;letter-spacing:-.3px}}
+.lp-person-org{{color:#475569;font-size:12px;margin-top:5px;line-height:1.4}}
+.lp-app-card{{background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 55%,#1E1B4B 100%);border-radius:20px;padding:32px 20px;text-align:center;box-shadow:0 20px 40px rgba(79,70,229,.3);color:#fff}}
+.lp-app-name{{font-size:28px;font-weight:900;letter-spacing:.5px}}
+.lp-app-sub{{color:#C7D2FE;font-size:12px;font-style:italic;margin-top:6px}}
+.lp-app-for{{color:#E0E7FF;font-size:12px;margin-top:12px;line-height:1.5;opacity:.9}}
+.lp-band{{background:#0F172A;color:{d.accent_gold};text-align:center;font-weight:800;font-size:18px;padding:16px;border-radius:14px;margin:30px auto;max-width:920px;letter-spacing:.3px}}
+.lp-chips{{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:28px auto;max-width:820px}}
+.lp-chip{{background:#fff;border:1px solid #E2E8F0;border-radius:999px;padding:8px 14px;font-size:13px;color:#334155;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.03)}}
+.lp-chip-ico{{margin-right:5px}}
+.lp-cta-wrap{{text-align:center;margin:44px auto 10px;display:flex;flex-direction:column;align-items:center;gap:14px}}
+.lp-cta{{display:inline-flex;align-items:center;gap:8px;background:#0F172A;color:#fff;font-weight:800;font-size:15px;letter-spacing:.4px;text-decoration:none;padding:15px 32px;border-radius:999px;transition:transform .15s ease, box-shadow .15s ease;box-shadow:0 8px 24px rgba(15,23,42,.15)}}
+.lp-cta:hover{{transform:translateY(-2px);box-shadow:0 12px 28px rgba(15,23,42,.25)}}
+.lp-cta::after{{content:'→';font-size:16px}}
+.lp-cta-secondary{{color:#4F46E5;font-size:14px;text-decoration:underline;text-decoration-color:#C7D2FE;text-underline-offset:4px}}
+.lp-footer{{text-align:center;color:#94A3B8;font-size:11px;margin-top:36px}}
+.lp-footer a{{color:#4F46E5;text-decoration:none}}"""
     return {"html": html, "css": css}
 
 
