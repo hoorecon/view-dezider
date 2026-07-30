@@ -390,6 +390,10 @@ api_router.include_router(module_limits_router)
 from routes.landing_pages import router as landing_pages_router  # noqa: E402
 api_router.include_router(landing_pages_router)
 
+# Homepage variant selector (Classic Purple / Modern Grid)
+from routes.home_variant import router as home_variant_router  # noqa: E402
+api_router.include_router(home_variant_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 

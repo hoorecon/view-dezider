@@ -80,6 +80,22 @@ export default function Index() {
     'Which MBA offer to pick?',
   ];
 
+  // Admin-selectable homepage variant. Defaults to 'modern' if the API is
+  // unreachable. Query-string override (?variant=classic) lets admin preview
+  // without changing the persisted default.
+  const [heroVariant, setHeroVariant] = React.useState<'modern' | 'classic'>('modern');
+  React.useEffect(() => {
+    // URL override — admin preview link
+    if (Platform.OS === 'web') {
+      const qp = new URLSearchParams(window.location.search).get('variant');
+      if (qp === 'classic' || qp === 'modern') { setHeroVariant(qp); return; }
+    }
+    fetch((process.env.EXPO_PUBLIC_BACKEND_URL || '') + '/api/home-variant')
+      .then((r) => r.json())
+      .then((d) => { if (d?.variant === 'classic') setHeroVariant('classic'); })
+      .catch(() => { /* keep default */ });
+  }, []);
+
   // ── OAuth deep-link / hash handling (unchanged behaviour) ──
   useEffect(() => {
     const handleDeepLink = async (event: { url: string }) => {
@@ -151,7 +167,41 @@ export default function Index() {
       />
       <MarketingHeader />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator>
-        {/* HERO — fwdslash.ai-inspired: grid background, pill badge, rotating headline word, chat-input CTA, suggested prompts */}
+        {/* HERO — variant chosen by admin via /admin/home-variant */}
+        {heroVariant === 'classic' ? (
+          <ImageBackground source={{ uri: HERO_IMG }} style={styles.hero} resizeMode="cover">
+            <LinearGradient
+              colors={['rgba(26,35,126,0.86)', 'rgba(94,53,177,0.88)', 'rgba(142,36,170,0.92)']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill as any}
+            />
+            <View style={[styles.heroInner, { paddingVertical: isWide ? 88 : 56 }]}>
+              <View style={styles.eyebrow}>
+                <Ionicons name="sparkles" size={13} color="#FFD8F2" />
+                <Text style={styles.eyebrowText}>Powered by AI</Text>
+              </View>
+              <Text style={[styles.h1, { fontSize: isWide ? 48 : isMid ? 38 : 30 }]}>
+                Make every life choice with clarity &amp; confidence
+              </Text>
+              <Text style={styles.heroSub}>
+                {company.product} — {company.tagline}. Structured decision tools and AI insights
+                that turn complex choices into clear, actionable plans.
+              </Text>
+              <View style={styles.heroCtas}>
+                <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/auth/register')}>
+                  <View style={styles.heroPrimary}>
+                    <Text style={styles.heroPrimaryText}>Get started free</Text>
+                    <Ionicons name="arrow-forward" size={18} color={COLORS.primary} />
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.9} style={styles.heroSecondary} onPress={() => router.push('/auth/login')}>
+                  <Text style={styles.heroSecondaryText}>Sign in</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.heroNote}>No credit card required to begin · Cancel anytime</Text>
+            </View>
+          </ImageBackground>
+        ) : (
         <View style={[styles.hero2, { paddingVertical: isWide ? 96 : 60 }]}>
           {/* Faint graph-paper grid via SVG data URI — evokes "product-y" polish */}
           <View style={styles.hero2Grid as any} pointerEvents="none" />
@@ -214,8 +264,10 @@ export default function Index() {
             <Text style={styles.hero2Note}>No credit card · Free forever tier · Cancel anytime</Text>
           </View>
         </View>
+        )}
 
-        {/* TRUSTED-BY strip (grayscale, subtle — fwdslash.ai signature) */}
+        {/* TRUSTED-BY strip (only for modern variant) */}
+        {heroVariant === 'modern' && (
         <View style={styles.trustedStrip}>
           <Text style={styles.trustedT}>Trusted by founders, executives and creators across India &amp; the diaspora</Text>
           <View style={styles.trustedLogos}>
@@ -224,6 +276,7 @@ export default function Index() {
             ))}
           </View>
         </View>
+        )}
 
         {/* STAT STRIP */}
         <View style={[styles.stats, !isMid && { flexDirection: 'column', gap: 14 }]}>

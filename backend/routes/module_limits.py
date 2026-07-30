@@ -95,18 +95,38 @@ async def _ensure_seed():
 
 
 async def _resolve_tier(user: dict) -> str:
-    """Find the caller's ACTIVE tier by checking users.user_type first,
-    then credit_wallets.current_plan, then falling back to 'free'."""
+    """Find the caller's ACTIVE tier.
+
+    Priority (higher wins):
+      1. `users.user_type` if it's a SPECIAL override (alpha/beta/ut/it/paid_*
+         etc.) — set explicitly by admin.
+      2. `credit_wallets.current_plan` if there's an active paid subscription
+         (status active or manual) — this is what `apply_charge()` sets.
+      3. `users.user_type` if it's the default "free"/"guest"/"trial".
+      4. Fallback → "free".
+    """
     uid = user.get("user_id")
-    # 1) users.user_type (admin-managed via /admin/acm/user/{id}/type)
     doc = await db.users.find_one({"user_id": uid}, {"_id": 0, "user_type": 1})
-    if doc and doc.get("user_type"):
-        return str(doc["user_type"]).lower()
-    # 2) credit_wallets.current_plan (paid subscriptions)
-    w = await db.credit_wallets.find_one({"user_id": uid}, {"_id": 0, "current_plan": 1})
-    if w and w.get("current_plan"):
-        return str(w["current_plan"]).lower()
-    # 3) fallback
+    user_type = str((doc or {}).get("user_type") or "").lower().strip()
+    _default_types = {"", "free", "guest", "trial"}
+
+    # 1) explicit admin override — always wins
+    if user_type and user_type not in _default_types:
+        return user_type
+
+    # 2) active paid subscription — beats default user_type='free'
+    w = await db.credit_wallets.find_one({"user_id": uid}, {"_id": 0, "current_plan": 1, "subscription_status": 1})
+    if w:
+        cp = str(w.get("current_plan") or "").lower()
+        st = str(w.get("subscription_status") or "").lower()
+        if cp and cp != "free" and st in {"active", "manual", "pending"}:
+            return cp
+
+    # 3) default tier types
+    if user_type:
+        return user_type
+
+    # 4) fallback
     return (user.get("tier") or user.get("plan_tier") or "free").lower()
 
 
