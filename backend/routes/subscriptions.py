@@ -107,11 +107,32 @@ async def apply_charge(user_id: str, plan: Dict[str, Any], payment_id: str,
         if seen:
             return
     from routes.payments import add_credits  # deferred
+    from core import ai_wallet as _ai_wallet  # deferred to avoid cycle
     credits = int(plan.get("credits_per_month", 0))
     await _ensure_wallet(user_id)
     if credits > 0:
+        # Legacy payments wallet (credit_wallets) — kept for audit + legacy modules
+        # (ai_tools.decision_analyze, cld, time_dezider, deo) that still meter here.
         await add_credits(user_id, credits,
                           f"Subscription: {plan.get('name')} ({credits} credits/month)", payment_id)
+        # Primary AI credits wallet (ai_wallets) — powers Profile → AI Credits and
+        # all newer metered AI touchpoints (ai_metering, screener, conflict_breaker,
+        # assessment_modes, scrape metering). This is what makes the configured
+        # `credits_per_month` from Admin → Subscription Plans actually spendable
+        # on AI usage across the app. Idempotency is guaranteed by the
+        # payment_id/processed_payments guard above.
+        try:
+            await _ai_wallet.grant(
+                user_id, float(credits),
+                by="subscription",
+                note=f"Subscription: {plan.get('name')} ({credits} credits/month) [pay={payment_id}]",
+                kind="grant",
+            )
+        except Exception as _e:  # never break checkout on wallet write
+            import logging as _lg
+            _lg.getLogger("subscriptions").warning(
+                "ai_wallet.grant failed for user=%s pay=%s: %s", user_id, payment_id, _e
+            )
     now = _now()
     status = "manual" if mode == "onetime" else "active"
     await db.credit_wallets.update_one(
