@@ -16,6 +16,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -642,77 +643,180 @@ async def admin_backfill_ai_wallet(
     user: dict = Depends(require_super_admin),
 ):
     """One-shot retroactive credit grant for users who paid BEFORE the
-    `apply_charge → ai_wallet.grant` fix (v3.143). For each paying user with
-    a plan, grant `plan.credits_per_month` to their `ai_wallets`.
+    `apply_charge → ai_wallet.grant` fix (v3.143). Historical paid data lives
+    in MULTIPLE places (`credit_wallets` was populated inconsistently by three
+    different subscription flows over time), so this scans ALL of them:
 
-    Idempotency: skips users who already have an `ai_wallet_ledger` row with
-    `by='subscription-backfill'` for their current subscription_id.
+      1. `payment_orders` with status='paid' and type in ('subscription',
+         'subscription_onetime')   → primary source of truth for what a user
+         actually paid for. `order.credits` is the amount to grant.
+      2. `subscriptions` with a non-empty `processed_payments` list        →
+         real Razorpay recurring charges. For each captured payment_id we
+         grant one month of `plan.credits_per_month` (Razorpay plan_id looked
+         up in `db.subscription_plans`).
+      3. `credit_transactions` where description starts with "Subscription:"
+         or "Webhook: payment captured" (legacy `add_credits` from the old
+         `routes/payments.py` flow) → uses the transaction's `credits` field.
 
-    body (optional):
-      - dry_run: bool = false  → only report, do not write
-      - status_filter: list[str] = ['active','manual','cancelled']
+    All entries are deduped by `(user_id, payment_id)` and idempotent — a
+    second call skips users who already have an `ai_wallet_ledger` row for
+    that same payment_id.
+
+    body (optional): { dry_run: bool }
     """
     from core import ai_wallet as _ai_wallet
     body = body or {}
     dry_run = bool(body.get("dry_run", False))
-    status_filter = body.get("status_filter") or ["active", "manual", "cancelled"]
 
-    q = {
-        "subscription_plan_id": {"$ne": None},
-        "subscription_status": {"$in": status_filter},
-    }
-    rows = await db.credit_wallets.find(q, {"_id": 0}).to_list(5000)
+    # Preload admin-configured plans for Razorpay plan_id → credits/name lookup
+    plans_map: Dict[str, Dict[str, Any]] = {}
+    async for p in db.subscription_plans.find({}, {"_id": 0}):
+        plans_map[p["plan_id"]] = p
 
-    scanned = granted = skipped = 0
+    # dedup by (user_id, payment_id)  →  grant record
+    grants: Dict[str, Dict[str, Any]] = {}
+
+    def _add(uid: str, payment_id: str, credits: int, plan_label: str, source: str,
+             sub_id: str = ""):
+        if not uid or credits <= 0:
+            return
+        key = f"{uid}|{payment_id or source}"
+        if key in grants:
+            return  # already captured from another source
+        grants[key] = {
+            "user_id": uid,
+            "payment_id": payment_id,
+            "credits": int(credits),
+            "plan_label": plan_label,
+            "source": source,
+            "sub_id": sub_id,
+        }
+
+    # (1) payment_orders — paid subscriptions
+    async for o in db.payment_orders.find(
+        {"status": "paid", "type": {"$in": ["subscription", "subscription_onetime"]}},
+        {"_id": 0},
+    ):
+        uid = o.get("user_id") or ""
+        pid = o.get("razorpay_payment_id") or o.get("order_id") or ""
+        plan_id = o.get("plan_id") or ""
+        credits = int(o.get("credits") or 0)
+        # If plan_id is an admin Razorpay plan, prefer the current credits_per_month
+        p = plans_map.get(plan_id)
+        if p and int(p.get("credits_per_month", 0)) > 0:
+            credits = int(p["credits_per_month"])
+            plan_label = p.get("name") or plan_id
+        else:
+            plan_label = plan_id or "subscription"
+        _add(uid, pid, credits, plan_label, source="payment_orders")
+
+    # (2) subscriptions — real Razorpay recurring, one grant per captured payment
+    async for s in db.subscriptions.find(
+        {"processed_payments": {"$exists": True, "$ne": []}},
+        {"_id": 0},
+    ):
+        uid = s.get("user_id") or ""
+        plan_id = s.get("plan_id") or ""
+        p = plans_map.get(plan_id) or {}
+        credits = int(p.get("credits_per_month", 0))
+        if credits <= 0:
+            continue
+        plan_label = p.get("name") or plan_id or "subscription"
+        for pid in (s.get("processed_payments") or []):
+            _add(uid, str(pid), credits, plan_label,
+                 source="subscriptions", sub_id=s.get("subscription_id") or "")
+
+    # (3) credit_transactions — legacy add_credits audit trail
+    async for tx in db.credit_transactions.find(
+        {"type": "purchase",
+         "description": {"$regex": "Subscription|Webhook: payment captured", "$options": "i"}},
+        {"_id": 0},
+    ):
+        uid = tx.get("user_id") or ""
+        pid = tx.get("payment_id") or ""
+        credits = int(tx.get("credits") or 0)
+        _add(uid, pid, credits, tx.get("description", "subscription"),
+             source="credit_transactions")
+
+    # Apply grants (with idempotency check per (user_id, payment_id))
+    scanned = len(grants)
+    granted = skipped = 0
     total_credits = 0
     details: List[Dict[str, Any]] = []
 
-    for r in rows:
-        scanned += 1
-        uid = r.get("user_id")
-        pid = r.get("subscription_plan_id")
-        sub_id = r.get("subscription_id") or ""
-        plan = await get_plan(pid) if pid else None
-        credits = int((plan or {}).get("credits_per_month", 0))
-        if not uid or not plan or credits <= 0:
-            skipped += 1
-            details.append({"user_id": uid, "plan_id": pid, "action": "skip",
-                            "reason": "no_plan_or_zero_credits"})
-            continue
+    for g in grants.values():
+        uid = g["user_id"]
+        pid = g["payment_id"]
+        credits = g["credits"]
 
-        # Idempotency: check for a backfill marker for THIS subscription
-        marker_q = {"user_id": uid, "by": "subscription-backfill"}
-        if sub_id:
-            marker_q["note"] = {"$regex": f"sub={sub_id}"}
-        existing = await db.ai_wallet_ledger.find_one(marker_q, {"_id": 1})
+        # Idempotency: has this payment_id already been backfilled?
+        marker = {"user_id": uid, "by": "subscription-backfill"}
+        if pid:
+            marker["note"] = {"$regex": f"pay={re.escape(pid)}"}
+        existing = await db.ai_wallet_ledger.find_one(marker, {"_id": 1})
         if existing:
             skipped += 1
-            details.append({"user_id": uid, "plan_id": pid, "action": "skip",
-                            "reason": "already_backfilled"})
+            details.append({**g, "action": "skip", "reason": "already_backfilled"})
             continue
 
         if dry_run:
             granted += 1
             total_credits += credits
-            details.append({"user_id": uid, "plan_id": pid, "credits": credits,
-                            "action": "would_grant"})
+            details.append({**g, "action": "would_grant"})
             continue
 
         try:
             await _ai_wallet.grant(
                 uid, float(credits),
                 by="subscription-backfill",
-                note=f"Backfill: {plan.get('name')} ({credits} credits/month) [sub={sub_id}]",
+                note=f"Backfill: {g['plan_label']} ({credits} credits) [pay={pid} src={g['source']}]",
                 kind="grant",
             )
             granted += 1
             total_credits += credits
-            details.append({"user_id": uid, "plan_id": pid, "credits": credits,
-                            "action": "granted"})
+            details.append({**g, "action": "granted"})
         except Exception as e:
             skipped += 1
-            details.append({"user_id": uid, "plan_id": pid, "action": "error",
-                            "reason": str(e)[:120]})
+            details.append({**g, "action": "error", "reason": str(e)[:120]})
+
+    # Also update the credit_wallets subscription pointer for any user whose
+    # subscription_plan_id is currently missing, using the latest paid order.
+    # This makes the /admin/subscribers screen surface them properly.
+    if not dry_run:
+        seen_users: set = set()
+        for g in grants.values():
+            uid = g["user_id"]
+            if uid in seen_users:
+                continue
+            seen_users.add(uid)
+            # Find the most recent paid subscription order for this user
+            latest = await db.payment_orders.find_one(
+                {"user_id": uid, "status": "paid",
+                 "type": {"$in": ["subscription", "subscription_onetime"]}},
+                {"_id": 0}, sort=[("paid_at", -1)],
+            )
+            if not latest:
+                continue
+            plan_id = latest.get("plan_id") or ""
+            # Only set fields that are currently blank — never clobber
+            existing_w = await db.credit_wallets.find_one(
+                {"user_id": uid}, {"_id": 0, "subscription_plan_id": 1, "current_plan": 1},
+            )
+            set_fields: Dict[str, Any] = {}
+            if existing_w and not existing_w.get("subscription_plan_id") and plan_id:
+                set_fields["subscription_plan_id"] = plan_id
+            if existing_w and (existing_w.get("current_plan") in (None, "", "free")):
+                p = plans_map.get(plan_id, {})
+                if p.get("tier"):
+                    set_fields["current_plan"] = p["tier"]
+                elif plan_id:
+                    set_fields["current_plan"] = plan_id
+            if set_fields:
+                set_fields["updated_at"] = _iso(_now())
+                set_fields.setdefault("subscription_status", "manual")
+                await db.credit_wallets.update_one(
+                    {"user_id": uid}, {"$set": set_fields}, upsert=True,
+                )
 
     return {
         "dry_run": dry_run,
@@ -720,6 +824,7 @@ async def admin_backfill_ai_wallet(
         "granted": granted,
         "skipped": skipped,
         "total_credits_granted": total_credits,
+        "sources_scanned": ["payment_orders", "subscriptions", "credit_transactions"],
         "details": details[:200],  # cap payload
     }
 
