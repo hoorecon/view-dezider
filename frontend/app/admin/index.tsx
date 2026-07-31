@@ -71,17 +71,35 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'home-variant', label: 'Homepage Variant', description: 'Choose which hero renders at jelcos.ai — Classic Purple or Modern Grid (fwdslash-inspired)', icon: 'color-palette', color: '#DB2777', href: '/admin/home-variant' },
   { key: 'decider-store', label: 'The Decider Store', description: 'Author & authorize public Decision Templates · import 55×10 grids from Excel/Google Sheet · pricing & clone modes', icon: 'storefront', color: '#4F46E5', href: '/admin/decider-store' },
   { key: 'ad-programs', label: 'AdMaker & AdTaker', description: 'Sponsored Solutions auction (AdRank × GSP) · region/time-slot bids · publisher widgets · tracker IDs · cutoffs', icon: 'megaphone', color: '#B45309', href: '/admin/ad-programs' },
+  // ── Monetization / Subscribers ─────────────────────────────────────────────
+  { key: 'subscribers',    label: 'Subscribers',         description: 'Roster of every paying user · plan · tier · both wallet balances · sub status', icon: 'people-outline', color: '#7C3AED', href: '/admin/subscribers' },
+  { key: 'sku-pricing',    label: 'SKU Pricing',         description: 'Per-SKU price · currency · region overrides · effective dates', icon: 'pricetags', color: '#0D9488', href: '/admin/sku-pricing' },
+  { key: 'catalog-payout', label: 'Catalog Payout',      description: 'Marketplace clone payouts · creator revenue share · reconcile', icon: 'wallet-outline', color: '#16A34A', href: '/admin/catalog-payout' },
+  { key: 'pricing',        label: 'Pricing (Legacy)',    description: 'Legacy pricing dashboard · plans/topups/coupons snapshot', icon: 'pricetag-outline', color: '#F59E0B', href: '/admin/pricing' },
+  // ── Content & Intelligence ────────────────────────────────────────────────
+  { key: 'ai-touchpoints', label: 'AI Touchpoints',      description: 'Master switches for every metered AI call (assess/prioritize/best options/collab merge)', icon: 'flash', color: '#7C3AED', href: '/admin/ai-touchpoints' },
+  { key: 'decision-modes', label: 'Decision Modes',      description: 'Quick vs Standard vs Deep assessment · defaults · gating', icon: 'options-outline', color: '#6366F1', href: '/admin/decision-modes' },
+  { key: 'templates',      label: 'Decision Templates',  description: 'Curated decision templates · edit/order · attach to store', icon: 'copy', color: '#0EA5E9', href: '/admin/templates' },
+  { key: 'crawler-embed-docs', label: 'Crawler & Embed Docs', description: 'Ingest URLs/PDFs into embeddings · re-crawl · per-partner indexes', icon: 'cloud-download', color: '#0891B2', href: '/admin/crawler-embed-docs' },
+  { key: 'eft-config',     label: 'EFT Config',          description: 'Emotional Freedom Technique flow · scripts · tapping meridians', icon: 'heart-circle', color: '#EC4899', href: '/admin/eft-config' },
+  { key: 'social-learning-admin', label: 'Social Learning', description: 'Community/social learning feed moderation · categories · seed prompts', icon: 'chatbubbles', color: '#DB2777', href: '/admin/social-learning-admin' },
+  { key: 'review-net',     label: 'Review Net',          description: 'Cross-user peer-review network · assignments · queue health', icon: 'git-compare', color: '#4F46E5', href: '/admin/review-net' },
+  // ── People & Experts ──────────────────────────────────────────────────────
+  { key: 'expert-review-queue', label: 'Expert Review Queue', description: 'Pending expert-verified decision reviews · SLA timers · assign', icon: 'clipboard', color: '#D946EF', href: '/admin/expert-review-queue' },
+  // ── Operations ────────────────────────────────────────────────────────────
+  { key: 'pending-approvals', label: 'Pending Approvals', description: 'All human-in-loop approvals awaiting an admin action', icon: 'checkmark-done-circle', color: '#DC2626', href: '/admin/pending-approvals' },
+  { key: 'regression-tests', label: 'Regression Tests', description: 'Curated regression suite · run any time · pass/fail history', icon: 'flask', color: '#059669', href: '/admin/regression-tests' },
 ];
 
-// Meaningful grouping of the 32 admin modules into 6 collapsible sections.
+// Meaningful grouping of the admin modules into collapsible sections.
 // 'Essentials' is expanded by default; all others start collapsed.
 const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] }[] = [
   { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'module-limits', 'dashboard-layout', 'signup-gate', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
-  { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'razorpay-offers', 'payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma', 'ad-programs'] },
+  { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'subscribers', 'razorpay-offers', 'payments', 'payouts', 'catalog-payout', 'sku-pricing', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma', 'ad-programs'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
-  { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },
-  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'import-analytics', 'url-training', 'notification-engine', 'landing-pages', 'home-variant'] },
-  { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'docs', 'handbook'] },
+  { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'expert-review-queue', 'embed-partners'] },
+  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'templates', 'decision-modes', 'ai-touchpoints', 'crawler-embed-docs', 'eft-config', 'social-learning-admin', 'review-net', 'import-analytics', 'url-training', 'notification-engine', 'landing-pages', 'home-variant'] },
+  { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'pending-approvals', 'regression-tests', 'docs', 'handbook'] },
 ];
 
 export default function AdminHomeScreen() {

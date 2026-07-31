@@ -128,6 +128,25 @@ export default function AdminSubscriptionPlansScreen() {
     }
   };
 
+  const [backfilling, setBackfilling] = useState(false);
+  const runBackfill = async (dryRun: boolean) => {
+    setBackfilling(true);
+    try {
+      const res = await api.post('/admin/subscriptions/backfill-ai-wallet', { dry_run: dryRun });
+      const { scanned = 0, granted = 0, skipped = 0, total_credits_granted = 0 } = res.data || {};
+      showAlert(
+        dryRun ? 'Backfill preview' : 'Backfill complete',
+        `Scanned ${scanned} paying users.\n` +
+        `${dryRun ? 'Would grant' : 'Granted'}: ${granted} users · ${total_credits_granted} credits.\n` +
+        `Skipped: ${skipped} (already backfilled / no credits / errors).`,
+      );
+    } catch (e: any) {
+      showAlert('Backfill failed', e?.response?.data?.detail || 'Could not backfill.');
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -160,6 +179,48 @@ export default function AdminSubscriptionPlansScreen() {
                 <Text style={{ fontWeight: '700' }}>Admin → Access Control → Credits & Subscription → “Subscribe — Auto-Renew”</Text>
                 {' '}(not here). Toggle the tiers you want to enable, then Save.
               </Text>
+            </View>
+
+            {/* Retroactive AI-wallet backfill for existing paid users */}
+            <View style={styles.backfillCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <Ionicons name="wallet" size={16} color="#7C3AED" />
+                <Text style={styles.backfillTitle}>Retro-fill AI wallets for existing paid users</Text>
+              </View>
+              <Text style={styles.backfillBody}>
+                Users who paid BEFORE v3.143 never received their plan credits into the
+                Profile AI wallet. Run this once to grant each paying user their
+                plan&apos;s credits_per_month into ai_wallets. Idempotent — safe to re-run.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={[styles.backfillBtn, { backgroundColor: '#E9D5FF' }]}
+                  onPress={() => runBackfill(true)}
+                  disabled={backfilling}
+                >
+                  {backfilling ? <ActivityIndicator size="small" color="#7C3AED" /> : (
+                    <><Ionicons name="eye" size={14} color="#7C3AED" />
+                      <Text style={[styles.backfillBtnText, { color: '#7C3AED' }]}>Preview (dry run)</Text></>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.backfillBtn, { backgroundColor: '#7C3AED' }]}
+                  onPress={() => runBackfill(false)}
+                  disabled={backfilling}
+                >
+                  {backfilling ? <ActivityIndicator size="small" color="#FFF" /> : (
+                    <><Ionicons name="play" size={14} color="#FFF" />
+                      <Text style={[styles.backfillBtnText, { color: '#FFF' }]}>Run backfill</Text></>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.backfillBtn, { backgroundColor: '#F3F4F6' }]}
+                  onPress={() => router.push('/admin/subscribers' as any)}
+                >
+                  <Ionicons name="people" size={14} color={COLORS.textPrimary} />
+                  <Text style={[styles.backfillBtnText, { color: COLORS.textPrimary }]}>View subscribers</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {[...plans]
@@ -250,6 +311,11 @@ const styles = StyleSheet.create({
   scroll: { padding: 16 },
   infoCard: { flexDirection: 'row', gap: 8, backgroundColor: COLORS.primary + '10', borderRadius: 12, padding: 12, marginBottom: 16 },
   infoText: { flex: 1, fontSize: 12.5, color: COLORS.textSecondary, lineHeight: 18 },
+  backfillCard: { backgroundColor: '#F5F3FF', borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#DDD6FE' },
+  backfillTitle: { fontSize: 13, fontWeight: '700', color: '#5B21B6' },
+  backfillBody: { fontSize: 12, color: '#4C1D95', lineHeight: 17 },
+  backfillBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
+  backfillBtnText: { fontWeight: '700', fontSize: 12 },
   card: { backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: COLORS.border },
   planName: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
   planId: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },

@@ -570,6 +570,160 @@ async def admin_sync_plans(user: dict = Depends(require_super_admin)):
     }
 
 
+# ───────────────────────── admin: subscribers & backfill ─────────────────────────
+@router.get("/admin/subscribers")
+async def admin_list_subscribers(
+    status: Optional[str] = None,
+    limit: int = 500,
+    user: dict = Depends(require_super_admin),
+):
+    """Roster of every user who ever paid — active, cancelled, pending or manual.
+
+    Optional `status` filter matches `credit_wallets.subscription_status`.
+    Attaches user email/name, current plan info, and BOTH wallet balances
+    (`credit_wallets.credits` legacy + `ai_wallets.balance` primary) so the
+    Admin can see exactly what a paid user sees on their Profile.
+    """
+    q: Dict[str, Any] = {"subscription_plan_id": {"$ne": None}}
+    if status:
+        q["subscription_status"] = status
+    cursor = db.credit_wallets.find(q, {"_id": 0}).sort("updated_at", -1).limit(min(max(limit, 1), 2000))
+    rows = await cursor.to_list(2000)
+
+    uids = [r["user_id"] for r in rows if r.get("user_id")]
+    users_map: Dict[str, Dict[str, Any]] = {}
+    ai_map: Dict[str, float] = {}
+    plans_map: Dict[str, Dict[str, Any]] = {}
+    if uids:
+        async for u in db.users.find(
+            {"user_id": {"$in": uids}}, {"_id": 0, "user_id": 1, "email": 1, "name": 1, "user_type": 1}
+        ):
+            users_map[u["user_id"]] = u
+        async for aw in db.ai_wallets.find(
+            {"user_id": {"$in": uids}}, {"_id": 0, "user_id": 1, "balance": 1}
+        ):
+            ai_map[aw["user_id"]] = float(aw.get("balance", 0))
+    plan_ids = list({r.get("subscription_plan_id") for r in rows if r.get("subscription_plan_id")})
+    if plan_ids:
+        async for p in db.subscription_plans.find(
+            {"plan_id": {"$in": plan_ids}}, {"_id": 0, "plan_id": 1, "name": 1, "tier": 1, "price_inr": 1, "credits_per_month": 1}
+        ):
+            plans_map[p["plan_id"]] = p
+
+    items = []
+    for r in rows:
+        uid = r.get("user_id")
+        u = users_map.get(uid, {})
+        p = plans_map.get(r.get("subscription_plan_id"), {})
+        items.append({
+            "user_id": uid,
+            "email": u.get("email", ""),
+            "name": u.get("name", ""),
+            "user_type": u.get("user_type", ""),
+            "plan_id": r.get("subscription_plan_id"),
+            "plan_name": p.get("name", ""),
+            "tier": r.get("current_plan") or p.get("tier", ""),
+            "plan_price_inr": p.get("price_inr", 0),
+            "plan_credits_per_month": p.get("credits_per_month", 0),
+            "subscription_id": r.get("subscription_id"),
+            "subscription_status": r.get("subscription_status"),
+            "subscription_mode": r.get("subscription_mode"),
+            "subscription_end": r.get("subscription_end"),
+            "legacy_credit_wallet": int(r.get("credits", 0)),
+            "ai_wallet_balance": round(float(ai_map.get(uid, 0.0)), 2),
+            "updated_at": r.get("updated_at"),
+        })
+    return {"count": len(items), "items": items}
+
+
+@router.post("/admin/subscriptions/backfill-ai-wallet")
+async def admin_backfill_ai_wallet(
+    body: Optional[Dict[str, Any]] = None,
+    user: dict = Depends(require_super_admin),
+):
+    """One-shot retroactive credit grant for users who paid BEFORE the
+    `apply_charge → ai_wallet.grant` fix (v3.143). For each paying user with
+    a plan, grant `plan.credits_per_month` to their `ai_wallets`.
+
+    Idempotency: skips users who already have an `ai_wallet_ledger` row with
+    `by='subscription-backfill'` for their current subscription_id.
+
+    body (optional):
+      - dry_run: bool = false  → only report, do not write
+      - status_filter: list[str] = ['active','manual','cancelled']
+    """
+    from core import ai_wallet as _ai_wallet
+    body = body or {}
+    dry_run = bool(body.get("dry_run", False))
+    status_filter = body.get("status_filter") or ["active", "manual", "cancelled"]
+
+    q = {
+        "subscription_plan_id": {"$ne": None},
+        "subscription_status": {"$in": status_filter},
+    }
+    rows = await db.credit_wallets.find(q, {"_id": 0}).to_list(5000)
+
+    scanned = granted = skipped = 0
+    total_credits = 0
+    details: List[Dict[str, Any]] = []
+
+    for r in rows:
+        scanned += 1
+        uid = r.get("user_id")
+        pid = r.get("subscription_plan_id")
+        sub_id = r.get("subscription_id") or ""
+        plan = await get_plan(pid) if pid else None
+        credits = int((plan or {}).get("credits_per_month", 0))
+        if not uid or not plan or credits <= 0:
+            skipped += 1
+            details.append({"user_id": uid, "plan_id": pid, "action": "skip",
+                            "reason": "no_plan_or_zero_credits"})
+            continue
+
+        # Idempotency: check for a backfill marker for THIS subscription
+        marker_q = {"user_id": uid, "by": "subscription-backfill"}
+        if sub_id:
+            marker_q["note"] = {"$regex": f"sub={sub_id}"}
+        existing = await db.ai_wallet_ledger.find_one(marker_q, {"_id": 1})
+        if existing:
+            skipped += 1
+            details.append({"user_id": uid, "plan_id": pid, "action": "skip",
+                            "reason": "already_backfilled"})
+            continue
+
+        if dry_run:
+            granted += 1
+            total_credits += credits
+            details.append({"user_id": uid, "plan_id": pid, "credits": credits,
+                            "action": "would_grant"})
+            continue
+
+        try:
+            await _ai_wallet.grant(
+                uid, float(credits),
+                by="subscription-backfill",
+                note=f"Backfill: {plan.get('name')} ({credits} credits/month) [sub={sub_id}]",
+                kind="grant",
+            )
+            granted += 1
+            total_credits += credits
+            details.append({"user_id": uid, "plan_id": pid, "credits": credits,
+                            "action": "granted"})
+        except Exception as e:
+            skipped += 1
+            details.append({"user_id": uid, "plan_id": pid, "action": "error",
+                            "reason": str(e)[:120]})
+
+    return {
+        "dry_run": dry_run,
+        "scanned": scanned,
+        "granted": granted,
+        "skipped": skipped,
+        "total_credits_granted": total_credits,
+        "details": details[:200],  # cap payload
+    }
+
+
 # ───────────────────────── dunning background task ─────────────────────────
 async def _dunning_loop():
     """Hourly: downgrade subscriptions whose 48h grace has expired (belt-and-suspenders
