@@ -133,9 +133,10 @@ export default function AdminSubscriptionPlansScreen() {
     setBackfilling(true);
     try {
       const res = await api.post('/admin/subscriptions/backfill-ai-wallet', { dry_run: dryRun });
-      const { scanned = 0, granted = 0, skipped = 0, total_credits_granted = 0 } = res.data || {};
+      const { scanned = 0, granted = 0, skipped = 0, total_credits_granted = 0, razorpay_reconcile = {} } = res.data || {};
       showAlert(
         dryRun ? 'Backfill preview' : 'Backfill complete',
+        `Razorpay reconcile: users=${razorpay_reconcile.users_reconciled ?? 0}, payments applied=${razorpay_reconcile.payments_applied ?? 0}\n\n` +
         `Scanned ${scanned} paying users.\n` +
         `${dryRun ? 'Would grant' : 'Granted'}: ${granted} users · ${total_credits_granted} credits.\n` +
         `Skipped: ${skipped} (already backfilled / no credits / errors).`,
@@ -144,6 +145,36 @@ export default function AdminSubscriptionPlansScreen() {
       showAlert('Backfill failed', e?.response?.data?.detail || 'Could not backfill.');
     } finally {
       setBackfilling(false);
+    }
+  };
+
+  const [diagEmail, setDiagEmail] = useState('');
+  const [diagBusy, setDiagBusy] = useState(false);
+  const runDiag = async () => {
+    if (!diagEmail.trim()) { showAlert('Enter an email', 'Type the user email to diagnose.'); return; }
+    setDiagBusy(true);
+    try {
+      const res = await api.get('/admin/subscriptions/diag', { params: { email: diagEmail.trim() } });
+      const d = res.data || {};
+      if (d.error) { showAlert('Diagnostic', d.error); return; }
+      const reconcile = d.reconcile || {};
+      const beforeBal = d.before?.ai_wallet_balance ?? 0;
+      const afterBal = d.after?.ai_wallet_balance ?? 0;
+      const subs = (d.local_subscriptions || []).length;
+      const orders = (d.recent_payment_orders || []).length;
+      const diagLines = (reconcile.diag || []).map((x: any) =>
+        `• sub=${x.sub_id} status=${x.remote_status} paid_count=${x.remote_paid_count} invoices=${x.invoices_found} newly_applied=${(x.newly_applied || []).length}`).join('\n');
+      showAlert(
+        `Diagnostic — ${diagEmail}`,
+        `Local subs: ${subs}   Orders (recent): ${orders}\n` +
+        `AI wallet: ${beforeBal} → ${afterBal}\n` +
+        `Reconcile: subs=${reconcile.subs || 0}, payments applied=${reconcile.payments_applied || 0}, credits=${reconcile.credits_granted || 0}\n\n` +
+        (diagLines || 'No local subscription rows found for this user.'),
+      );
+    } catch (e: any) {
+      showAlert('Diagnostic failed', e?.response?.data?.detail || 'Could not diagnose.');
+    } finally {
+      setDiagBusy(false);
     }
   };
 
@@ -220,6 +251,42 @@ export default function AdminSubscriptionPlansScreen() {
                   <Ionicons name="people" size={14} color={COLORS.textPrimary} />
                   <Text style={[styles.backfillBtnText, { color: COLORS.textPrimary }]}>View subscribers</Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* Deep-dive diagnostic — enter a paying user's email to see what
+                  Razorpay + local DB say and force-reconcile. */}
+              <View style={{ marginTop: 12, gap: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#5B21B6' }}>
+                  Diagnose a specific user
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    value={diagEmail}
+                    onChangeText={setDiagEmail}
+                    placeholder="user@email.com"
+                    placeholderTextColor="#A78BFA"
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    style={{
+                      flex: 1, borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 8,
+                      paddingHorizontal: 10, paddingVertical: 7, backgroundColor: '#FFF',
+                      color: '#111', fontSize: 13,
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={[styles.backfillBtn, { backgroundColor: '#4C1D95' }]}
+                    onPress={runDiag}
+                    disabled={diagBusy}
+                  >
+                    {diagBusy ? <ActivityIndicator size="small" color="#FFF" /> : (
+                      <><Ionicons name="pulse" size={14} color="#FFF" />
+                        <Text style={[styles.backfillBtnText, { color: '#FFF' }]}>Diagnose</Text></>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontSize: 10, color: '#7C3AED' }}>
+                  Fetches this user&apos;s Razorpay invoices live + auto-applies missed payments.
+                </Text>
               </View>
             </View>
 

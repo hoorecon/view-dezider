@@ -229,21 +229,24 @@ async def my_subscription(user: dict = Depends(get_current_user)):
 
 # ───────────────────── Razorpay self-heal / reconciliation ─────────────────────
 async def _reconcile_user_from_razorpay(user_id: str, rzp_client) -> Dict[str, Any]:
-    """Pull the user's local subscription rows, fetch each one from Razorpay,
-    and apply_charge() for every captured payment_id not yet in
-    `processed_payments`. Idempotent. Returns { subs, payments_applied, credits_granted }.
+    """Pull the user's local subscription rows, fetch their INVOICES from
+    Razorpay (each invoice carries a payment_id), and apply_charge() for
+    every captured payment not yet in `processed_payments`. Idempotent.
 
-    This is the safety net for cases where the Razorpay webhook never reached
-    us (misconfig / signature mismatch / firewall). Without this, a real paid
-    subscription like sub_TKFlXpTtmEyMmS just sits as 'created' locally and
-    the user sees 'No active plan'.
+    Razorpay does NOT expose /v1/subscriptions/{id}/payments — the correct
+    surface is GET /v1/invoices?subscription_id={id}. That's what fixes the
+    ₹199 sub_TKFlXpTtmEyMmS case that stayed 'No active plan' locally.
     """
     if not rzp_client:
         return {"subs": 0, "payments_applied": 0, "credits_granted": 0, "note": "no_rzp_client"}
 
+    from core.integrations import resolve_razorpay_creds as _rrc
+    key_id, key_secret, _ = await _rrc()
+
     subs_examined = 0
     payments_applied = 0
     credits_granted = 0
+    diag: List[Dict[str, Any]] = []
 
     async for s in db.subscriptions.find({"user_id": user_id}, {"_id": 0}):
         sub_id = s.get("subscription_id")
@@ -253,51 +256,62 @@ async def _reconcile_user_from_razorpay(user_id: str, rzp_client) -> Dict[str, A
         subs_examined += 1
         plan = await get_plan(plan_id)
         if not plan:
+            diag.append({"sub_id": sub_id, "skip": "plan_not_found", "plan_id": plan_id})
             continue
 
-        # Fetch remote sub + payments
+        # (a) remote subscription — for status + paid_count truth
+        remote_sub: Dict[str, Any] = {}
         try:
-            remote_sub = rzp_client.subscription.fetch(sub_id)
+            remote_sub = rzp_client.subscription.fetch(sub_id) or {}
         except Exception as e:
-            log.warning("rzp.subscription.fetch(%s) failed: %s", sub_id, str(e)[:120])
-            remote_sub = {}
+            log.warning("rzp.subscription.fetch(%s) failed: %s", sub_id, str(e)[:160])
+
+        # (b) invoices for this subscription — each has payment_id
+        invoices: List[Dict[str, Any]] = []
         try:
-            payments_resp = rzp_client.subscription.fetch_payments(sub_id)
-        except AttributeError:
-            # older SDK — direct HTTP fallback
+            resp = rzp_client.invoice.all({"subscription_id": sub_id, "count": 100})
+            invoices = (resp or {}).get("items") or []
+        except Exception as e:
+            log.warning("rzp.invoice.all(sub=%s) failed: %s", sub_id, str(e)[:160])
+            # HTTP fallback — direct API call in case SDK method signature drifts
             try:
                 import requests
-                from core.integrations import resolve_razorpay_creds as _rrc
-                key_id, key_secret, _ = await _rrc()
                 r = requests.get(
-                    f"https://api.razorpay.com/v1/subscriptions/{sub_id}/payments",
+                    "https://api.razorpay.com/v1/invoices",
+                    params={"subscription_id": sub_id, "count": 100},
                     auth=(key_id, key_secret), timeout=15,
                 )
-                payments_resp = r.json() if r.ok else {}
-            except Exception as e:
-                log.warning("HTTP fetch payments for %s failed: %s", sub_id, str(e)[:120])
-                payments_resp = {}
-        except Exception as e:
-            log.warning("rzp.subscription.fetch_payments(%s) failed: %s", sub_id, str(e)[:120])
-            payments_resp = {}
+                if r.ok:
+                    invoices = (r.json() or {}).get("items") or []
+                else:
+                    log.warning("HTTP /v1/invoices sub=%s -> %s: %s",
+                                sub_id, r.status_code, r.text[:200])
+            except Exception as e2:
+                log.error("HTTP invoices fetch failed sub=%s: %s", sub_id, str(e2)[:160])
 
-        items = (payments_resp or {}).get("items") or []
         already = set((s.get("processed_payments") or []))
-        for p in items:
-            if (p.get("status") or "") != "captured":
-                continue
-            pid = p.get("id") or ""
-            if not pid or pid in already:
+        found_payment_ids: List[str] = []
+        for inv in invoices:
+            status = (inv.get("status") or "").lower()
+            pid = inv.get("payment_id") or ""
+            if status == "paid" and pid:
+                found_payment_ids.append(pid)
+
+        # (c) apply each captured payment we haven't seen locally
+        newly_applied: List[str] = []
+        for pid in found_payment_ids:
+            if pid in already:
                 continue
             try:
                 await apply_charge(user_id, plan, pid, sub_id, mode="recurring")
                 payments_applied += 1
                 credits_granted += int(plan.get("credits_per_month", 0))
+                newly_applied.append(pid)
             except Exception as e:
-                log.warning("apply_charge during reconcile failed for %s/%s: %s",
-                            user_id, pid, str(e)[:120])
+                log.warning("apply_charge during reconcile failed uid=%s pid=%s: %s",
+                            user_id, pid, str(e)[:160])
 
-        # Sync local subscription status/current-cycle end from Razorpay truth
+        # (d) sync local sub row from Razorpay truth
         remote_status = remote_sub.get("status") if isinstance(remote_sub, dict) else None
         if remote_status:
             await db.subscriptions.update_one(
@@ -305,10 +319,26 @@ async def _reconcile_user_from_razorpay(user_id: str, rzp_client) -> Dict[str, A
                 {"$set": {"status": remote_status}},
             )
 
+        # (e) safety net: if Razorpay reports paid_count > what we've captured
+        # via invoices + already-processed, log loudly so admin can investigate.
+        remote_paid_count = int(remote_sub.get("paid_count") or 0) if remote_sub else 0
+        total_known = len(already) + len(newly_applied)
+        diag.append({
+            "sub_id": sub_id,
+            "remote_status": remote_status,
+            "remote_paid_count": remote_paid_count,
+            "invoices_found": len(invoices),
+            "paid_payment_ids": found_payment_ids,
+            "already_processed": list(already),
+            "newly_applied": newly_applied,
+            "gap": max(0, remote_paid_count - total_known),
+        })
+
     return {
         "subs": subs_examined,
         "payments_applied": payments_applied,
         "credits_granted": credits_granted,
+        "diag": diag,
     }
 
 
@@ -320,6 +350,57 @@ async def reconcile_subscription(user: dict = Depends(get_current_user)):
     rzp_client, _, _ = await get_razorpay_client()
     result = await _reconcile_user_from_razorpay(user["user_id"], rzp_client)
     return {"message": "Reconciled with Razorpay.", **result}
+
+
+@router.get("/admin/subscriptions/diag")
+async def admin_sub_diag(
+    email: Optional[str] = None,
+    user_id: Optional[str] = None,
+    user: dict = Depends(require_super_admin),
+):
+    """Deep-dive diagnostic for a specific user — resolves by email or user_id,
+    shows local `subscriptions` + `credit_wallets` state AND live Razorpay
+    invoice list, so we can see exactly why a paid user isn't activating.
+    """
+    q: Dict[str, Any] = {}
+    if user_id:
+        q["user_id"] = user_id
+    elif email:
+        u = await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1})
+        if not u:
+            return {"error": f"No user found with email={email}"}
+        q["user_id"] = u["user_id"]
+    else:
+        return {"error": "Provide ?email= or ?user_id="}
+
+    uid = q["user_id"]
+    wallet = await db.credit_wallets.find_one({"user_id": uid}, {"_id": 0}) or {}
+    ai_wallet = await db.ai_wallets.find_one({"user_id": uid}, {"_id": 0}) or {}
+    local_subs = await db.subscriptions.find({"user_id": uid}, {"_id": 0}).to_list(50)
+    local_orders = await db.payment_orders.find(
+        {"user_id": uid}, {"_id": 0}
+    ).sort("paid_at", -1).limit(20).to_list(20)
+
+    rzp_client, _, _ = await get_razorpay_client()
+    reconcile_result = await _reconcile_user_from_razorpay(uid, rzp_client) if rzp_client else {"note": "rzp_not_configured"}
+    # re-read wallet after reconcile
+    wallet_after = await db.credit_wallets.find_one({"user_id": uid}, {"_id": 0}) or {}
+    ai_wallet_after = await db.ai_wallets.find_one({"user_id": uid}, {"_id": 0}) or {}
+
+    return {
+        "user_id": uid,
+        "before": {
+            "credit_wallet": wallet,
+            "ai_wallet_balance": ai_wallet.get("balance", 0),
+        },
+        "local_subscriptions": local_subs,
+        "recent_payment_orders": local_orders,
+        "reconcile": reconcile_result,
+        "after": {
+            "credit_wallet": wallet_after,
+            "ai_wallet_balance": ai_wallet_after.get("balance", 0),
+        },
+    }
 
 
 @router.post("/subscriptions/create")
