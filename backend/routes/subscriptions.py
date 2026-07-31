@@ -227,6 +227,101 @@ async def my_subscription(user: dict = Depends(get_current_user)):
     }
 
 
+# ───────────────────── Razorpay self-heal / reconciliation ─────────────────────
+async def _reconcile_user_from_razorpay(user_id: str, rzp_client) -> Dict[str, Any]:
+    """Pull the user's local subscription rows, fetch each one from Razorpay,
+    and apply_charge() for every captured payment_id not yet in
+    `processed_payments`. Idempotent. Returns { subs, payments_applied, credits_granted }.
+
+    This is the safety net for cases where the Razorpay webhook never reached
+    us (misconfig / signature mismatch / firewall). Without this, a real paid
+    subscription like sub_TKFlXpTtmEyMmS just sits as 'created' locally and
+    the user sees 'No active plan'.
+    """
+    if not rzp_client:
+        return {"subs": 0, "payments_applied": 0, "credits_granted": 0, "note": "no_rzp_client"}
+
+    subs_examined = 0
+    payments_applied = 0
+    credits_granted = 0
+
+    async for s in db.subscriptions.find({"user_id": user_id}, {"_id": 0}):
+        sub_id = s.get("subscription_id")
+        plan_id = s.get("plan_id")
+        if not sub_id or not plan_id:
+            continue
+        subs_examined += 1
+        plan = await get_plan(plan_id)
+        if not plan:
+            continue
+
+        # Fetch remote sub + payments
+        try:
+            remote_sub = rzp_client.subscription.fetch(sub_id)
+        except Exception as e:
+            log.warning("rzp.subscription.fetch(%s) failed: %s", sub_id, str(e)[:120])
+            remote_sub = {}
+        try:
+            payments_resp = rzp_client.subscription.fetch_payments(sub_id)
+        except AttributeError:
+            # older SDK — direct HTTP fallback
+            try:
+                import requests
+                from core.integrations import resolve_razorpay_creds as _rrc
+                key_id, key_secret, _ = await _rrc()
+                r = requests.get(
+                    f"https://api.razorpay.com/v1/subscriptions/{sub_id}/payments",
+                    auth=(key_id, key_secret), timeout=15,
+                )
+                payments_resp = r.json() if r.ok else {}
+            except Exception as e:
+                log.warning("HTTP fetch payments for %s failed: %s", sub_id, str(e)[:120])
+                payments_resp = {}
+        except Exception as e:
+            log.warning("rzp.subscription.fetch_payments(%s) failed: %s", sub_id, str(e)[:120])
+            payments_resp = {}
+
+        items = (payments_resp or {}).get("items") or []
+        already = set((s.get("processed_payments") or []))
+        for p in items:
+            if (p.get("status") or "") != "captured":
+                continue
+            pid = p.get("id") or ""
+            if not pid or pid in already:
+                continue
+            try:
+                await apply_charge(user_id, plan, pid, sub_id, mode="recurring")
+                payments_applied += 1
+                credits_granted += int(plan.get("credits_per_month", 0))
+            except Exception as e:
+                log.warning("apply_charge during reconcile failed for %s/%s: %s",
+                            user_id, pid, str(e)[:120])
+
+        # Sync local subscription status/current-cycle end from Razorpay truth
+        remote_status = remote_sub.get("status") if isinstance(remote_sub, dict) else None
+        if remote_status:
+            await db.subscriptions.update_one(
+                {"subscription_id": sub_id},
+                {"$set": {"status": remote_status}},
+            )
+
+    return {
+        "subs": subs_examined,
+        "payments_applied": payments_applied,
+        "credits_granted": credits_granted,
+    }
+
+
+@router.post("/subscriptions/reconcile")
+async def reconcile_subscription(user: dict = Depends(get_current_user)):
+    """User-invoked self-heal: fetch this user's subs+payments from Razorpay
+    and apply any captured payments the webhook missed. Called by the frontend
+    on /subscription-plans mount and right after Razorpay checkout closes."""
+    rzp_client, _, _ = await get_razorpay_client()
+    result = await _reconcile_user_from_razorpay(user["user_id"], rzp_client)
+    return {"message": "Reconciled with Razorpay.", **result}
+
+
 @router.post("/subscriptions/create")
 async def create_subscription(body: Dict[str, Any], user: dict = Depends(get_current_user)):
     """Try a real recurring subscription; auto-fallback to a one-time order."""
@@ -668,6 +763,29 @@ async def admin_backfill_ai_wallet(
     body = body or {}
     dry_run = bool(body.get("dry_run", False))
 
+    # Pre-step: reconcile every local subscription row with Razorpay so any
+    # captured payment the webhook missed is applied first. This is what makes
+    # subs like sub_TKFlXpTtmEyMmS activate even when the webhook never fired.
+    reconcile_summary: Dict[str, Any] = {"users_reconciled": 0, "payments_applied": 0}
+    if not dry_run:
+        try:
+            rzp_client, _, _ = await get_razorpay_client()
+            if rzp_client:
+                seen_uids: set = set()
+                async for s in db.subscriptions.find({}, {"_id": 0, "user_id": 1}):
+                    uid = s.get("user_id")
+                    if not uid or uid in seen_uids:
+                        continue
+                    seen_uids.add(uid)
+                    try:
+                        r = await _reconcile_user_from_razorpay(uid, rzp_client)
+                        reconcile_summary["users_reconciled"] += 1
+                        reconcile_summary["payments_applied"] += int(r.get("payments_applied", 0))
+                    except Exception as e:
+                        log.warning("reconcile for %s in backfill failed: %s", uid, str(e)[:120])
+        except Exception as e:
+            log.warning("razorpay client unavailable during backfill: %s", str(e)[:120])
+
     # Preload admin-configured plans for Razorpay plan_id → credits/name lookup
     plans_map: Dict[str, Dict[str, Any]] = {}
     async for p in db.subscription_plans.find({}, {"_id": 0}):
@@ -824,7 +942,8 @@ async def admin_backfill_ai_wallet(
         "granted": granted,
         "skipped": skipped,
         "total_credits_granted": total_credits,
-        "sources_scanned": ["payment_orders", "subscriptions", "credit_transactions"],
+        "sources_scanned": ["razorpay_reconcile", "payment_orders", "subscriptions", "credit_transactions"],
+        "razorpay_reconcile": reconcile_summary,
         "details": details[:200],  # cap payload
     }
 

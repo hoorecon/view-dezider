@@ -51,6 +51,9 @@ export default function SubscriptionPlansScreen() {
 
   const fetchData = async () => {
     try {
+      // Self-heal: pull any captured Razorpay payments the webhook may have
+      // missed BEFORE we render the current plan. Silent — never blocks UI.
+      try { await api.post('/subscriptions/reconcile', {}); } catch { /* silent */ }
       const [pRes, mRes] = await Promise.all([
         api.get('/subscriptions/plans'),
         api.get('/subscriptions/me'),
@@ -76,6 +79,8 @@ export default function SubscriptionPlansScreen() {
       });
       await WebBrowser.openBrowserAsync(`${BASE_URL}/api/subscriptions/checkout?${params.toString()}`);
     }
+    // Explicit reconcile immediately after checkout closes (webhooks can lag/never arrive).
+    try { await api.post('/subscriptions/reconcile', {}); } catch { /* silent */ }
     await fetchData();
   };
 
