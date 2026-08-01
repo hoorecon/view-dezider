@@ -200,6 +200,21 @@ async def _ensure_seed_tps() -> None:
         primary_cta_href="/auth/register?ref=tps",
         secondary_cta_text="Try the free Decision-Style Quiz →",
         secondary_cta_href="/quiz",
+        extra_ctas=[
+            ExtraCtaItem(text="Know Your Decision Style", href="/quiz", style="outline"),
+            ExtraCtaItem(text="Explore The Decider Store", href="/decider-store", style="solid"),
+        ],
+        callout=CalloutItem(
+            subtitle="FEATURED APP FOR TAMILPRENEURS",
+            title="Business Model Chooser",
+            body="Deciding between competing revenue models? Our flagship app in The "
+                 "Decider Store walks Tamilpreneurs through the trade-offs of SaaS, "
+                 "marketplace, agency and franchise models — with an AI-scored "
+                 "recommendation tailored to your context.",
+            cta_text="Try Business Model Chooser",
+            cta_href="/decider-store/business-model-chooser",
+            accent="#4F46E5",
+        ),
         footer_text="© 2026 Jelcos AI · Chennai · <a href=\"https://jelcos.ai\">jelcos.ai</a>",
     )
     rendered = _render_event_template(default_tpl)
@@ -211,16 +226,16 @@ async def _ensure_seed_tps() -> None:
             "meta_og_image": "",
             "html": rendered["html"], "css": rendered["css"], "js": "",
             "template_data": default_tpl.dict(),
-            "active": True, "source": "seed_v2_fwdslash",
+            "active": True, "source": "seed_v3_bmc_callout",
             "created_at": now, "updated_at": now,
         })
-    elif existing.get("source") == "seed" and not existing.get("template_data"):
-        # Auto-migrate any legacy dark-theme seed to the new light theme.
+    elif existing.get("source") in ("seed", "seed_v2_fwdslash") or not existing.get("template_data"):
+        # Auto-upgrade to v3 (adds Decider Style + Decider Store CTAs + BMC callout).
         await db.landing_pages.update_one(
             {"slug": "tps"},
             {"$set": {"html": rendered["html"], "css": rendered["css"],
                       "template_data": default_tpl.dict(),
-                      "source": "seed_v2_fwdslash", "updated_at": now}},
+                      "source": "seed_v3_bmc_callout", "updated_at": now}},
         )
 
 
@@ -313,6 +328,21 @@ class ChipItem(BaseModel):
     emoji: str = ""
 
 
+class ExtraCtaItem(BaseModel):
+    text: str = ""
+    href: str = ""
+    style: str = "outline"   # 'solid' | 'outline'
+
+
+class CalloutItem(BaseModel):
+    title: str = ""
+    subtitle: str = ""
+    body: str = ""
+    cta_text: str = ""
+    cta_href: str = ""
+    accent: str = "#4F46E5"   # left border colour
+
+
 class PersonItem(BaseModel):
     role_label: str = ""      # e.g. "Launched by"
     name: str = ""            # e.g. "Shyam Siddarth"
@@ -357,6 +387,10 @@ class EventTemplateData(BaseModel):
     primary_cta_href: str = "/auth/register?ref=tps"
     secondary_cta_text: str = "Try the free Decision-Style Quiz →"
     secondary_cta_href: str = "/quiz"
+    # Extra CTA row — buttons rendered after primary CTA (admin-editable)
+    extra_ctas: List[ExtraCtaItem] = Field(default_factory=list)
+    # Optional callout card (e.g. a featured store app / decision template)
+    callout: Optional[CalloutItem] = None
     # Footer
     footer_text: str = "© 2026 Jelcos AI · Chennai · <a href=\"https://jelcos.ai\">jelcos.ai</a>"
     # Theme colour overrides (optional)
@@ -369,6 +403,34 @@ class EventTemplateData(BaseModel):
 def _esc(s: str) -> str:
     """HTML-escape a value coming from admin form fields."""
     return _html_lib.escape(str(s or ""), quote=True)
+
+
+def _render_extra_ctas(d: "EventTemplateData") -> str:
+    if not d.extra_ctas:
+        return ""
+    btns = "\n".join(
+        f'<a class="lp-cta-extra lp-cta-extra-{_esc(c.style or "outline")}" href="{_esc(c.href)}">{_esc(c.text)}</a>'
+        for c in d.extra_ctas if (c.text and c.href)
+    )
+    return f'<div class="lp-cta-extra-row">{btns}</div>' if btns else ""
+
+
+def _render_callout(d: "EventTemplateData") -> str:
+    c = d.callout
+    if not c or not (c.title or c.body):
+        return ""
+    cta = (
+        f'<a class="lp-callout-cta" href="{_esc(c.cta_href)}">{_esc(c.cta_text)}</a>'
+        if (c.cta_text and c.cta_href) else ""
+    )
+    return (
+        f'<div class="lp-callout" style="border-left-color:{_esc(c.accent or "#4F46E5")}">'
+        f'  <div class="lp-callout-sub">{_esc(c.subtitle)}</div>'
+        f'  <div class="lp-callout-title">{_esc(c.title)}</div>'
+        f'  <div class="lp-callout-body">{_esc(c.body)}</div>'
+        f'  {cta}'
+        f'</div>'
+    )
 
 
 def _render_event_template(d: EventTemplateData) -> Dict[str, str]:
@@ -428,6 +490,8 @@ def _render_event_template(d: EventTemplateData) -> Dict[str, str]:
   <div class="lp-cta-wrap">
     <a class="lp-cta" href="{_esc(d.primary_cta_href)}" id="lp-cta-primary">{_esc(d.primary_cta_text)}</a>
     <a class="lp-cta-secondary" href="{_esc(d.secondary_cta_href)}">{_esc(d.secondary_cta_text)}</a>
+    {_render_extra_ctas(d)}
+    {_render_callout(d)}
   </div>
 
   <div class="lp-footer">{d.footer_text}</div>
@@ -469,6 +533,17 @@ def _render_event_template(d: EventTemplateData) -> Dict[str, str]:
 .lp-cta:hover{{transform:translateY(-2px);box-shadow:0 12px 28px rgba(15,23,42,.25)}}
 .lp-cta::after{{content:'→';font-size:16px}}
 .lp-cta-secondary{{color:#4F46E5;font-size:14px;text-decoration:underline;text-decoration-color:#C7D2FE;text-underline-offset:4px}}
+.lp-cta-extra-row{{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:8px}}
+.lp-cta-extra{{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:14px;letter-spacing:.3px;text-decoration:none;padding:12px 22px;border-radius:999px;transition:transform .15s ease}}
+.lp-cta-extra:hover{{transform:translateY(-1px)}}
+.lp-cta-extra-solid{{background:{d.accent_red};color:#fff;box-shadow:0 6px 16px rgba(225,29,72,.35)}}
+.lp-cta-extra-outline{{background:#fff;color:#0F172A;border:1.5px solid #0F172A}}
+.lp-callout{{background:#fff;border:1px solid #E2E8F0;border-left:5px solid #4F46E5;border-radius:14px;padding:20px 22px;margin:22px auto 0;max-width:520px;text-align:left;box-shadow:0 4px 14px rgba(15,23,42,.05)}}
+.lp-callout-sub{{color:#94A3B8;font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px}}
+.lp-callout-title{{color:#0F172A;font-size:20px;font-weight:900;letter-spacing:-.3px}}
+.lp-callout-body{{color:#475569;font-size:13.5px;line-height:1.55;margin-top:8px}}
+.lp-callout-cta{{display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:#0F172A;color:#fff;padding:9px 16px;border-radius:999px;font-size:12.5px;font-weight:800;text-decoration:none}}
+.lp-callout-cta::after{{content:'→'}}
 .lp-footer{{text-align:center;color:#94A3B8;font-size:11px;margin-top:36px}}
 .lp-footer a{{color:#4F46E5;text-decoration:none}}"""
     return {"html": html, "css": css}

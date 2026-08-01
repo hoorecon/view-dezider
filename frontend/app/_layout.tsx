@@ -251,6 +251,7 @@ const PUBLIC_SEGMENTS = new Set<string>([
   'embed',           // white-label partner embed (/embed/[flow]) — iframed on partner sites
   'admin',           // self-guarded (auth + admin role)
   'quiz',            // marketing HOOK: guest Decision-Style quiz (quiz.jelcos.ai)
+  's',               // public short-URL redirector (/s/[slug])
   '[promo]',         // catch-all short URL router for admin-CRUD landing pages
                      // (segments[0] === '[promo]' when Expo Router matches app/[promo].tsx)
 ]);

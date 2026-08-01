@@ -394,6 +394,12 @@ api_router.include_router(landing_pages_router)
 from routes.home_variant import router as home_variant_router  # noqa: E402
 api_router.include_router(home_variant_router)
 
+from routes.admin_dashboard_pins import router as admin_dashboard_pins_router  # noqa: E402
+api_router.include_router(admin_dashboard_pins_router)
+
+from routes.short_urls import router as short_urls_router  # noqa: E402
+api_router.include_router(short_urls_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 

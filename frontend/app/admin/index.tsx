@@ -86,6 +86,8 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'review-net',     label: 'Review Net',          description: 'Cross-user peer-review network · assignments · queue health', icon: 'git-compare', color: '#4F46E5', href: '/admin/review-net' },
   // ── People & Experts ──────────────────────────────────────────────────────
   { key: 'expert-review-queue', label: 'Expert Review Queue', description: 'Pending expert-verified decision reviews · SLA timers · assign', icon: 'clipboard', color: '#D946EF', href: '/admin/expert-review-queue' },
+  // ── Content: growth & sharing ─────────────────────────────────────────────
+  { key: 'short-urls',     label: 'Short URLs & Share Links', description: 'Auto/manual short URLs for every template & store app · admin-editable share messages', icon: 'link', color: '#0EA5E9', href: '/admin/short-urls' },
   // ── Operations ────────────────────────────────────────────────────────────
   { key: 'pending-approvals', label: 'Pending Approvals', description: 'All human-in-loop approvals awaiting an admin action', icon: 'checkmark-done-circle', color: '#DC2626', href: '/admin/pending-approvals' },
   { key: 'regression-tests', label: 'Regression Tests', description: 'Curated regression suite · run any time · pass/fail history', icon: 'flask', color: '#059669', href: '/admin/regression-tests' },
@@ -98,7 +100,7 @@ const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] 
   { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'subscribers', 'razorpay-offers', 'payments', 'payouts', 'catalog-payout', 'sku-pricing', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma', 'ad-programs'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'expert-review-queue', 'embed-partners'] },
-  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'templates', 'decision-modes', 'ai-touchpoints', 'crawler-embed-docs', 'eft-config', 'social-learning-admin', 'review-net', 'import-analytics', 'url-training', 'notification-engine', 'landing-pages', 'home-variant'] },
+  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'templates', 'decision-modes', 'ai-touchpoints', 'crawler-embed-docs', 'eft-config', 'social-learning-admin', 'review-net', 'import-analytics', 'url-training', 'notification-engine', 'landing-pages', 'home-variant', 'short-urls'] },
   { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'pending-approvals', 'regression-tests', 'docs', 'handbook'] },
 ];
 
@@ -115,10 +117,26 @@ export default function AdminHomeScreen() {
     { loading: true, connected: false, status: 'checking', detail: '', configured: true },
   );
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ essentials: true });
+  const [pinned, setPinned] = useState<string[]>([]);
   const actionByKey = React.useMemo(
     () => Object.fromEntries(QUICK_ACTIONS.map((a) => [a.key, a])) as Record<string, QuickAction>,
     [],
   );
+
+  const loadPins = React.useCallback(async () => {
+    try {
+      const r = await api.get('/admin/dashboard-pins');
+      setPinned(Array.isArray(r.data?.pinned) ? r.data.pinned : []);
+    } catch { /* silent */ }
+  }, []);
+
+  const togglePin = React.useCallback(async (key: string) => {
+    setPinned((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      api.put('/admin/dashboard-pins', { pinned: next }).catch(() => {/* silent */});
+      return next;
+    });
+  }, []);
 
   const checkWhatsApp = React.useCallback(async () => {
     setWa((w) => ({ ...w, loading: true }));
@@ -137,6 +155,7 @@ export default function AdminHomeScreen() {
   }, []);
 
   useEffect(() => { checkWhatsApp(); }, [checkWhatsApp]);
+  useEffect(() => { loadPins(); }, [loadPins]);
 
   useEffect(() => {
     (async () => {
@@ -217,9 +236,55 @@ export default function AdminHomeScreen() {
           <View style={s.sectionHeader}>
             <View>
               <Text style={s.sectionTitle}>Operations</Text>
-              <Text style={s.sectionSub}>Browse admin modules by category</Text>
+              <Text style={s.sectionSub}>Browse admin modules by category · tap the ☆ to pin any tile to Quick Links</Text>
             </View>
           </View>
+
+          {/* Quick Links — pinned tiles (admin-configurable via the ★ on each card) */}
+          {pinned.length > 0 && (
+            <View style={s.groupBlock}>
+              <View style={s.groupHeader}>
+                <View style={[s.groupIcon, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="star" size={15} color="#D97706" />
+                </View>
+                <Text style={s.groupLabel}>Quick Links</Text>
+                <Text style={s.groupCount}>{pinned.filter((k) => actionByKey[k]).length}</Text>
+              </View>
+              <View style={s.actionGrid}>
+                {pinned.map((k) => actionByKey[k]).filter(Boolean).map((action: QuickAction) => (
+                  <Pressable
+                    key={`pin-${action.key}`}
+                    onPress={() => router.push(action.href as any)}
+                    style={({ hovered }: any) => [
+                      s.actionCard,
+                      { width: isWide ? '33.333%' : isDesktop ? '50%' : '100%' },
+                      hovered && s.actionCardHover,
+                    ]}
+                    testID={`admin-quicklink-${action.key}`}
+                  >
+                    <View style={s.actionCardInner}>
+                      <View style={[s.actionIcon, { backgroundColor: action.color + '15' }]}>
+                        <Ionicons name={action.icon as any} size={18} color={action.color} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={s.actionLabel}>{action.label}</Text>
+                        <Text style={s.actionDesc} numberOfLines={2}>{action.description}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={(e: any) => { e.stopPropagation?.(); togglePin(action.key); }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ padding: 4 }}
+                        testID={`admin-unpin-${action.key}`}
+                      >
+                        <Ionicons name="star" size={16} color="#F59E0B" />
+                      </TouchableOpacity>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
           {ACTION_GROUPS.map((group) => {
             const open = !!openGroups[group.key];
             const groupActions = group.keys.map((k) => actionByKey[k]).filter(Boolean);
@@ -263,6 +328,19 @@ export default function AdminHomeScreen() {
                             <Text style={s.actionLabel}>{action.label}</Text>
                             <Text style={s.actionDesc} numberOfLines={2}>{action.description}</Text>
                           </View>
+                          <TouchableOpacity
+                            onPress={(e: any) => { e.stopPropagation?.(); togglePin(action.key); }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{ padding: 4, marginLeft: 4 }}
+                            testID={`admin-pin-${action.key}`}
+                            accessibilityLabel={pinned.includes(action.key) ? 'Unpin from Quick Links' : 'Pin to Quick Links'}
+                          >
+                            <Ionicons
+                              name={pinned.includes(action.key) ? 'star' : 'star-outline'}
+                              size={15}
+                              color={pinned.includes(action.key) ? '#F59E0B' : ADMIN_THEME.semantic.textMuted}
+                            />
+                          </TouchableOpacity>
                           <Ionicons name="arrow-forward" size={14} color={ADMIN_THEME.semantic.textMuted} style={{ marginLeft: 6 }} />
                         </View>
                       </Pressable>
