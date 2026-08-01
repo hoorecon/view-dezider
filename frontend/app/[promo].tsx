@@ -129,13 +129,29 @@ export default function PromoSlugScreen() {
 
   // Found — render HTML on web via dangerouslySetInnerHTML.
   if (Platform.OS === 'web' && lp) {
+    // NOTE: We deliberately DO NOT wrap the injected HTML in a react-native
+    // <View>. On React Native Web the root <View> gets `flex:1` + the app
+    // shell locks `body { overflow: hidden; height: 100vh }`, which clips
+    // any admin-authored landing page taller than the viewport (the /tps
+    // Business Model Chooser callout was invisible for this exact reason).
+    // Instead we render a plain block-level <div> and force body/html to
+    // regain natural document scroll while this page is mounted.
     return (
-      // eslint-disable-next-line react/no-danger
-      <View style={styles.wrap}>
+      <>
+        {React.createElement('style', { key: 'lp-scroll-unlock' }, `
+          html { overflow: auto !important; height: auto !important; }
+          body { overflow: visible !important; height: auto !important; position: static !important; }
+          #root { position: static !important; height: auto !important; min-height: 100vh; display: block !important; overflow: visible !important; }
+          #root > div,
+          #root .css-view-g5y9jx { height: auto !important; min-height: 100vh; overflow: visible !important; flex: none !important; display: block !important; position: static !important; }
+        `)}
         {React.createElement('div', {
+          key: 'lp-body',
+          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML: { __html: lp.html },
+          style: { minHeight: '100vh', background: '#F8FAFC' },
         })}
-      </View>
+      </>
     );
   }
 

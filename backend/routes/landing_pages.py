@@ -226,16 +226,16 @@ async def _ensure_seed_tps() -> None:
             "meta_og_image": "",
             "html": rendered["html"], "css": rendered["css"], "js": "",
             "template_data": default_tpl.dict(),
-            "active": True, "source": "seed_v3_bmc_callout",
+            "active": True, "source": "seed_v4_scroll_fix",
             "created_at": now, "updated_at": now,
         })
-    elif existing.get("source") in ("seed", "seed_v2_fwdslash") or not existing.get("template_data"):
-        # Auto-upgrade to v3 (adds Decider Style + Decider Store CTAs + BMC callout).
+    elif existing.get("source") in ("seed", "seed_v2_fwdslash", "seed_v3_bmc_callout") or not existing.get("template_data"):
+        # Auto-upgrade to v4 (fixes overflow:hidden that clipped extra CTAs & callout below the fold).
         await db.landing_pages.update_one(
             {"slug": "tps"},
             {"$set": {"html": rendered["html"], "css": rendered["css"],
                       "template_data": default_tpl.dict(),
-                      "source": "seed_v3_bmc_callout", "updated_at": now}},
+                      "source": "seed_v4_scroll_fix", "updated_at": now}},
         )
 
 
@@ -497,7 +497,7 @@ def _render_event_template(d: EventTemplateData) -> Dict[str, str]:
   <div class="lp-footer">{d.footer_text}</div>
 </div>"""
 
-    css = f""".lp-wrap{{max-width:1120px;margin:0 auto;padding:56px 24px 72px;background:#F8FAFC;color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Inter',sans-serif;position:relative;overflow:hidden}}
+    css = f""".lp-wrap{{max-width:1120px;margin:0 auto;padding:56px 24px 72px;background:#F8FAFC;color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Inter',sans-serif;position:relative;overflow:visible}}
 .lp-wrap::before{{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M40 0H0V40' stroke='%23E2E8F0' stroke-width='1' fill='none'/></svg>");background-size:40px 40px;-webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 20%,black 30%,transparent 85%);mask-image:radial-gradient(ellipse 80% 60% at 50% 20%,black 30%,transparent 85%);pointer-events:none;z-index:0}}
 .lp-wrap > *{{position:relative;z-index:1}}
 .lp-hero{{text-align:center;padding:16px 8px 8px}}
