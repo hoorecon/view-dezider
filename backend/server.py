@@ -400,6 +400,9 @@ api_router.include_router(admin_dashboard_pins_router)
 from routes.short_urls import router as short_urls_router  # noqa: E402
 api_router.include_router(short_urls_router)
 
+from routes.founder_template_seed import router as founder_template_seed_router  # noqa: E402
+api_router.include_router(founder_template_seed_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 
@@ -537,6 +540,17 @@ async def _run_boot_work(boot_owner: bool):
             await dedup_masters_on_boot()
     except Exception as e:
         logger.error(f"Masters seed at boot failed: {e}")
+
+    # Auto-repair broken short-URL targets from earlier seed runs that pointed
+    # to /decision-templates/{id} (route that never existed). Idempotent.
+    try:
+        if boot_owner:
+            from routes.short_urls import repair_short_urls_on_boot
+            r = await repair_short_urls_on_boot()
+            if (r.get("fixed_templates") or 0) + (r.get("fixed_apps") or 0) > 0:
+                logger.info(f"[boot] short_urls auto-repair: {r}")
+    except Exception as e:
+        logger.error(f"short-URL boot repair failed: {e}")
 
     # One-shot, idempotent migration — SWOT-converted Decisions need at least
     # one "Current Scenario" option so Steps 6/7/9/10 of /prr/[id] render.

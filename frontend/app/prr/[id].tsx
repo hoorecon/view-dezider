@@ -17,6 +17,7 @@ import VoiceStepInput from '../../src/components/VoiceStepInput';
 import ShareStepModal from '../../src/components/ShareStepModal';
 import CLDViewer from '../../src/components/CLDViewer';
 import ExpertCallModal from '../../src/components/ExpertCallModal';
+import CloneTemplateModal from '../../src/components/CloneTemplateModal';
 import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
@@ -64,6 +65,7 @@ function PRRDecisionDetailInner() {
 
   const [showCLD, setShowCLD] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
+  const [saveTplModalVisible, setSaveTplModalVisible] = useState(false);
   const { isOn: isFeatureOn } = useFeatureGate();
 
   const handleSubmitContribution = async () => {
@@ -327,6 +329,17 @@ function PRRDecisionDetailInner() {
               Step {currentStep}/10
             </Text>
           </View>
+          {/* Save as Template — visible on every step 2..10 (was only in Step 10) */}
+          {currentStep >= 2 && currentStep <= 10 && (
+            <TouchableOpacity
+              onPress={() => setSaveTplModalVisible(true)}
+              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 4, backgroundColor: '#F5F3FF' }}
+              accessibilityLabel="Save as Template"
+              testID="prr-save-as-template"
+            >
+              <Ionicons name="bookmark-outline" size={18} color="#7C3AED" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={() => goHome(router)}
             style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6 }}
@@ -426,6 +439,15 @@ function PRRDecisionDetailInner() {
           />
         )}
       </KeyboardAvoidingView>
+
+      {/* Save as Template Modal — accessible from any step 2..10 */}
+      <CloneTemplateModal
+        visible={saveTplModalVisible}
+        onClose={() => setSaveTplModalVisible(false)}
+        decision={decision as any}
+        onCloneSuccess={() => setSaveTplModalVisible(false)}
+        onTemplateSuccess={() => setSaveTplModalVisible(false)}
+      />
 
       {/* Share Step Modal */}
       <ShareStepModal

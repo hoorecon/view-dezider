@@ -85,7 +85,58 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
         "options": options, "created_at": now,
     }
     await db.templates.insert_one(template)
+    # Mirror PUBLIC templates into the Decider Store so they show under the
+    # "Decision Templates" section of /decider-store (which reads from
+    # `decider_store_templates`, not `templates`).
+    if (data.visibility or "private") == "public":
+        try:
+            await _mirror_template_to_store(template)
+        except Exception as e:
+            logger.warning("mirror to decider_store_templates failed: %s", str(e)[:160])
     return {"id": template_id, "message": "Template saved successfully"}
+
+
+async def _mirror_template_to_store(template: dict) -> None:
+    """Upsert a public template into `decider_store_templates` so it appears
+    under Decider Store → Decision Templates. `_card()` in decider_store.py
+    reads `title/subtitle/description/factor_count/option_count/install_count`,
+    plus filters on `status: 'authorized', is_public: True, kind`.
+    """
+    tpl_id = template["id"]
+    factors = template.get("factors", []) or []
+    options = template.get("options", []) or []
+    now = datetime.now(timezone.utc)
+    await db.decider_store_templates.update_one(
+        {"template_id": tpl_id},
+        {"$set": {
+            "template_id": tpl_id,
+            "id": tpl_id,
+            "kind": "template",
+            "title": template.get("name") or "Decision template",
+            "subtitle": template.get("source_decision_title") or "",
+            "description": template.get("context") or "",
+            "category": template.get("category") or "General",
+            "decision_type": template.get("decision_type") or "General",
+            "factor_count": len(factors),
+            "option_count": len(options),
+            "is_public": True,
+            "is_free": True,
+            "is_active": True,
+            "status": "authorized",
+            "created_by": template.get("created_by"),
+            "created_by_name": template.get("created_by_name", ""),
+            "created_at": template.get("created_at", now),
+            "updated_at": now,
+        },
+         "$setOnInsert": {"install_count": 0}},
+        upsert=True,
+    )
+
+
+async def _unmirror_template_from_store(template_id: str) -> None:
+    """Remove the Decider Store mirror row when a template is deleted or its
+    visibility is downgraded from public."""
+    await db.decider_store_templates.delete_one({"template_id": template_id, "kind": "template"})
 
 
 @router.get("/templates")
@@ -169,6 +220,11 @@ async def delete_template(template_id: str, user: dict = Depends(get_current_use
     result = await db.templates.delete_one({"id": template_id, "created_by": user["user_id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Template not found or not authorized")
+    # Also remove the Decider Store mirror if it existed
+    try:
+        await _unmirror_template_from_store(template_id)
+    except Exception as e:
+        logger.warning("unmirror failed on delete %s: %s", template_id, str(e)[:160])
     return {"message": "Template deleted successfully"}
 
 
@@ -210,4 +266,13 @@ async def update_template(template_id: str, data: SaveTemplateRequest, user: dic
     update_fields = {"name": data.name, "visibility": data.visibility,
                      "shared_with": [e.strip().lower() for e in data.shared_with if e.strip()]}
     await db.templates.update_one({"id": template_id}, {"$set": update_fields})
+    # Sync mirror row based on new visibility
+    try:
+        fresh = await db.templates.find_one({"id": template_id}, {"_id": 0})
+        if fresh and data.visibility == "public":
+            await _mirror_template_to_store(fresh)
+        else:
+            await _unmirror_template_from_store(template_id)
+    except Exception as e:
+        logger.warning("mirror sync on update failed: %s", str(e)[:160])
     return {"message": "Template updated successfully"}

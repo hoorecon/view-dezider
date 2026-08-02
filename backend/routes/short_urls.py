@@ -197,3 +197,33 @@ async def repair_short_urls(body: Optional[Dict[str, Any]] = None,
         fixed_app += 1
 
     return {"fixed_templates": fixed_tpl, "fixed_apps": fixed_app}
+
+
+async def repair_short_urls_on_boot() -> Dict[str, int]:
+    """Called on backend startup — rewrites any lingering broken short-URL
+    targets so users never land on 'Unmatched Route'. Silent, idempotent."""
+    try:
+        fixed_tpl = fixed_app = 0
+        async for r in db.short_urls.find(
+            {"kind": "template", "target_href": {"$regex": "^/decision-templates/"}},
+            {"_id": 0, "slug": 1, "target_id": 1},
+        ):
+            await db.short_urls.update_one(
+                {"slug": r["slug"]},
+                {"$set": {"target_href": f"/decider-store/{r.get('target_id') or ''}",
+                          "updated_at": _now_iso()}},
+            )
+            fixed_tpl += 1
+        async for r in db.short_urls.find(
+            {"kind": "app", "target_href": {"$not": {"$regex": "^/decider-store/"}}},
+            {"_id": 0, "slug": 1, "target_id": 1},
+        ):
+            await db.short_urls.update_one(
+                {"slug": r["slug"]},
+                {"$set": {"target_href": f"/decider-store/{r.get('target_id') or ''}",
+                          "updated_at": _now_iso()}},
+            )
+            fixed_app += 1
+        return {"fixed_templates": fixed_tpl, "fixed_apps": fixed_app}
+    except Exception:
+        return {"fixed_templates": 0, "fixed_apps": 0}

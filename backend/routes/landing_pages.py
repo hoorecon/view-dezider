@@ -169,6 +169,19 @@ async def _ensure_seed_tps() -> None:
     old dark theme (source='seed' or missing template_data)."""
     now = datetime.now(timezone.utc).isoformat()
     existing = await db.landing_pages.find_one({"slug": "tps"}, {"_id": 0, "source": 1, "template_data": 1})
+
+    # Dynamically resolve the Business Model Chooser deep-link — the actual
+    # `template_id` is a UUID and differs between dev and prod.
+    bmc_href = "/decider-store"
+    try:
+        bmc = await db.decider_store_templates.find_one(
+            {"kind": "app", "title": {"$regex": "business.?model", "$options": "i"}},
+            {"_id": 0, "template_id": 1},
+        )
+        if bmc and bmc.get("template_id"):
+            bmc_href = f"/decider-store/{bmc['template_id']}"
+    except Exception:
+        pass
     # Fresh rendering using the new fwdslash-inspired CSS so every existing
     # /tps deployment auto-upgrades on first read after this release.
     default_tpl = EventTemplateData(
@@ -205,14 +218,14 @@ async def _ensure_seed_tps() -> None:
             ExtraCtaItem(text="Explore The Decider Store", href="/decider-store", style="solid"),
         ],
         callout=CalloutItem(
-            subtitle="FEATURED APP FOR TAMILPRENEURS — COMING SOON",
+            subtitle="FEATURED APP FOR TAMILPRENEURS",
             title="Business Model Chooser",
             body="Deciding between competing revenue models? Our flagship app in The "
                  "Decider Store walks Tamilpreneurs through the trade-offs of SaaS, "
                  "marketplace, agency and franchise models — with an AI-scored "
                  "recommendation tailored to your context.",
-            cta_text="Browse The Decider Store",
-            cta_href="/decider-store",
+            cta_text="Try Business Model Chooser",
+            cta_href=bmc_href,
             accent="#4F46E5",
         ),
         footer_text="© 2026 Jelcos AI · Chennai · <a href=\"https://jelcos.ai\">jelcos.ai</a>",
