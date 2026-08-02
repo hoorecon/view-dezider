@@ -129,7 +129,9 @@ async def seed_short_urls(body: Optional[Dict[str, Any]] = None,
         await db.short_urls.insert_one({
             "slug": slug,
             "title": t.get("name") or "Decision template",
-            "target_href": f"/decision-templates/{tid}",
+            # Templates live at /decider-store/{template_id} — that's the public
+            # detail-and-clone screen (frontend/app/decider-store/[id].tsx).
+            "target_href": f"/decider-store/{tid}",
             "share_message": f"Try this decision template on JELCOS AI: {t.get('name','')}",
             "kind": "template",
             "target_id": tid,
@@ -159,3 +161,39 @@ async def seed_short_urls(body: Optional[Dict[str, Any]] = None,
         inserted_app += 1
 
     return {"inserted_templates": inserted_tpl, "inserted_apps": inserted_app}
+
+
+@router.post("/admin/short-urls/repair")
+async def repair_short_urls(body: Optional[Dict[str, Any]] = None,
+                            user: dict = Depends(require_super_admin)) -> Dict[str, Any]:
+    """Rewrite bad `target_href` values that previous seed runs saved with the
+    wrong URL prefix. Historically templates were seeded to
+    `/decision-templates/{id}` (route that doesn't exist) — this migrates them
+    to `/decider-store/{id}` (the real detail screen). Idempotent.
+    """
+    fixed_tpl = 0
+    fixed_app = 0
+    async for r in db.short_urls.find(
+        {"kind": "template", "target_href": {"$regex": "^/decision-templates/"}},
+        {"_id": 0, "slug": 1, "target_id": 1},
+    ):
+        new_href = f"/decider-store/{r.get('target_id') or ''}"
+        await db.short_urls.update_one(
+            {"slug": r["slug"]},
+            {"$set": {"target_href": new_href, "updated_at": _now_iso()}},
+        )
+        fixed_tpl += 1
+
+    # Also normalise store apps to /decider-store/{target_id}
+    async for r in db.short_urls.find(
+        {"kind": "app", "target_href": {"$not": {"$regex": "^/decider-store/"}}},
+        {"_id": 0, "slug": 1, "target_id": 1},
+    ):
+        new_href = f"/decider-store/{r.get('target_id') or ''}"
+        await db.short_urls.update_one(
+            {"slug": r["slug"]},
+            {"$set": {"target_href": new_href, "updated_at": _now_iso()}},
+        )
+        fixed_app += 1
+
+    return {"fixed_templates": fixed_tpl, "fixed_apps": fixed_app}

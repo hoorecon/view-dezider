@@ -205,14 +205,14 @@ async def _ensure_seed_tps() -> None:
             ExtraCtaItem(text="Explore The Decider Store", href="/decider-store", style="solid"),
         ],
         callout=CalloutItem(
-            subtitle="FEATURED APP FOR TAMILPRENEURS",
+            subtitle="FEATURED APP FOR TAMILPRENEURS — COMING SOON",
             title="Business Model Chooser",
             body="Deciding between competing revenue models? Our flagship app in The "
                  "Decider Store walks Tamilpreneurs through the trade-offs of SaaS, "
                  "marketplace, agency and franchise models — with an AI-scored "
                  "recommendation tailored to your context.",
-            cta_text="Try Business Model Chooser",
-            cta_href="/decider-store/business-model-chooser",
+            cta_text="Browse The Decider Store",
+            cta_href="/decider-store",
             accent="#4F46E5",
         ),
         footer_text="© 2026 Jelcos AI · Chennai · <a href=\"https://jelcos.ai\">jelcos.ai</a>",
@@ -226,16 +226,16 @@ async def _ensure_seed_tps() -> None:
             "meta_og_image": "",
             "html": rendered["html"], "css": rendered["css"], "js": "",
             "template_data": default_tpl.dict(),
-            "active": True, "source": "seed_v4_scroll_fix",
+            "active": True, "source": "seed_v5_bmc_soft_link",
             "created_at": now, "updated_at": now,
         })
-    elif existing.get("source") in ("seed", "seed_v2_fwdslash", "seed_v3_bmc_callout") or not existing.get("template_data"):
-        # Auto-upgrade to v4 (fixes overflow:hidden that clipped extra CTAs & callout below the fold).
+    elif existing.get("source") in ("seed", "seed_v2_fwdslash", "seed_v3_bmc_callout", "seed_v4_scroll_fix") or not existing.get("template_data"):
+        # Auto-upgrade to v5 — softens BMC callout to point at store index (no dead link).
         await db.landing_pages.update_one(
             {"slug": "tps"},
             {"$set": {"html": rendered["html"], "css": rendered["css"],
                       "template_data": default_tpl.dict(),
-                      "source": "seed_v4_scroll_fix", "updated_at": now}},
+                      "source": "seed_v5_bmc_soft_link", "updated_at": now}},
         )
 
 
