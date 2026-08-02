@@ -552,6 +552,17 @@ async def _run_boot_work(boot_owner: bool):
     except Exception as e:
         logger.error(f"short-URL boot repair failed: {e}")
 
+    # Idempotent auto-seed of the 10-Template Founder Pack so /decider-store
+    # → Decision Templates is populated the moment a fresh backend boots.
+    try:
+        if boot_owner:
+            from routes.founder_template_seed import seed_founder_pack_on_boot
+            r = await seed_founder_pack_on_boot()
+            if (r.get("inserted") or 0) + (r.get("updated") or 0) > 0:
+                logger.info(f"[boot] founder template pack seeded: {r}")
+    except Exception as e:
+        logger.error(f"founder template pack boot seed failed: {e}")
+
     # One-shot, idempotent migration — SWOT-converted Decisions need at least
     # one "Current Scenario" option so Steps 6/7/9/10 of /prr/[id] render.
     try:

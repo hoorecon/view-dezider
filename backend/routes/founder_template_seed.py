@@ -205,13 +205,23 @@ _TEMPLATES: List[Dict[str, Any]] = [
 
 @router.post("/admin/decision-templates/seed-founder-pack")
 async def seed_founder_templates(user: dict = Depends(require_super_admin)) -> Dict[str, Any]:
+    return await _seed_founder_pack(user.get("user_id") or "system",
+                                    user.get("name") or user.get("email") or "JELCOS AI Editorial",
+                                    user.get("email", ""))
+
+
+async def seed_founder_pack_on_boot() -> Dict[str, Any]:
+    """Idempotent auto-seed run on backend startup so admins don't need to
+    manually POST /admin/decision-templates/seed-founder-pack post-deploy."""
+    return await _seed_founder_pack("system", "JELCOS AI Editorial", "")
+
+
+async def _seed_founder_pack(admin_uid: str, admin_name: str, admin_email: str) -> Dict[str, Any]:
     """Idempotently create/refresh the 10 curated founder templates in both
     `templates` and `decider_store_templates`.
     """
     inserted = updated = 0
     now = _now()
-    admin_uid = user.get("user_id") or "system"
-    admin_name = user.get("name") or user.get("email") or "JELCOS AI Editorial"
 
     for tpl in _TEMPLATES:
         doc = {
@@ -222,7 +232,7 @@ async def seed_founder_templates(user: dict = Depends(require_super_admin)) -> D
             "shared_with": [],
             "created_by": admin_uid,
             "created_by_name": admin_name,
-            "created_by_email": user.get("email", ""),
+            "created_by_email": admin_email,
             "source_decision_title": tpl["name"],
             "context": tpl["context"],
             "factors": tpl["factors"],

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  TextInput, Modal, Switch, RefreshControl, Platform, Share,
+  TextInput, Modal, Switch, RefreshControl, Platform, Share, Linking,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +23,9 @@ type Row = {
   title: string;
   target_href: string;
   share_message: string;
+  share_subject?: string;
+  share_body_email?: string;
+  share_body_whatsapp?: string;
   kind: 'template' | 'app' | 'custom';
   target_id?: string | null;
   active: boolean;
@@ -63,9 +66,28 @@ export default function AdminShortUrlsScreen() {
 
   const publicBase = (typeof window !== 'undefined' && window.location?.origin) || 'https://jelcos.ai';
 
+  const _finalize = (tpl: string, url: string) => (tpl || '').replace(/\[LINK\]/g, url);
+
+  const shareViaEmail = async (r: Row) => {
+    const url = `${publicBase}/s/${r.slug}`;
+    const subject = encodeURIComponent(r.share_subject || r.title || 'Shared from JELCOS AI');
+    const body = encodeURIComponent(_finalize(r.share_body_email || r.share_message || '', url));
+    const mailto = `mailto:?subject=${subject}&body=${body}`;
+    if (Platform.OS === 'web') window.open(mailto, '_blank');
+    else await Linking.openURL(mailto);
+  };
+
+  const shareViaWhatsApp = async (r: Row) => {
+    const url = `${publicBase}/s/${r.slug}`;
+    const body = encodeURIComponent(_finalize(r.share_body_whatsapp || r.share_message || '', url));
+    const wa = `https://wa.me/?text=${body}`;
+    if (Platform.OS === 'web') window.open(wa, '_blank');
+    else await Linking.openURL(wa);
+  };
+
   const shareLink = async (r: Row) => {
     const url = `${publicBase}/s/${r.slug}`;
-    const message = (r.share_message || r.title || '') + '\n' + url;
+    const message = _finalize((r.share_message || r.title || ''), url) + '\n' + url;
     try {
       if (Platform.OS !== 'web') {
         await Share.share({ message, url, title: r.title });
@@ -176,6 +198,14 @@ export default function AdminShortUrlsScreen() {
                 <Text style={styles.target} numberOfLines={1}>→ {r.target_href}</Text>
                 {r.share_message ? <Text style={styles.msg} numberOfLines={2}>“{r.share_message}”</Text> : null}
                 <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.iconBtn} onPress={() => shareViaEmail(r)}>
+                    <Ionicons name="mail" size={14} color="#DC2626" />
+                    <Text style={[styles.iconBtnTxt, { color: '#DC2626' }]}>Email</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconBtn} onPress={() => shareViaWhatsApp(r)}>
+                    <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
+                    <Text style={[styles.iconBtnTxt, { color: '#16A34A' }]}>WhatsApp</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.iconBtn} onPress={() => shareLink(r)}>
                     <Ionicons name="share-social" size={14} color="#0EA5E9" />
                     <Text style={[styles.iconBtnTxt, { color: '#0EA5E9' }]}>Share</Text>
@@ -233,11 +263,39 @@ export default function AdminShortUrlsScreen() {
                 placeholderTextColor={COLORS.textMuted}
                 style={styles.field}
               />
-              <Text style={styles.fieldLabel}>Share message (used by Share button & WhatsApp)</Text>
+              <Text style={styles.fieldLabel}>Share message (fallback / generic)</Text>
               <TextInput
                 value={editing?.share_message || ''}
                 onChangeText={(v) => setEditing({ ...editing, share_message: v })}
+                multiline numberOfLines={2}
+                placeholder="Used by native Share sheet & fallback"
+                placeholderTextColor={COLORS.textMuted}
+                style={[styles.field, { height: 60, textAlignVertical: 'top' }]}
+              />
+              <Text style={styles.fieldLabel}>Email — Subject</Text>
+              <TextInput
+                value={editing?.share_subject || ''}
+                onChangeText={(v) => setEditing({ ...editing, share_subject: v })}
+                placeholder="Try {{template name}} on JELCOS AI"
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.field}
+              />
+              <Text style={styles.fieldLabel}>Email — Body (use [LINK] where the URL should appear)</Text>
+              <TextInput
+                value={editing?.share_body_email || ''}
+                onChangeText={(v) => setEditing({ ...editing, share_body_email: v })}
+                multiline numberOfLines={5}
+                placeholder="Hi, I think you'll find this useful… Open here: [LINK]"
+                placeholderTextColor={COLORS.textMuted}
+                style={[styles.field, { height: 120, textAlignVertical: 'top' }]}
+              />
+              <Text style={styles.fieldLabel}>WhatsApp body (use [LINK] where the URL should appear)</Text>
+              <TextInput
+                value={editing?.share_body_whatsapp || ''}
+                onChangeText={(v) => setEditing({ ...editing, share_body_whatsapp: v })}
                 multiline numberOfLines={3}
+                placeholder="*Title* — one-line hook. Try it (free): [LINK]"
+                placeholderTextColor={COLORS.textMuted}
                 style={[styles.field, { height: 80, textAlignVertical: 'top' }]}
               />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>

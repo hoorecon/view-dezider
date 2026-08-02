@@ -22,6 +22,9 @@ type Payload = {
   title: string;
   target_href: string;
   share_message: string;
+  share_subject?: string;
+  share_body_email?: string;
+  share_body_whatsapp?: string;
   kind: 'template' | 'app' | 'custom';
   active: boolean;
 };
@@ -103,6 +106,14 @@ export default function ShortUrlScreen() {
         {data.share_message ? <Text style={styles.body}>{data.share_message}</Text> : null}
         <Text style={styles.mono}>{shareUrl}</Text>
         <View style={styles.row}>
+          <TouchableOpacity style={[styles.btn, { backgroundColor: '#DC2626' }]} onPress={onEmail}>
+            <Ionicons name="mail" size={16} color="#FFF" />
+            <Text style={styles.btnTxt}>Email</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btn, { backgroundColor: '#16A34A' }]} onPress={onWhatsApp}>
+            <Ionicons name="logo-whatsapp" size={16} color="#FFF" />
+            <Text style={styles.btnTxt}>WhatsApp</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={[styles.btn, { backgroundColor: '#0EA5E9' }]} onPress={onShare}>
             <Ionicons name="share-social" size={16} color="#FFF" />
             <Text style={styles.btnTxt}>Share</Text>
@@ -121,6 +132,15 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#FFF', borderRadius: 16, padding: 22, width: '100%', maxWidth: 480, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
   kind: { backgroundColor: '#EEF2FF', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, marginBottom: 12 },
   kindTxt: { fontSize: 10, fontWeight: '800', color: '#4F46E5', letterSpacing: 1 },
+  title: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center' },
+  body: { marginTop: 10, fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
+  mono: { marginTop: 14, fontSize: 11, color: COLORS.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  row: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
+  btnTxt: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+  err: { color: '#DC2626', fontSize: 14, marginTop: 8, marginBottom: 16, textAlign: 'center' },
+});
+acing: 1 },
   title: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center' },
   body: { marginTop: 10, fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
   mono: { marginTop: 14, fontSize: 11, color: COLORS.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },

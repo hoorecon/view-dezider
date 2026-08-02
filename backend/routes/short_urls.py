@@ -73,6 +73,11 @@ async def create_short_url(body: Dict[str, Any], user: dict = Depends(require_su
         "title": (body.get("title") or slug).strip(),
         "target_href": (body.get("target_href") or "").strip(),
         "share_message": (body.get("share_message") or "").strip(),
+        # New per-medium share fields (admin-editable). Fall back to
+        # share_message when a specific medium body is blank.
+        "share_subject": (body.get("share_subject") or "").strip(),
+        "share_body_email": (body.get("share_body_email") or "").strip(),
+        "share_body_whatsapp": (body.get("share_body_whatsapp") or "").strip(),
         "kind": body.get("kind") or "custom",
         "target_id": body.get("target_id") or None,
         "active": bool(body.get("active", True)),
@@ -92,7 +97,8 @@ async def update_short_url(slug: str, body: Dict[str, Any],
     if not row:
         raise HTTPException(404, "not found")
     updates: Dict[str, Any] = {}
-    for k in ("title", "target_href", "share_message", "kind"):
+    for k in ("title", "target_href", "share_message", "share_subject",
+              "share_body_email", "share_body_whatsapp", "kind"):
         if k in body:
             updates[k] = (body[k] or "").strip() if isinstance(body[k], str) else body[k]
     if "active" in body:
@@ -133,6 +139,20 @@ async def seed_short_urls(body: Optional[Dict[str, Any]] = None,
             # detail-and-clone screen (frontend/app/decider-store/[id].tsx).
             "target_href": f"/decider-store/{tid}",
             "share_message": f"Try this decision template on JELCOS AI: {t.get('name','')}",
+            "share_subject": f"Try “{t.get('name','')}” on JELCOS AI",
+            "share_body_email": (
+                f"Hi,\n\nI think you'll find this useful — a structured decision "
+                f"framework called \"{t.get('name','')}\" on JELCOS AI.\n\n"
+                f"It walks you through the mandatory / optional factors, weighting, "
+                f"and ranks your options with an AI-assisted score.\n\n"
+                f"Open it here (free): [LINK]\n\n"
+                f"— Sent from JELCOS AI · Decision Intelligence for Founders"
+            ),
+            "share_body_whatsapp": (
+                f"*{t.get('name','')}* — a decision framework on JELCOS AI 🧭\n"
+                f"Predefined factors · Mandatory/Optional · AI-scored ranking.\n"
+                f"Try it (free): [LINK]"
+            ),
             "kind": "template",
             "target_id": tid,
             "active": True,
@@ -152,6 +172,20 @@ async def seed_short_urls(body: Optional[Dict[str, Any]] = None,
             "title": a.get("name") or "The Decider Store app",
             "target_href": f"/decider-store/{a.get('slug') or aid}",
             "share_message": f"Check out this app on The Decider Store: {a.get('name','')}",
+            "share_subject": f"Try “{a.get('name','')}” — an app on The Decider Store",
+            "share_body_email": (
+                f"Hi,\n\nSharing an app that I think will help you decide: "
+                f"\"{a.get('name','')}\" on JELCOS AI's Decider Store.\n\n"
+                f"It's a guided flow — set what you want, and the app auto-ranks "
+                f"the best matches for you.\n\n"
+                f"Open (free): [LINK]\n\n"
+                f"— Sent from JELCOS AI"
+            ),
+            "share_body_whatsapp": (
+                f"*{a.get('name','')}* — Decider Store app 🧭\n"
+                f"Set what you want → AI auto-ranks the best matches.\n"
+                f"Try it (free): [LINK]"
+            ),
             "kind": "app",
             "target_id": aid,
             "active": True,
