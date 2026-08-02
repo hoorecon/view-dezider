@@ -140,12 +140,3 @@ const styles = StyleSheet.create({
   btnTxt: { color: '#FFF', fontWeight: '800', fontSize: 13 },
   err: { color: '#DC2626', fontSize: 14, marginTop: 8, marginBottom: 16, textAlign: 'center' },
 });
-acing: 1 },
-  title: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center' },
-  body: { marginTop: 10, fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
-  mono: { marginTop: 14, fontSize: 11, color: COLORS.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  row: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
-  btnTxt: { color: '#FFF', fontWeight: '800', fontSize: 13 },
-  err: { color: '#DC2626', fontSize: 14, marginTop: 8, marginBottom: 16, textAlign: 'center' },
-});
