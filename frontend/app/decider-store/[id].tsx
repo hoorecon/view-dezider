@@ -68,8 +68,14 @@ export default function DeciderStoreDetail() {
 
   const onUse = useCallback(async (m: string) => {
     if (!isAuthenticated) {
+      // Two intents preserved:
+      //  1. pending_decider_clone → auto-resume the clone in the mode chosen
+      //  2. post_auth_next → universal return-to-page (handled by
+      //     getPostAuthRoute after any auth path — email/OTP/Google/register)
       await AsyncStorage.setItem('pending_decider_clone', `${id}::${m}`);
-      router.push('/auth/login');
+      const backTo = `/decider-store/${id}?use=${m}`;
+      await AsyncStorage.setItem('post_auth_next', backTo);
+      router.push(`/auth/login?next=${encodeURIComponent(backTo)}` as any);
       return;
     }
     doClone(m);

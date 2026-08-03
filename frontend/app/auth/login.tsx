@@ -22,6 +22,8 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../../src/store/authStore';
 import { getPostAuthRoute } from '../../src/utils/postAuthRedirect';
+import { useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppLogo } from '../../src/contexts/FontFamilyContext';
 import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
@@ -35,7 +37,19 @@ const ORG_TYPES = [
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { next: nextParam } = useLocalSearchParams<{ next?: string }>();
   const { login, loginWithGoogle, isAuthenticated, fetchOrgBranding, orgBranding, user } = useAuthStore();
+
+  // On mount: if the caller passed ?next=/some/path, stash it so
+  // getPostAuthRoute() sends us back there after login/register/OTP/Google.
+  useEffect(() => {
+    (async () => {
+      const raw = typeof nextParam === 'string' ? nextParam : '';
+      if (raw && raw.startsWith('/') && !raw.startsWith('//')) {
+        try { await AsyncStorage.setItem('post_auth_next', raw); } catch { /* silent */ }
+      }
+    })();
+  }, [nextParam]);
   const appLogo = useAppLogo();
 
   const [email, setEmail] = useState('');

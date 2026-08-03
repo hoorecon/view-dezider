@@ -16,6 +16,8 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../../src/store/authStore';
 import { getPostAuthRoute } from '../../src/utils/postAuthRedirect';
+import { useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
@@ -23,7 +25,18 @@ import { safeBack } from '../../src/utils/navigation';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { next: nextParam } = useLocalSearchParams<{ next?: string }>();
   const { register, loginWithGoogle, isAuthenticated } = useAuthStore();
+
+  // Persist ?next=/foo so getPostAuthRoute() sends us back there after auth.
+  useEffect(() => {
+    (async () => {
+      const raw = typeof nextParam === 'string' ? nextParam : '';
+      if (raw && raw.startsWith('/') && !raw.startsWith('//')) {
+        try { await AsyncStorage.setItem('post_auth_next', raw); } catch { /* silent */ }
+      }
+    })();
+  }, [nextParam]);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

@@ -34,8 +34,41 @@ export async function getPostAuthRoute(): Promise<string> {
     }
     const token = await AsyncStorage.getItem('pending_share_token');
     if (token) return `/shared/${token}`;
+    // Universal fallback: any page that redirected to /auth/login with
+    // `?next=/path` (or manually stashed `post_auth_next`) — send the user
+    // back where they came from instead of always dumping them on /(tabs).
+    const next = await AsyncStorage.getItem('post_auth_next');
+    if (next) {
+      await AsyncStorage.removeItem('post_auth_next');
+      // Only allow relative paths — never absolute URLs to prevent
+      // open-redirect abuse.
+      if (typeof next === 'string' && next.startsWith('/') && !next.startsWith('//')) {
+        return next;
+      }
+    }
   } catch {
     /* ignore */
   }
   return '/(tabs)';
+}
+
+
+/**
+ * Redirect an unauthenticated visitor to /auth/login while remembering the
+ * URL they wanted. Prefer this over `router.push('/auth/login')` from any
+ * gated screen so login always returns them to the intended page.
+ */
+export async function bounceToLoginPreservingIntent(router: any, currentPath?: string): Promise<void> {
+  try {
+    let next = currentPath || '';
+    if (!next && typeof window !== 'undefined' && window.location) {
+      next = window.location.pathname + (window.location.search || '');
+    }
+    if (next && next.startsWith('/') && !next.startsWith('//')) {
+      await AsyncStorage.setItem('post_auth_next', next);
+    }
+  } catch { /* silent */ }
+  try {
+    router.push('/auth/login');
+  } catch { /* silent */ }
 }
