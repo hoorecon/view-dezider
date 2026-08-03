@@ -98,14 +98,24 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
 
 async def _mirror_template_to_store(template: dict) -> None:
     """Upsert a public template into `decider_store_templates` so it appears
-    under Decider Store → Decision Templates. `_card()` in decider_store.py
-    reads `title/subtitle/description/factor_count/option_count/install_count`,
-    plus filters on `status: 'authorized', is_public: True, kind`.
-    """
+    under Decider Store → Decision Templates. Publisher type is auto-derived
+    from the author's subscription-plan tier."""
     tpl_id = template["id"]
     factors = template.get("factors", []) or []
     options = template.get("options", []) or []
     now = datetime.now(timezone.utc)
+
+    # Publisher type from author's current subscription tier
+    publisher_type = "individual"
+    try:
+        w = await db.credit_wallets.find_one({"user_id": template.get("created_by")},
+                                             {"_id": 0, "current_plan": 1})
+        p = ((w or {}).get("current_plan") or "").lower()
+        if "premium" in p:   publisher_type = "organization"
+        elif "pro" in p:     publisher_type = "expert"
+    except Exception:
+        pass
+
     await db.decider_store_templates.update_one(
         {"template_id": tpl_id},
         {"$set": {
@@ -116,13 +126,18 @@ async def _mirror_template_to_store(template: dict) -> None:
             "subtitle": template.get("source_decision_title") or "",
             "description": template.get("context") or "",
             "category": template.get("category") or "General",
+            "life_area": template.get("life_area") or template.get("category") or "General",
+            "applicable_org_types": template.get("applicable_org_types") or [],
             "decision_type": template.get("decision_type") or "General",
             "factor_count": len(factors),
             "option_count": len(options),
             "is_public": True,
             "is_free": True,
+            "pricing_type": "free",
             "is_active": True,
             "status": "authorized",
+            "publisher_type": publisher_type,
+            "creator_name": template.get("created_by_name") or "",
             "created_by": template.get("created_by"),
             "created_by_name": template.get("created_by_name", ""),
             "created_at": template.get("created_at", now),

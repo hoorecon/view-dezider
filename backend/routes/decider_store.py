@@ -97,27 +97,202 @@ def _card(t: Dict[str, Any]) -> Dict[str, Any]:
         "option_count": len(t.get("options") or []),
         "install_count": t.get("install_count") or 0,
         "creator_name": t.get("creator_name") or "Earth Dezider",
+        "publisher_type": t.get("publisher_type") or "individual",
+        "life_area": t.get("life_area") or "",
+        "applicable_org_types": t.get("applicable_org_types") or [],
+        "rating_avg":    round(float(t.get("rating_avg") or 0), 2),
+        "rating_count":  int(t.get("rating_count") or 0),
+        "rating_breakdown": {
+            "usefulness":    round(float(t.get("rating_usefulness_avg") or 0), 2),
+            "affordability": round(float(t.get("rating_affordability_avg") or 0), 2),
+            "accuracy":      round(float(t.get("rating_accuracy_avg") or 0), 2),
+        },
         "status": t.get("status"),
     }
+
+
+async def _publisher_type_from_plan(user_id: Optional[str]) -> str:
+    """Map a user's active subscription tier → publisher_type shown on cards:
+       Basic → individual · Pro → expert · Premium → organization.
+    """
+    if not user_id: return "individual"
+    try:
+        w = await db.credit_wallets.find_one({"user_id": user_id},
+                                             {"_id": 0, "current_plan": 1})
+        plan = (w or {}).get("current_plan") or ""
+        p = plan.lower()
+        if "premium" in p:  return "organization"
+        if "pro" in p:      return "expert"
+    except Exception:
+        pass
+    return "individual"
 
 
 # ══════════════════════════════════════════════════════════════════════════
 # PUBLIC (no login) — browse the store
 # ══════════════════════════════════════════════════════════════════════════
 @router.get("")
-async def list_store(category: Optional[str] = None, decision_type: Optional[str] = None,
-                     q: Optional[str] = None, kind: Optional[str] = None):
+async def list_store(
+    category: Optional[str] = None, decision_type: Optional[str] = None,
+    q: Optional[str] = None, kind: Optional[str] = None,
+    life_area: Optional[str] = None,
+    org_types: Optional[str] = None,          # comma-separated
+    min_factors: Optional[int] = None, max_factors: Optional[int] = None,
+    min_options: Optional[int] = None, max_options: Optional[int] = None,
+    is_free: Optional[bool] = None,
+    publisher_name: Optional[str] = None,
+    publisher_type: Optional[str] = None,     # individual|expert|organization
+    min_rating: Optional[float] = None,
+    min_ratings_count: Optional[int] = None,
+):
     query: Dict[str, Any] = {"status": "authorized", "is_public": True}
-    if category:
-        query["category"] = category
-    if decision_type:
-        query["decision_type"] = decision_type
+    if category:            query["category"] = category
+    if decision_type:       query["decision_type"] = decision_type
     if kind in ("template", "app"):
         query["kind"] = kind if kind == "app" else {"$ne": "app"}
     if q:
-        query["title"] = {"$regex": q, "$options": "i"}
-    docs = await db.decider_store_templates.find(query).sort("install_count", -1).to_list(200)
-    return {"templates": [_card(d) for d in docs]}
+        query["$or"] = [
+            {"title": {"$regex": q, "$options": "i"}},
+            {"description": {"$regex": q, "$options": "i"}},
+            {"subtitle": {"$regex": q, "$options": "i"}},
+        ]
+    if life_area:           query["life_area"] = {"$regex": f"^{life_area}$", "$options": "i"}
+    if org_types:
+        parts = [p.strip() for p in org_types.split(",") if p.strip()]
+        if parts:
+            query["applicable_org_types"] = {"$in": parts}
+    if is_free is not None:
+        query["pricing_type"] = "free" if is_free else {"$ne": "free"}
+    if publisher_name:      query["creator_name"] = {"$regex": publisher_name, "$options": "i"}
+    if publisher_type in ("individual", "expert", "organization"):
+        query["publisher_type"] = publisher_type
+    if min_rating is not None:      query["rating_avg"] = {"$gte": float(min_rating)}
+    if min_ratings_count is not None: query["rating_count"] = {"$gte": int(min_ratings_count)}
+
+    docs = await db.decider_store_templates.find(query).sort("install_count", -1).to_list(400)
+    # Client-side numeric-range post-filter — factor_count / option_count are
+    # denormalized on write but tolerant against older rows missing them.
+    def _in_range(v: int, lo: Optional[int], hi: Optional[int]) -> bool:
+        if lo is not None and v < lo: return False
+        if hi is not None and v > hi: return False
+        return True
+
+    cards = []
+    for d in docs:
+        fc = int(d.get("factor_count") or len(d.get("factors") or []))
+        oc = int(d.get("option_count") or len(d.get("options") or []))
+        if not _in_range(fc, min_factors, max_factors): continue
+        if not _in_range(oc, min_options, max_options): continue
+        cards.append(_card(d))
+    return {"templates": cards}
+
+
+@router.get("/facets")
+async def store_facets():
+    """Filter dropdown facets. life_areas + org_types from masters,
+    publisher_types static, tallies from live data."""
+    life_areas = set()
+    org_types = set()
+    publisher_types = {"individual": 0, "expert": 0, "organization": 0}
+    async for d in db.decider_store_templates.find(
+        {"status": "authorized", "is_public": True},
+        {"_id": 0, "life_area": 1, "applicable_org_types": 1, "publisher_type": 1},
+    ):
+        if d.get("life_area"): life_areas.add(d["life_area"])
+        for o in (d.get("applicable_org_types") or []):
+            if isinstance(o, str) and o: org_types.add(o)
+        pt = d.get("publisher_type")
+        if pt in publisher_types: publisher_types[pt] += 1
+    # Enrich org_types from masters if available
+    try:
+        async for m in db.masters.find({"kind": "org_type"}, {"_id": 0, "code": 1, "label": 1}):
+            if m.get("code"): org_types.add(m["code"])
+    except Exception:
+        pass
+    return {
+        "life_areas": sorted(life_areas),
+        "org_types": sorted(org_types),
+        "publisher_types": [
+            {"key": "individual",   "label": "Individual (Basic)",       "count": publisher_types["individual"]},
+            {"key": "expert",       "label": "Expert (Pro)",             "count": publisher_types["expert"]},
+            {"key": "organization", "label": "Organization (Premium)",   "count": publisher_types["organization"]},
+        ],
+    }
+
+
+# ─────────────────────── Play-Store-style item ratings ───────────────────────
+@router.get("/{item_id}/rating")
+async def get_item_rating(item_id: str):
+    """Public — returns aggregate rating stats for a store item."""
+    agg = await db.store_item_ratings.aggregate([
+        {"$match": {"item_id": item_id}},
+        {"$group": {
+            "_id": "$item_id",
+            "count": {"$sum": 1},
+            "usefulness_avg":   {"$avg": "$usefulness"},
+            "affordability_avg":{"$avg": "$affordability"},
+            "accuracy_avg":     {"$avg": "$accuracy"},
+        }}
+    ]).to_list(1)
+    a = agg[0] if agg else {}
+    overall = 0.0
+    if a:
+        overall = round((float(a.get("usefulness_avg") or 0) +
+                         float(a.get("affordability_avg") or 0) +
+                         float(a.get("accuracy_avg") or 0)) / 3.0, 2)
+    return {
+        "count": int(a.get("count") or 0),
+        "overall": overall,
+        "usefulness":    round(float(a.get("usefulness_avg") or 0), 2),
+        "affordability": round(float(a.get("affordability_avg") or 0), 2),
+        "accuracy":      round(float(a.get("accuracy_avg") or 0), 2),
+    }
+
+
+@router.get("/{item_id}/my-rating")
+async def get_my_rating(item_id: str, user: dict = Depends(get_current_user)):
+    r = await db.store_item_ratings.find_one({"item_id": item_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not r: return {"mine": None}
+    return {"mine": {"usefulness": r.get("usefulness"), "affordability": r.get("affordability"), "accuracy": r.get("accuracy")}}
+
+
+@router.post("/{item_id}/rate")
+async def rate_item(item_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    def _clamp(v):
+        try: v = int(v)
+        except: return None
+        return max(1, min(5, v))
+    u = _clamp(body.get("usefulness"))
+    af = _clamp(body.get("affordability"))
+    ac = _clamp(body.get("accuracy"))
+    if u is None or af is None or ac is None:
+        raise HTTPException(400, "Rate all three factors (usefulness, affordability, accuracy) from 1..5.")
+    now = datetime.now(timezone.utc)
+    await db.store_item_ratings.update_one(
+        {"user_id": user["user_id"], "item_id": item_id},
+        {"$set": {"usefulness": u, "affordability": af, "accuracy": ac, "updated_at": now},
+         "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    # Denormalise aggregate onto the item doc for cheap sort/filter in list.
+    agg = await db.store_item_ratings.aggregate([
+        {"$match": {"item_id": item_id}},
+        {"$group": {"_id": "$item_id", "count": {"$sum": 1},
+                    "usefulness_avg":{"$avg":"$usefulness"},
+                    "affordability_avg":{"$avg":"$affordability"},
+                    "accuracy_avg":{"$avg":"$accuracy"}}}
+    ]).to_list(1)
+    if agg:
+        a = agg[0]
+        overall = round((float(a["usefulness_avg"]) + float(a["affordability_avg"]) + float(a["accuracy_avg"])) / 3.0, 2)
+        await db.decider_store_templates.update_one(
+            {"template_id": item_id},
+            {"$set": {"rating_avg": overall, "rating_count": int(a["count"]),
+                      "rating_usefulness_avg":   round(float(a["usefulness_avg"]), 2),
+                      "rating_affordability_avg":round(float(a["affordability_avg"]), 2),
+                      "rating_accuracy_avg":     round(float(a["accuracy_avg"]), 2)}}
+        )
+    return {"message": "Rating saved. Thanks!"}
 
 
 @router.get("/meta")

@@ -17,6 +17,7 @@ import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { safeBack } from '../../src/utils/navigation';
 import { useAuthStore } from '../../src/store/authStore';
+import StoreRating from '../../src/components/StoreRating';
 
 const MODE_INFO: Record<string, { label: string; desc: string; icon: string }> = {
   full: { label: 'Full clone', icon: 'layers',
@@ -137,6 +138,9 @@ export default function DeciderStoreDetail() {
           <View style={[s.stat, { backgroundColor: '#F1F5F9' }]}><Text style={[s.statText, { color: '#475569' }]}>⬇️ {t.install_count || 0}</Text></View>
         </View>
         {!!t.description && <Text style={s.desc}>{t.description}</Text>}
+
+        {/* Play-Store-style 3-factor rating widget */}
+        <StoreRating itemId={t.template_id} isAuthenticated={isAuthenticated} />
 
         {/* Clone mode chooser */}
         <Text style={s.sectionTitle}>Choose how to start</Text>
