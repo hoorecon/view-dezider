@@ -403,6 +403,9 @@ api_router.include_router(short_urls_router)
 from routes.founder_template_seed import router as founder_template_seed_router  # noqa: E402
 api_router.include_router(founder_template_seed_router)
 
+from routes.user_home_quicklinks import router as user_home_quicklinks_router  # noqa: E402
+api_router.include_router(user_home_quicklinks_router)
+
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 

@@ -88,6 +88,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'expert-review-queue', label: 'Expert Review Queue', description: 'Pending expert-verified decision reviews · SLA timers · assign', icon: 'clipboard', color: '#D946EF', href: '/admin/expert-review-queue' },
   // ── Content: growth & sharing ─────────────────────────────────────────────
   { key: 'short-urls',     label: 'Short URLs & Share Links', description: 'Auto/manual short URLs for every template & store app · admin-editable share messages', icon: 'link', color: '#0EA5E9', href: '/admin/short-urls' },
+  { key: 'user-quicklinks',label: 'User Home · Quick Links', description: 'Pick up to 3 tiles to surface in the user app\u2019s Quick Links strip (default: Decision Style / Decider Store / EFT)', icon: 'grid', color: '#EA580C', href: '/admin/user-quicklinks' },
   // ── Operations ────────────────────────────────────────────────────────────
   { key: 'pending-approvals', label: 'Pending Approvals', description: 'All human-in-loop approvals awaiting an admin action', icon: 'checkmark-done-circle', color: '#DC2626', href: '/admin/pending-approvals' },
   { key: 'regression-tests', label: 'Regression Tests', description: 'Curated regression suite · run any time · pass/fail history', icon: 'flask', color: '#059669', href: '/admin/regression-tests' },
@@ -100,7 +101,7 @@ const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] 
   { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'subscribers', 'razorpay-offers', 'payments', 'payouts', 'catalog-payout', 'sku-pricing', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma', 'ad-programs'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'expert-review-queue', 'embed-partners'] },
-  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'templates', 'decision-modes', 'ai-touchpoints', 'crawler-embed-docs', 'eft-config', 'social-learning-admin', 'review-net', 'import-analytics', 'url-training', 'notification-engine', 'landing-pages', 'home-variant', 'short-urls'] },
+  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'templates', 'decision-modes', 'ai-touchpoints', 'crawler-embed-docs', 'eft-config', 'social-learning-admin', 'review-net', 'import-analytics', 'url-training', 'notification-engine', 'landing-pages', 'home-variant', 'short-urls', 'user-quicklinks'] },
   { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'pending-approvals', 'regression-tests', 'docs', 'handbook'] },
 ];
 

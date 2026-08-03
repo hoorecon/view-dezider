@@ -61,7 +61,9 @@ export default function RegisterScreen() {
 
     try {
       await register(email, password, name, orgSlug.trim() || undefined);
-      router.replace('/(tabs)');
+      // Honor pending intent (e.g. decider-store clone) rather than always
+      // dumping the new user on /(tabs).
+      router.replace((await getPostAuthRoute()) as any);
     } catch (err: any) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -94,7 +96,7 @@ export default function RegisterScreen() {
           const sessionId = result.url.split('session_id=')[1]?.split('&')[0];
           if (sessionId) {
             await loginWithGoogle(sessionId);
-            router.replace('/(tabs)');
+            router.replace((await getPostAuthRoute()) as any);
           }
         }
       }

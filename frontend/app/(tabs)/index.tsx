@@ -61,6 +61,7 @@ export default function HomeScreen() {
   const { width: winWidth } = useWindowDimensions();
   const isNarrow = winWidth < 480;
   const [stats, setStats] = useState<Stats | null>(null);
+  const [quickLinkTiles, setQuickLinkTiles] = useState<Array<{key:string;label:string;subtitle:string;icon:string;color:string;href:string}>>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [inboxPending, setInboxPending] = useState(0);
@@ -205,6 +206,11 @@ export default function HomeScreen() {
     try {
       const response = await api.get('/stats');
       setStats(response.data);
+      // Piggyback: fetch admin-configured user Quick Links (max 3)
+      try {
+        const qr = await api.get('/home/quicklinks');
+        setQuickLinkTiles(qr.data?.tiles || []);
+      } catch { /* silent */ }
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -516,51 +522,34 @@ export default function HomeScreen() {
               Pinned strip on top → "Pick up where you left off"
               ════════════════════════════════════════════════════════════════ */}
 
-          {/* PINNED — "Quick Links" */}
-          {showQuickLinks && (<>
+          {/* PINNED — "Quick Links" (admin-configured max 3 tiles via /admin/user-quicklinks) */}
+          {showQuickLinks && quickLinkTiles.length > 0 && (<>
           <Text style={styles.sectionTitle}>Quick Links</Text>
           <Text style={styles.sectionSubtitle}>Pick up where you left off</Text>
           <View style={styles.colabRow}>
-            {isTileOn('ql_decision_style') && (
-            <TouchableOpacity
-              style={styles.colabCard}
-              onPress={() => router.push('/(tabs)/profile?startQuiz=self' as any)}
-            >
-              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(139,92,246,0.12)' }]}>
-                <Ionicons name="sparkles" size={22} color="#8B5CF6" />
-              </View>
-              <Text style={styles.colabTitle} numberOfLines={1}>Decision Style</Text>
-              <Text style={styles.colabSubtitle} numberOfLines={1}>
-                {stats?.latest_assessment?.dominant_mode ? `${stats.latest_assessment.dominant_mode}` : 'Take the quiz'}
-              </Text>
-            </TouchableOpacity>
-            )}
-
-            {isTileOn('ql_today_plan') && (
-            <TouchableOpacity
-              style={styles.colabCard}
-              onPress={() => router.push('/tools/today' as any)}
-            >
-              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(13,148,136,0.1)' }]}>
-                <Ionicons name="today" size={22} color="#0D9488" />
-              </View>
-              <Text style={styles.colabTitle} numberOfLines={1}>Today&apos;s Plan</Text>
-              <Text style={styles.colabSubtitle} numberOfLines={1}>Actions + routines</Text>
-            </TouchableOpacity>
-            )}
-
-            {isTileOn('ql_eft') && (
-            <TouchableOpacity
-              style={styles.colabCard}
-              onPress={() => router.push('/tools/eg-eft' as any)}
-            >
-              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(234,88,12,0.1)' }]}>
-                <Ionicons name="hand-left" size={22} color="#EA580C" />
-              </View>
-              <Text style={styles.colabTitle} numberOfLines={1}>EFT Tapping</Text>
-              <Text style={styles.colabSubtitle} numberOfLines={1}>Stress relief</Text>
-            </TouchableOpacity>
-            )}
+            {quickLinkTiles.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={styles.colabCard}
+                onPress={() => {
+                  // Special case: 'decision_style' still uses the profile-embedded quiz
+                  if (t.key === 'decision_style') {
+                    router.push('/(tabs)/profile?startQuiz=self' as any);
+                  } else {
+                    router.push(t.href as any);
+                  }
+                }}
+              >
+                <View style={[styles.colabIconWrap, { backgroundColor: t.color + '20' }]}>
+                  <Ionicons name={t.icon as any} size={22} color={t.color} />
+                </View>
+                <Text style={styles.colabTitle} numberOfLines={1}>{t.label}</Text>
+                <Text style={styles.colabSubtitle} numberOfLines={1}>
+                  {t.key === 'decision_style' && stats?.latest_assessment?.dominant_mode
+                    ? `${stats.latest_assessment.dominant_mode}` : t.subtitle}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
           </>)}
 

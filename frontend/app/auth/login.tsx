@@ -106,9 +106,10 @@ export default function LoginScreen() {
           setOtpError('OTP could not be sent. Please check your WhatsApp number.');
         }
       } else {
-        // Direct login (NonProfit)
+        // Direct login (NonProfit) — respect pending intent (decider-store clone,
+        // shared step, etc.) before falling back to /(tabs).
         useAuthStore.getState().setSession(data.session_token, data.user);
-        router.replace('/(tabs)');
+        router.replace((await getPostAuthRoute()) as any);
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Org login failed');
