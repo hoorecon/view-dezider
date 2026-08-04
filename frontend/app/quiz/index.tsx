@@ -69,7 +69,11 @@ export default function GuestQuizScreen() {
       });
       const token = r.data?.quiz_token;
       if (!token) throw new Error('No token');
-      await AsyncStorage.setItem('pending_quiz_token', token);
+      // Stash the token in TWO independent slots so a full-page OAuth
+      // round-trip (Google → auth.emergentagent.com → back to origin) that
+      // may clear one of them still recovers the intent.
+      try { await AsyncStorage.setItem('pending_quiz_token', token); } catch { /* ignore */ }
+      try { await AsyncStorage.setItem('post_auth_next', `/quiz/result?token=${token}`); } catch { /* ignore */ }
       if (isAuthenticated) {
         router.replace(`/quiz/result?token=${token}` as any);
       } else {

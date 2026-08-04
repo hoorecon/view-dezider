@@ -120,19 +120,24 @@ export default function Index() {
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const hash = window.location.hash;
-      if (hash.includes('session_id=')) {
-        const sessionId = hash.split('session_id=')[1]?.split('&')[0];
+      // Emergent Google Auth may return the session in EITHER the URL hash
+      // (`#session_id=…`) or the query string (`?session_id=…`) depending on
+      // the redirect target. Support both so guest-quiz visitors never end
+      // up stuck on a blank page with `session_id` still in the URL.
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      const combined = `${hash}${hash && search ? '&' : ''}${search}`;
+      const sessionIdMatch = combined.match(/session_?id=([^&#]+)/i);
+      const sessionId = sessionIdMatch ? sessionIdMatch[1] : '';
+      if (sessionId) {
         // Strip the callback params from the URL IMMEDIATELY (before any async
         // work) so a refresh/back never replays a consumed OAuth state — this
         // is what produced the "Invalid state parameter" error.
         window.history.replaceState(null, '', window.location.pathname);
-        if (sessionId) {
-          loginWithGoogle(sessionId).then(async () => {
-            router.replace((await getPostAuthRoute()) as any);
-          }).catch(() => router.replace('/auth/login'));
-          return;
-        }
+        loginWithGoogle(sessionId).then(async () => {
+          router.replace((await getPostAuthRoute()) as any);
+        }).catch(() => router.replace('/auth/login'));
+        return;
       }
     }
     // Authenticated users skip the landing and go straight to the app.
