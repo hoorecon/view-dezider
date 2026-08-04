@@ -9,6 +9,7 @@ import { useAuthStore } from '../src/store/authStore';
 import { useBrandingStore } from '../src/store/brandingStore';
 import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
+import { getPostAuthRoute } from '../src/utils/postAuthRedirect';
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
 import GlobalHomeFab from '../src/components/GlobalHomeFab';
 import WebFrame from '../src/components/WebFrame';
@@ -308,6 +309,57 @@ export default function RootLayout() {
   useEffect(() => {
     checkAuth();
     hydrateBranding();
+
+    // ────────────────────────────────────────────────────────────────
+    // GLOBAL OAuth callback handler.
+    //
+    // On the `quiz.jelcos.ai` subdomain (and any other host that
+    // rewrites `/` to a landing route via CDN rules), the Google-Auth
+    // callback may land on ANY path — `/`, `/quiz/`, `/auth/login`, …
+    // Running the handler only inside `app/index.tsx` misses those
+    // cases and leaves the visitor stranded on a form with
+    // `#session_id=…` in the URL.
+    //
+    // This global handler runs once per mount, scans BOTH `hash` and
+    // `search` for a `session_id`, completes login in-place, and
+    // redirects to the intended post-auth destination
+    // (typically `/quiz/result?token=…`).
+    // ────────────────────────────────────────────────────────────────
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+        const combined = `${hash}${hash && search ? '&' : ''}${search}`;
+        const m = combined.match(/session_?id=([^&#]+)/i);
+        const sessionId = m ? decodeURIComponent(m[1]) : '';
+        if (sessionId) {
+          // Strip the OAuth params from the URL immediately so a refresh
+          // or back-nav never replays a consumed session id.
+          try {
+            const cleanQuery = new URLSearchParams(window.location.search);
+            cleanQuery.delete('session_id');
+            cleanQuery.delete('sessionID');
+            cleanQuery.delete('sessionId');
+            const qs = cleanQuery.toString();
+            window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+          } catch { /* ignore */ }
+          // Complete login, then jump to the correct post-auth route.
+          const loginWithGoogle = (useAuthStore.getState() as any).loginWithGoogle;
+          if (loginWithGoogle) {
+            loginWithGoogle(sessionId).then(async () => {
+              try {
+                const next = await getPostAuthRoute();
+                router.replace(next as any);
+              } catch {
+                router.replace('/(tabs)' as any);
+              }
+            }).catch(() => {
+              router.replace('/auth/login' as any);
+            });
+          }
+        }
+      } catch { /* ignore */ }
+    }
 
     // Register push notifications
     registerForPushNotifications().catch(() => {});

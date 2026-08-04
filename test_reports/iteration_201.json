@@ -1,0 +1,26 @@
+{
+  "summary": "P0 Guest Quiz OAuth-return-lands-on-wrong-path fix is VERIFIED. All 4 test scenarios (T1 OAuth callback on /quiz with invalid session, T2 happy path result render, T3 full end-to-end quiz→login→result, T4 regression on /quiz fresh render) PASS against the public preview URL. The global OAuth handler in app/_layout.tsx now correctly (a) strips session_id from URL, (b) invokes loginWithGoogle, (c) routes to /quiz/result?token=X via getPostAuthRoute, and (d) falls back to /auth/login on failure. quiz/index.tsx correctly shows the 'Signing you in…' spinner when session_id is present in URL (never re-renders the 16-question form). No regressions on normal /quiz mount.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* deprecated (informational, not new)", "issue": "Deprecation warnings: 'shadow*' style props are deprecated, use 'boxShadow'; 'props.pointerEvents is deprecated, use style.pointerEvents'. Emitted on every page load across the app. Not a blocker for this iteration but should be migrated eventually. Reference: multiple files under /app/frontend/app/**"}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_201.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "app/_layout.tsx global OAuth handler correctly runs once per RootLayout mount, matches session_id via case-insensitive regex over both hash and search, strips OAuth params via history.replaceState, and routes via getPostAuthRoute. Verified working.",
+    "quiz/index.tsx oauthReturnInProgress guard correctly prevents the empty-form flash while the global handler processes the callback. Verified: with #session_id=INVALID_FAKE_SESSION_ABC the user is redirected to /auth/login within ~3s and never sees the 16-question form.",
+    "getPostAuthRoute() correctly consumes pending_quiz_token from AsyncStorage and returns /quiz/result?token=X. Post-login end-to-end verified to land on /quiz/result and NOT /(tabs)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only iteration)", "frontend": "100%"},
+  "seed_data_creation": "None — used existing super@test.com account. Two additional guest quiz submissions were created during testing (one claimed) — harmless residue in quiz_guest_submissions collection.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Verified behaviours per test: T1 — visiting /quiz/#session_id=INVALID_FAKE_SESSION_ABC (a) strips the hash, (b) does NOT render the 16-question form, (c) lands on /auth/login (backend correctly returned 401 for the fake session). T3 — quiz submission while logged-out bounces to /auth/login with pending_quiz_token stashed; after email/password login (super@test.com), the user auto-navigates to /quiz/result?token=X and the inline Decision Style card renders with dominant mode ('Emotional' when all answers = 3), 4 score bars (Emotional/Logical/Intuitive/Consciousness = 3.00 each), and the 'View full breakdown, PDF & share →' CTA. T4 — /quiz fresh render still works: 16-question form loads, no stuck spinner. Rating buttons on /quiz still lack testID; automation used a JS pointer/mouse event dispatch on the 42×42 TouchableOpacity ancestor of Text nodes with values '1'..'5'. Consider adding testID='quiz-q{idx}-rate{v}' + testID='quiz-submit' + testID='login-email'/'login-password'/'login-submit' to make future automation trivial.",
+  "rca_of_issue": "Previous iteration (200) only handled OAuth callback in app/index.tsx which runs when URL is '/'. On quiz.jelcos.ai the CDN rewrites '/' → '/quiz', so the Google OAuth return landed on /quiz/#session_id=... and app/index.tsx never mounted. Result: the /quiz screen simply rendered a fresh 16-question form ignoring the session_id fragment. Fix: (a) moved OAuth callback processing to app/_layout.tsx RootLayout (runs on EVERY route mount), and (b) added an oauthReturnInProgress guard in app/quiz/index.tsx to show a spinner during the ~1s the global handler is running so the user does not see the empty form. Verified end-to-end on preview URL."
+}

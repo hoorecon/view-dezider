@@ -36,6 +36,15 @@ export default function GuestQuizScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const { isAuthenticated } = useAuthStore();
 
+  // Detect an in-flight OAuth callback that landed on /quiz (Cloudflare
+  // rewrites `/` → `/quiz` on the quiz.jelcos.ai subdomain). While the
+  // global handler in _layout.tsx completes login and navigates to
+  // `/quiz/result?token=…`, show a spinner instead of a fresh empty form
+  // so the visitor doesn't think their answers vanished.
+  const oauthReturnInProgress =
+    Platform.OS === 'web' && typeof window !== 'undefined' &&
+    /session_?id=/i.test((window.location.hash || '') + (window.location.search || ''));
+
   const [questions, setQuestions] = useState<Q[]>([]);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [name, setName] = useState('');
@@ -47,6 +56,9 @@ export default function GuestQuizScreen() {
   const [err, setErr] = useState('');
 
   useEffect(() => {
+    // Skip fetching questions while we're processing an OAuth return —
+    // the global handler will navigate to /quiz/result within ~1s.
+    if (oauthReturnInProgress) { setLoading(false); return; }
     axios.get(`${API}/quiz/questions`)
       .then(r => setQuestions(r.data?.questions || []))
       .catch(() => setErr('Could not load quiz questions. Please refresh.'))
@@ -90,6 +102,19 @@ export default function GuestQuizScreen() {
     return (
       <SafeAreaView style={s.safe}>
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (oauthReturnInProgress) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <ActivityIndicator color={COLORS.primary} size="large" />
+          <Text style={{ marginTop: 14, fontSize: 14, color: COLORS.textPrimary, textAlign: 'center', lineHeight: 20 }}>
+            Signing you in and unlocking your Decision Style result…
+          </Text>
+        </View>
       </SafeAreaView>
     );
   }
