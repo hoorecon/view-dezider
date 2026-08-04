@@ -178,19 +178,6 @@ export default function DeciderStoreHome() {
             </View>
           )}
         </View>
-        <View style={s.search}>
-          <Ionicons name="search" size={16} color="#94A3B8" />
-          <TextInput
-            style={s.searchInput}
-            value={q}
-            onChangeText={setQ}
-            onSubmitEditing={load}
-            placeholder={tab === 'app' ? 'Search Decider Apps…' : 'Search Decision Templates…'}
-            placeholderTextColor="#94A3B8"
-            returnKeyType="search"
-          />
-          {!!q && <TouchableOpacity onPress={() => { setQ(''); }}><Ionicons name="close-circle" size={16} color="#CBD5E1" /></TouchableOpacity>}
-        </View>
       </View>
 
       {/* 2-tab bar — Decider Apps / Decision Templates (independent filters) */}
@@ -207,6 +194,25 @@ export default function DeciderStoreHome() {
           <Ionicons name="options" size={16} color="#4F46E5" />
           <Text style={s.filterBtnTxt}>Filters</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Search — scoped to the active tab so the placeholder & results always
+          match what the visitor is browsing. Sits INSIDE the tab body (below
+          the tab bar) instead of above it. */}
+      <View style={s.searchWrap}>
+        <View style={s.search}>
+          <Ionicons name="search" size={16} color="#94A3B8" />
+          <TextInput
+            style={s.searchInput}
+            value={q}
+            onChangeText={setQ}
+            onSubmitEditing={load}
+            placeholder={tab === 'app' ? 'Search Decider Apps…' : 'Search Decision Templates…'}
+            placeholderTextColor="#94A3B8"
+            returnKeyType="search"
+          />
+          {!!q && <TouchableOpacity onPress={() => { setQ(''); }}><Ionicons name="close-circle" size={16} color="#CBD5E1" /></TouchableOpacity>}
+        </View>
       </View>
 
       {/* Filter drawer (collapsible) */}
@@ -315,14 +321,26 @@ export default function DeciderStoreHome() {
         </View>
       )}
 
-      {/* Category chips (per-tab) */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.catBar} contentContainerStyle={s.catBarInner}>
-        {[{ key: 'all', count: cards.length }, ...cats].map((c) => (
-          <TouchableOpacity key={c.key} style={[s.catChip, cat === c.key && s.catChipOn]} onPress={() => setCat(c.key)}>
-            <Text style={[s.catChipText, cat === c.key && s.catChipTextOn]}>{c.key === 'all' ? 'All' : c.key}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Category chips (per-tab) — wrap onto multiple rows on desktop so
+          long labels like "Talent & Team" aren't clipped; keep horizontally
+          scrollable on narrow (mobile) viewports. */}
+      {width >= 640 ? (
+        <View style={[s.catBar, s.catBarWrap]}>
+          {[{ key: 'all', count: cards.length }, ...cats].map((c) => (
+            <TouchableOpacity key={c.key} style={[s.catChip, cat === c.key && s.catChipOn]} onPress={() => setCat(c.key)}>
+              <Text style={[s.catChipText, cat === c.key && s.catChipTextOn]}>{c.key === 'all' ? 'All' : c.key}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.catBar} contentContainerStyle={s.catBarInner}>
+          {[{ key: 'all', count: cards.length }, ...cats].map((c) => (
+            <TouchableOpacity key={c.key} style={[s.catChip, cat === c.key && s.catChipOn]} onPress={() => setCat(c.key)}>
+              <Text style={[s.catChipText, cat === c.key && s.catChipTextOn]}>{c.key === 'all' ? 'All' : c.key}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {loading ? (
         <ActivityIndicator color="#4F46E5" style={{ marginTop: 40 }} />
@@ -335,25 +353,33 @@ export default function DeciderStoreHome() {
             <Text style={s.empty}>No templates yet. Check back soon.</Text>
           ) : (
             <>
-              <View style={s.sectionHead}>
-                <Ionicons name="search-circle" size={18} color="#4F46E5" />
-                <Text style={s.sectionTitle}>Decider Apps · Finders</Text>
-                <View style={s.countPill}><Text style={s.countText}>{apps.length}</Text></View>
-              </View>
-              <Text style={s.sectionHint}>Set what you want — the app auto-ranks the best matches for you.</Text>
-              {apps.length > 0
-                ? <View style={s.gridRow}>{apps.map(renderCard)}</View>
-                : <Text style={s.sectionEmpty}>No Decider Apps in this view yet.</Text>}
+              {tab === 'app' && (
+                <>
+                  <View style={s.sectionHead}>
+                    <Ionicons name="search-circle" size={18} color="#4F46E5" />
+                    <Text style={s.sectionTitle}>Decider Apps · Finders</Text>
+                    <View style={s.countPill}><Text style={s.countText}>{apps.length}</Text></View>
+                  </View>
+                  <Text style={s.sectionHint}>Set what you want — the app auto-ranks the best matches for you.</Text>
+                  {apps.length > 0
+                    ? <View style={s.gridRow}>{apps.map(renderCard)}</View>
+                    : <Text style={s.sectionEmpty}>No Decider Apps in this view yet.</Text>}
+                </>
+              )}
 
-              <View style={[s.sectionHead, { marginTop: 24 }]}>
-                <Ionicons name="documents" size={18} color="#0D9488" />
-                <Text style={s.sectionTitle}>Decision Templates</Text>
-                <View style={[s.countPill, { backgroundColor: '#CCFBF1' }]}><Text style={[s.countText, { color: '#0D9488' }]}>{templates.length}</Text></View>
-              </View>
-              <Text style={s.sectionHint}>Clone a prefilled blueprint and assess the options yourself.</Text>
-              {templates.length > 0
-                ? <View style={s.gridRow}>{templates.map(renderCard)}</View>
-                : <Text style={s.sectionEmpty}>No decision templates in this view yet.</Text>}
+              {tab === 'template' && (
+                <>
+                  <View style={s.sectionHead}>
+                    <Ionicons name="documents" size={18} color="#0D9488" />
+                    <Text style={s.sectionTitle}>Decision Templates</Text>
+                    <View style={[s.countPill, { backgroundColor: '#CCFBF1' }]}><Text style={[s.countText, { color: '#0D9488' }]}>{templates.length}</Text></View>
+                  </View>
+                  <Text style={s.sectionHint}>Clone a prefilled blueprint and assess the options yourself.</Text>
+                  {templates.length > 0
+                    ? <View style={s.gridRow}>{templates.map(renderCard)}</View>
+                    : <Text style={s.sectionEmpty}>No decision templates in this view yet.</Text>}
+                </>
+              )}
             </>
           )}
           <View style={{ height: 40 }} />
@@ -375,10 +401,12 @@ const s = StyleSheet.create({
   heroLink: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.14)', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
   heroLinkText: { color: '#FFF', fontSize: 11.5, fontWeight: '800' },
   signInText: { color: '#FFF', fontWeight: '800', fontSize: 12.5 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  searchWrap: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 8, backgroundColor: '#F8FAFC' },
   searchInput: { flex: 1, fontSize: 14, color: '#0F172A', padding: 0 },
   catBar: { backgroundColor: '#FFF', minHeight: 56, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   catBarInner: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, alignItems: 'center' },
+  catBarWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 10, gap: 8, alignItems: 'center' },
   catChip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: 16, backgroundColor: '#F1F5F9', flexShrink: 0 },
   catChipOn: { backgroundColor: '#4F46E5' },
   catChipText: { fontSize: 12.5, color: '#475569', fontWeight: '700' },

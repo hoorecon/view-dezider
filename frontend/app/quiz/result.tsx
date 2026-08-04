@@ -185,15 +185,20 @@ export default function QuizResultScreen() {
 
             {result.mode_scores && (
               <View style={s.scores}>
-                {Object.entries(result.mode_scores).map(([k, v]) => (
-                  <View key={k} style={s.scoreRow}>
-                    <Text style={s.scoreLabel}>{MODE_EMOJI[k]} {MODE_LABEL[k] || k}</Text>
-                    <View style={s.barTrack}>
-                      <View style={[s.barFill, { width: `${Math.min(100, (Number(v) / 5) * 100)}%` }]} />
+                {Object.entries(result.mode_scores).map(([k, v]) => {
+                  // Answers are on a 1..5 scale, so % = score × 20 to match
+                  // the full breakdown on /(tabs)/profile.
+                  const pct = Math.max(0, Math.min(100, Number(v) * 20));
+                  return (
+                    <View key={k} style={s.scoreRow}>
+                      <Text style={s.scoreLabel}>{MODE_EMOJI[k]} {MODE_LABEL[k] || k}</Text>
+                      <View style={s.barTrack}>
+                        <View style={[s.barFill, { width: `${pct}%` }]} />
+                      </View>
+                      <Text style={s.scoreVal}>{pct.toFixed(0)}%</Text>
                     </View>
-                    <Text style={s.scoreVal}>{Number(v).toFixed(2)}</Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
 

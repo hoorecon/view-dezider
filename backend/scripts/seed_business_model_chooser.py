@@ -167,6 +167,25 @@ async def _create_new(admin: dict, model: dict) -> dict:
         "authorized_by": admin["user_id"],
     }
     await db.decider_store_templates.insert_one(doc)
+    # Fill filter-drawer metadata that isn't part of the import xlsx so the
+    # store's Life-area / Org-type / Publisher-type / #Factors / #Options
+    # filters include Business Model Chooser correctly. Backfill script also
+    # patches these post-hoc for legacy docs — this is the forward-safe hook.
+    await db.decider_store_templates.update_one(
+        {"template_id": template_id},
+        {"$set": {
+            "life_area": "Business & Career",
+            "applicable_org_types": ["Solopreneur", "Startup", "MSME"],
+            "publisher_type": "organization",
+            "is_free": True,
+            "factor_count": len(factors_out),
+            "option_count": len(options_out),
+            "rating_avg": 0.0,
+            "rating_count": 0,
+            "is_official": True,
+            "is_approved": True,
+        }},
+    )
     return doc
 
 

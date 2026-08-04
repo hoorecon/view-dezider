@@ -276,6 +276,10 @@ async def _seed_founder_pack(admin_uid: str, admin_name: str, admin_email: str) 
                 "is_active": True,
                 "status": "authorized",
                 "publisher_type": "organization",   # editorial content = organization tier
+                "rating_avg": 0.0,
+                "rating_count": 0,
+                "is_official": True,
+                "is_approved": True,
                 "creator_name": admin_name,
                 "created_by": admin_uid,
                 "created_by_name": admin_name,
