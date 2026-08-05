@@ -162,7 +162,15 @@ export default function CloneTemplateModal({
   // Policy consent (visible only when visibility === 'public').
   const [privacyPolicy, setPrivacyPolicy] = useState(DEFAULT_PRIVACY_POLICY);
   const [termsOfUse, setTermsOfUse] = useState(DEFAULT_TERMS_OF_USE);
-  const [policyAgreed, setPolicyAgreed] = useState(false);
+
+  // Inline error banner (renders at the TOP of the modal body so it never
+  // gets hidden behind the modal like a system Alert did previously).
+  const [inlineError, setInlineError] = useState<string>('');
+  const scrollRef = React.useRef<ScrollView>(null);
+  // Track whether the modal body has content below the current viewport.
+  // If yes, show a "↓ more below" nudge above the Save button so users
+  // don't miss required Public-only fields.
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
 
   // A flow counts as "Completed" only when the unified status model says so.
   // The Solution Box / API returns `status === 'completed'` (and progress_pct === 100)
@@ -239,41 +247,32 @@ export default function CloneTemplateModal({
   };
 
   const handleSaveTemplate = async () => {
+    setInlineError('');
     if (!title.trim()) {
-      showAlert('Error', 'Please enter a name for the template');
+      setInlineError('Please enter a name for the template');
+      try { scrollRef.current?.scrollTo({ y: 0, animated: true }); } catch {}
       return;
     }
     if (visibility === 'shared' && !sharedEmails.trim()) {
-      showAlert('Error', 'Please enter at least one email to share with');
+      setInlineError('Please enter at least one email to share with');
       return;
     }
     if (visibility === 'public' && !isCompleted) {
-      showAlert(
-        'Completed flows only',
-        'Public templates can only be created from a Completed (100%) flow. Save it as Private or Shared, or finish the assessment to publish publicly.'
-      );
+      setInlineError('Public templates can only be created from a Completed (100%) flow. Save as Private/Shared, or finish the assessment to publish publicly.');
       return;
     }
-    // Lead-Gen + policy validation is required only when publishing publicly.
+    // Lead-Gen validation is required only when publishing publicly.
     if (visibility === 'public') {
       if (!leadName.trim() || !leadEmail.trim() || !leadWhatsapp.trim()) {
-        showAlert(
-          'Contact details required',
-          'Public templates need a contact person name, email and WhatsApp number so interested viewers can reach out to you.'
-        );
-        return;
-      }
-      if (!policyAgreed) {
-        showAlert('Policies', 'Please agree to the Privacy Policy and Terms of Use before publishing.');
+        setInlineError('Public templates need contact person name, email and WhatsApp so viewers can reach out to you. Scroll down to fill them in.');
+        try { scrollRef.current?.scrollTo({ y: 380, animated: true }); } catch { /* ignore */ }
         return;
       }
     }
     // Guard against saving a level the current step cannot back with real data.
     if (currentStep && isLevelLocked(selectedTemplateType)) {
-      showAlert(
-        'Not available at this step',
-        `"${COPY_LEVELS.find((l) => l.key === selectedTemplateType)?.label}" needs data from a later step. Pick a level supported at Step ${currentStep}.`
-      );
+      setInlineError(`"${COPY_LEVELS.find((l) => l.key === selectedTemplateType)?.label}" needs data from a later step. Pick a level supported at Step ${currentStep}.`);
+      try { scrollRef.current?.scrollTo({ y: 0, animated: true }); } catch {}
       return;
     }
 
@@ -354,7 +353,33 @@ export default function CloneTemplateModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.body}
+            showsVerticalScrollIndicator
+            scrollEventThrottle={64}
+            onScroll={(e) => {
+              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+              const remaining = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+              setHasMoreBelow(remaining > 12);
+            }}
+            onContentSizeChange={(_, h) => {
+              // On first paint, if content is taller than the viewport show the nudge.
+              setHasMoreBelow(h > 460);
+            }}
+          >
+            {/* Inline error banner — renders at TOP of the modal so it's
+                never hidden behind the sheet like a system Alert.alert was. */}
+            {!!inlineError && (
+              <View style={styles.errorBanner} testID="clone-template-inline-error">
+                <Ionicons name="alert-circle" size={16} color="#B91C1C" />
+                <Text style={styles.errorBannerText}>{inlineError}</Text>
+                <TouchableOpacity onPress={() => setInlineError('')} hitSlop={8}>
+                  <Ionicons name="close" size={16} color="#B91C1C" />
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Source decision info */}
             <View style={styles.sourceInfo}>
               <Ionicons name="document-text-outline" size={16} color={COLORS.textMuted} />
@@ -575,11 +600,9 @@ export default function CloneTemplateModal({
                         <TextInput style={styles.policyInput} value={privacyPolicy} onChangeText={setPrivacyPolicy} multiline />
                         <Text style={[styles.policyLabel, { marginTop: 8 }]}>Terms of Use</Text>
                         <TextInput style={styles.policyInput} value={termsOfUse} onChangeText={setTermsOfUse} multiline />
-
-                        <TouchableOpacity style={styles.consentRow} onPress={() => setPolicyAgreed(!policyAgreed)} testID="template-policy-consent">
-                          <Ionicons name={policyAgreed ? 'checkbox' : 'square-outline'} size={20} color={policyAgreed ? COLORS.primary : COLORS.textMuted} />
-                          <Text style={styles.consentText}>I agree to the Privacy Policy and Terms of Use above.</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.policyHelperText}>
+                          Consumers will see these policies with an &quot;I agree&quot; checkbox when they clone or use your template. You don&apos;t need to check anything here.
+                        </Text>
                       </View>
                     )}
                   </React.Fragment>
@@ -588,6 +611,21 @@ export default function CloneTemplateModal({
               </View>
             )}
           </ScrollView>
+
+          {/* "More fields below" nudge — visible only when the modal body
+              still has content below the fold. Prevents the "why doesn't
+              Save work?" confusion for Public which unfurls extra fields. */}
+          {hasMoreBelow && (
+            <TouchableOpacity
+              style={styles.scrollNudge}
+              onPress={() => {
+                try { scrollRef.current?.scrollTo({ y: 9999, animated: true }); } catch {}
+              }}
+            >
+              <Ionicons name="chevron-down" size={14} color="#4F46E5" />
+              <Text style={styles.scrollNudgeText}>More fields below — tap to see them</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Action Button */}
           <View style={styles.footer}>
@@ -909,5 +947,46 @@ const styles = StyleSheet.create({
     color: '#065F46',
     fontWeight: '600',
     flex: 1,
+  },
+  policyHelperText: {
+    marginTop: 8,
+    fontSize: 11.5,
+    color: '#065F46',
+    fontStyle: 'italic',
+    lineHeight: 15,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 10,
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 10,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: '#B91C1C',
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  scrollNudge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    justifyContent: 'center',
+    paddingVertical: 6,
+    backgroundColor: '#EEF2FF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E7FF',
+  },
+  scrollNudgeText: {
+    color: '#4F46E5',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

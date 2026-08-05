@@ -51,8 +51,11 @@ export default function DeciderStoreHome() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [f, setF] = useState<{ life_area?: string; org_types: string[]; publisher_type?: string;
     min_factors?: string; max_factors?: string; min_options?: string; max_options?: string;
-    is_free?: boolean | null; publisher_name?: string; min_rating?: string; min_ratings_count?: string; }>(
-    { org_types: [], is_free: null }
+    is_free?: boolean | null; publisher_name?: string; min_rating?: string; min_ratings_count?: string;
+    // Verification type — multi-select. Both enabled by default so users
+    // see the widest catalogue on their first visit.
+    moderation: string[]; }>(
+    { org_types: [], is_free: null, moderation: ['jai_verified', 'unverified'] }
   );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -76,6 +79,12 @@ export default function DeciderStoreHome() {
       if (f.publisher_name) params.publisher_name = f.publisher_name;
       if (f.min_rating) params.min_rating = Number(f.min_rating);
       if (f.min_ratings_count) params.min_ratings_count = Number(f.min_ratings_count);
+      // Verification type multi-select → backend `moderation` (CSV) param.
+      // Sending BOTH is the same as omitting (server falls back to admin
+      // config). Sending only one narrows the results.
+      if (f.moderation && f.moderation.length > 0 && f.moderation.length < 2) {
+        params.moderation = f.moderation.join(',');
+      }
       const [r, m, fx] = await Promise.all([
         api.get('/decider-store', { params }),
         api.get('/decider-store/meta'),
@@ -272,6 +281,34 @@ export default function DeciderStoreHome() {
               ))}
             </View>
           </View>
+          {/* Verification type — multi-select. Both toggled on by default
+              so users see the full catalogue on their first visit. */}
+          <View style={s.fRow}>
+            <Text style={s.fLabel}>Verification type</Text>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { key: 'jai_verified', label: 'jAI Verified', icon: 'shield-checkmark', color: '#059669', bg: '#D1FAE5' },
+                { key: 'unverified',   label: 'Unverified',   icon: 'time',              color: '#B45309', bg: '#FEF3C7' },
+              ].map((v) => {
+                const on = (f.moderation || []).includes(v.key);
+                return (
+                  <TouchableOpacity
+                    key={v.key}
+                    style={[s.fChip, on && { backgroundColor: v.bg, borderColor: v.color }]}
+                    onPress={() => {
+                      const cur = new Set(f.moderation || []);
+                      if (cur.has(v.key)) cur.delete(v.key); else cur.add(v.key);
+                      setF({ ...f, moderation: Array.from(cur) });
+                    }}
+                    testID={`store-mod-filter-${v.key}`}
+                  >
+                    <Ionicons name={v.icon as any} size={12} color={on ? v.color : '#64748B'} />
+                    <Text style={[s.fChipTxt, on && { color: v.color, fontWeight: '800' }]}>{v.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
           <View style={[s.fRow, { flexDirection: 'row', gap: 8 }]}>
             <View style={{ flex: 1 }}>
               <Text style={s.fLabel}>Factors (≥ / ≤)</Text>
@@ -435,7 +472,7 @@ const s = StyleSheet.create({
   filterPanel: { backgroundColor: '#FFF', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', gap: 4 },
   fRow: { paddingVertical: 4 },
   fLabel: { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4 },
-  fChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: '#F1F5F9', flexShrink: 0 },
+  fChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: '#F1F5F9', flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: 'transparent' },
   fChipOn: { backgroundColor: '#4F46E5' },
   fChipTxt: { fontSize: 11, color: '#334155', fontWeight: '700' },
   fChipTxtOn: { color: '#FFF' },

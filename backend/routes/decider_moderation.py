@@ -176,10 +176,30 @@ async def resubmit_template(template_id: str, body: ResubmitBody, user: dict = D
 async def backfill_default_moderation_status() -> Dict[str, int]:
     """One-shot migration: ensure every existing template + store doc has a
     `moderation_status`. Called from `main` at startup so we don't need a
-    separate CLI step in dev.
+    separate CLI step in dev. Also mirrors PUBLIC templates that were saved
+    before the mirror-on-save code path existed — the exact root cause of
+    "user-published public templates are missing from /decider-store".
     """
-    fixed_t = fixed_s = 0
+    fixed_t = fixed_s = fixed_mirror = 0
     now = datetime.now(timezone.utc)
+
+    # First — mirror any PUBLIC template that has no `decider_store_templates`
+    # row yet. Uses the same helper the save endpoint calls so schema stays
+    # in lock-step.
+    try:
+        from routes.decisions.templates import _mirror_template_to_store
+        async for t in db.templates.find({"visibility": "public"}, {"_id": 0}):
+            exists = await db.decider_store_templates.find_one({"template_id": t["id"]}, {"_id": 1})
+            if exists:
+                continue
+            try:
+                await _mirror_template_to_store(t)
+                fixed_mirror += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # Templates: admin/system-owned or is_official → jai_verified;
     # otherwise unverified (only if visibility=public — private/shared
     # templates have no store presence and don't need a status).
@@ -199,7 +219,7 @@ async def backfill_default_moderation_status() -> Dict[str, int]:
             {"$set": {"moderation_status": status, "moderation_updated_at": now}},
         )
         fixed_s += 1
-    return {"templates_updated": fixed_t, "store_updated": fixed_s}
+    return {"templates_updated": fixed_t, "store_updated": fixed_s, "mirrored_missing": fixed_mirror}
 
 
 async def backfill_default_policies() -> Dict[str, int]:

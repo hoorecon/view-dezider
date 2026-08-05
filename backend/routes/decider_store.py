@@ -146,7 +146,7 @@ async def list_store(
     publisher_type: Optional[str] = None,     # individual|expert|organization
     min_rating: Optional[float] = None,
     min_ratings_count: Optional[int] = None,
-    moderation: Optional[str] = None,         # 'jai_verified' | 'unverified' | 'all'
+    moderation: Optional[str] = None,         # 'jai_verified' | 'unverified' | 'all' | 'jai_verified,unverified'
 ):
     """Public storefront. Fixes the "user-published public templates not
     shown here" bug by including ANY doc with `is_public=True` that isn't
@@ -158,19 +158,25 @@ async def list_store(
     show_unverified = bool(cfg.get("show_unverified_in_store", True))
     show_jai = bool(cfg.get("show_jai_verified_in_store", True))
 
-    # Allowed moderation values based on admin config; disapproved always hidden.
-    allowed_statuses = []
-    if show_jai: allowed_statuses.append("jai_verified")
-    if show_unverified: allowed_statuses.extend(["unverified", None])
+    # Determine allowed statuses. Priority:
+    #  1. Explicit query `moderation=` from the filter UI (comma-separated).
+    #  2. Fall back to admin config toggles.
+    # `disapproved` is ALWAYS excluded regardless of what's requested.
+    allowed_statuses: List[Any] = []
     if moderation and moderation != "all":
-        allowed_statuses = [moderation] if moderation != "unverified" else ["unverified", None]
-    # Never show disapproved. If admin turned off both toggles, nothing shows.
+        requested = {s.strip() for s in moderation.split(",") if s.strip() and s.strip() != "disapproved"}
+        if "unverified" in requested:
+            allowed_statuses.extend(["unverified", None])
+        if "jai_verified" in requested:
+            allowed_statuses.append("jai_verified")
+    else:
+        if show_jai:        allowed_statuses.append("jai_verified")
+        if show_unverified: allowed_statuses.extend(["unverified", None])
+
     query: Dict[str, Any] = {"is_public": True}
     if allowed_statuses:
-        # None means the legacy docs without the field — treat as unverified.
         query["moderation_status"] = {"$in": allowed_statuses} if len(allowed_statuses) > 1 else allowed_statuses[0]
     else:
-        # Both toggles OFF → no public items visible.
         return {"templates": []}
     if category:            query["category"] = category
     if decision_type:       query["decision_type"] = decision_type
