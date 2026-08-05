@@ -108,6 +108,8 @@ def _card(t: Dict[str, Any]) -> Dict[str, Any]:
             "accuracy":      round(float(t.get("rating_accuracy_avg") or 0), 2),
         },
         "status": t.get("status"),
+        "moderation_status": t.get("moderation_status") or "unverified",
+        "moderation_remark": t.get("moderation_remark") or "",
     }
 
 
@@ -144,8 +146,32 @@ async def list_store(
     publisher_type: Optional[str] = None,     # individual|expert|organization
     min_rating: Optional[float] = None,
     min_ratings_count: Optional[int] = None,
+    moderation: Optional[str] = None,         # 'jai_verified' | 'unverified' | 'all'
 ):
-    query: Dict[str, Any] = {"status": "authorized", "is_public": True}
+    """Public storefront. Fixes the "user-published public templates not
+    shown here" bug by including ANY doc with `is_public=True` that isn't
+    disapproved — regardless of the legacy `status=authorized` value which
+    only the admin/system seed writes.
+    """
+    from routes.decider_moderation import get_moderation_config
+    cfg = await get_moderation_config()
+    show_unverified = bool(cfg.get("show_unverified_in_store", True))
+    show_jai = bool(cfg.get("show_jai_verified_in_store", True))
+
+    # Allowed moderation values based on admin config; disapproved always hidden.
+    allowed_statuses = []
+    if show_jai: allowed_statuses.append("jai_verified")
+    if show_unverified: allowed_statuses.extend(["unverified", None])
+    if moderation and moderation != "all":
+        allowed_statuses = [moderation] if moderation != "unverified" else ["unverified", None]
+    # Never show disapproved. If admin turned off both toggles, nothing shows.
+    query: Dict[str, Any] = {"is_public": True}
+    if allowed_statuses:
+        # None means the legacy docs without the field — treat as unverified.
+        query["moderation_status"] = {"$in": allowed_statuses} if len(allowed_statuses) > 1 else allowed_statuses[0]
+    else:
+        # Both toggles OFF → no public items visible.
+        return {"templates": []}
     if category:            query["category"] = category
     if decision_type:       query["decision_type"] = decision_type
     if kind in ("template", "app"):

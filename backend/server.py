@@ -403,6 +403,13 @@ api_router.include_router(short_urls_router)
 from routes.founder_template_seed import router as founder_template_seed_router  # noqa: E402
 api_router.include_router(founder_template_seed_router)
 
+from routes.decider_moderation import (  # noqa: E402
+    router as decider_moderation_router,
+    backfill_default_moderation_status,
+    backfill_default_policies,
+)
+api_router.include_router(decider_moderation_router)
+
 from routes.user_home_quicklinks import router as user_home_quicklinks_router  # noqa: E402
 api_router.include_router(user_home_quicklinks_router)
 
@@ -565,6 +572,20 @@ async def _run_boot_work(boot_owner: bool):
                 logger.info(f"[boot] founder template pack seeded: {r}")
     except Exception as e:
         logger.error(f"founder template pack boot seed failed: {e}")
+
+    # Backfill moderation status (unverified/jai_verified) and standard
+    # Privacy Policy + Terms of Use on any legacy public templates + Decider
+    # Store items missing them. Idempotent.
+    try:
+        if boot_owner:
+            r = await backfill_default_moderation_status()
+            if (r.get("templates_updated") or 0) + (r.get("store_updated") or 0) > 0:
+                logger.info(f"[boot] moderation status backfilled: {r}")
+            r2 = await backfill_default_policies()
+            if (r2.get("templates_updated") or 0) + (r2.get("store_updated") or 0) > 0:
+                logger.info(f"[boot] default policies backfilled: {r2}")
+    except Exception as e:
+        logger.error(f"decider moderation boot backfill failed: {e}")
 
     # One-shot, idempotent migration — SWOT-converted Decisions need at least
     # one "Current Scenario" option so Steps 6/7/9/10 of /prr/[id] render.

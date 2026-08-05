@@ -16,6 +16,7 @@ import { COLORS } from '../constants/colors';
 import api from '../utils/api';
 import TemplateEditModal from './TemplateEditModal';
 import Tooltip from './Tooltip';
+import PolicyConsentModal from './PolicyConsentModal';
 
 // Cross-platform confirm that works on web + mobile
 const confirmAction = (title: string, message: string, onConfirm: () => void) => {
@@ -86,6 +87,30 @@ export default function TemplateBrowserModal({
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   // Inline template editor for the "Mine" tab.
   const [editTarget, setEditTarget] = useState<Template | null>(null);
+  // Resubmit-after-disapproval target (Mine tab).
+  const [resubmitTarget, setResubmitTarget] = useState<Template | null>(null);
+  const [resubmitNote, setResubmitNote] = useState('');
+  const [resubmitting, setResubmitting] = useState(false);
+
+  const submitResubmission = async () => {
+    if (!resubmitTarget) return;
+    if (!resubmitNote.trim()) {
+      showFeedback('Please add a note explaining what you changed', 'error');
+      return;
+    }
+    setResubmitting(true);
+    try {
+      await api.post(`/templates/${resubmitTarget.id}/resubmit`, { publisher_remark: resubmitNote.trim() });
+      setResubmitTarget(null);
+      setResubmitNote('');
+      showFeedback('Resubmitted for admin review', 'success');
+      fetchTemplates();
+    } catch (e: any) {
+      showFeedback(e?.response?.data?.detail || 'Failed to resubmit', 'error');
+    } finally {
+      setResubmitting(false);
+    }
+  };
 
   const isAdmin = ['admin', 'co_admin', 'super_admin'].includes(userRole);
 
@@ -125,6 +150,22 @@ export default function TemplateBrowserModal({
   const handleSelectTemplate = (template: Template) => {
     setSelectedTemplate(template);
     setNewTitle(`${getTimestampWithTime()} ${template.name}`);
+  };
+
+  // Consent gate. Public/Shared/Authorized templates that carry publisher
+  // policies (or the standard default) MUST get an explicit user agree
+  // before we clone them into a live decision. My own templates skip the
+  // consent modal — you don't need to agree with yourself.
+  const [pendingUseTemplate, setPendingUseTemplate] = useState<any>(null);
+
+  const requestUseTemplate = () => {
+    if (!selectedTemplate || !newTitle.trim()) {
+      Alert.alert('Error', 'Please enter a title for the new decision');
+      return;
+    }
+    // Skip consent for own templates.
+    if (activeTab === 'my') return handleUseTemplate();
+    setPendingUseTemplate(selectedTemplate);
   };
 
   const handleUseTemplate = async () => {
@@ -404,6 +445,21 @@ export default function TemplateBrowserModal({
                           </View>
                         );
                       })()}
+                      {/* Moderation status badge — Public templates only. */}
+                      {activeTab === 'my' && (template.visibility || '').toLowerCase() === 'public' && (() => {
+                        const ms = ((template as any).moderation_status || 'unverified').toLowerCase();
+                        const mm = ms === 'jai_verified'
+                          ? { label: 'jAI Verified', color: '#059669', bg: '#D1FAE5', icon: 'shield-checkmark' }
+                          : ms === 'disapproved'
+                            ? { label: 'Disapproved', color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle' }
+                            : { label: 'Unverified', color: '#B45309', bg: '#FEF3C7', icon: 'time' };
+                        return (
+                          <View style={[styles.typeBadge, { backgroundColor: mm.bg, marginLeft: 6 }]}>
+                            <Ionicons name={mm.icon as any} size={11} color={mm.color} />
+                            <Text style={[styles.typeBadgeText, { color: mm.color }]}>{mm.label}</Text>
+                          </View>
+                        );
+                      })()}
                       <View style={styles.templateCardActions}>
                         {/* Use template button for shared/public/authorized templates */}
                         {activeTab !== 'my' && (
@@ -475,6 +531,24 @@ export default function TemplateBrowserModal({
                         By {template.created_by_name} • {formatDate(template.created_at)}
                       </Text>
                     </TouchableOpacity>
+                    {/* Disapproved banner + resubmit for the publisher. */}
+                    {activeTab === 'my'
+                      && ((template as any).moderation_status || '').toLowerCase() === 'disapproved' && (
+                      <View style={styles.disapprovedBox}>
+                        <Text style={styles.disapprovedTitle}>Admin blocked this template from the Decider Store</Text>
+                        {!!(template as any).moderation_remark && (
+                          <Text style={styles.disapprovedRemark}>&ldquo;{(template as any).moderation_remark}&rdquo;</Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.resubmitBtn}
+                          onPress={() => { setResubmitTarget(template); setResubmitNote(''); }}
+                          testID={`template-resubmit-${template.id}`}
+                        >
+                          <Ionicons name="refresh" size={14} color="#FFF" />
+                          <Text style={styles.resubmitBtnText}>Resubmit with correction note</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 ))
               )}
@@ -486,7 +560,7 @@ export default function TemplateBrowserModal({
             <View style={styles.footer}>
               <TouchableOpacity
                 style={[styles.actionBtn, creating && styles.actionBtnDisabled]}
-                onPress={handleUseTemplate}
+                onPress={requestUseTemplate}
                 disabled={creating}
               >
                 {creating ? (
@@ -510,6 +584,46 @@ export default function TemplateBrowserModal({
         onClose={() => setEditTarget(null)}
         onSaved={() => { setEditTarget(null); fetchTemplates(); }}
       />
+
+      {/* Consent gate — public/shared/authorized templates require the
+          consumer to agree to publisher's Privacy Policy + Terms of Use. */}
+      <PolicyConsentModal
+        visible={!!pendingUseTemplate}
+        onClose={() => setPendingUseTemplate(null)}
+        onAgree={() => { setPendingUseTemplate(null); handleUseTemplate(); }}
+        item={pendingUseTemplate}
+        actionLabel="Use this template"
+      />
+
+      {/* Resubmit-after-disapproval modal (Mine tab). */}
+      <Modal visible={!!resubmitTarget} transparent animationType="fade" onRequestClose={() => setResubmitTarget(null)}>
+        <View style={styles.resubmitOverlay}>
+          <View style={styles.resubmitBox}>
+            <Text style={styles.resubmitTitle}>Resubmit for admin review</Text>
+            <Text style={styles.resubmitSubtitle}>Briefly note what you changed — this reaches the admin only, not the public store.</Text>
+            <TextInput
+              value={resubmitNote}
+              onChangeText={setResubmitNote}
+              style={styles.resubmitInput}
+              multiline
+              placeholder="e.g. Added expected values on the top-3 factors and set gap multipliers for financial ones."
+              placeholderTextColor={COLORS.textMuted}
+              testID="resubmit-note-input"
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity style={styles.resubmitCancel} onPress={() => setResubmitTarget(null)} disabled={resubmitting}>
+                <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.resubmitConfirm} onPress={submitResubmission} disabled={resubmitting} testID="resubmit-confirm">
+                {resubmitting ? <ActivityIndicator color="#FFF" /> : (<>
+                  <Ionicons name="paper-plane" size={15} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontWeight: '800' }}>Resubmit</Text>
+                </>)}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -622,6 +736,85 @@ const styles = StyleSheet.create({
   },
   deleteBtn: {
     padding: 6,
+  },
+  disapprovedBox: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 10,
+  },
+  disapprovedTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#B91C1C',
+    marginBottom: 3,
+  },
+  disapprovedRemark: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#7F1D1D',
+    marginBottom: 6,
+    lineHeight: 17,
+  },
+  resubmitBtn: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#B91C1C',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  resubmitBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  resubmitOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  resubmitBox: {
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    padding: 16,
+    gap: 10,
+  },
+  resubmitTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary },
+  resubmitSubtitle: { fontSize: 12, color: COLORS.textSecondary },
+  resubmitInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 13.5,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  resubmitCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resubmitConfirm: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
   },
   approveBtn: {
     flexDirection: 'row',

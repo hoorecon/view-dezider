@@ -923,7 +923,7 @@ export default function Step7() {
 
   return (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Step 6-7: Assess & Calculate</Text>
+      <Text style={styles.stepTitle}>Step 7: Assess & Calculate</Text>
       <Text style={styles.stepDescription}>
         Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
       </Text>

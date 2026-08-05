@@ -59,6 +59,43 @@ function getStatus(d: DecisionItem): { label: string; color: string; bg: string 
   return { label: 'Draft', color: '#6B7280', bg: '#F3F4F6' };
 }
 
+/**
+ * Infer the highest completed MyDezider step from the decision doc alone.
+ * Used to pass `currentStep` to CloneTemplateModal so its Copy-level radios
+ * are disabled / enabled to match what the source decision actually contains.
+ *
+ * Rules (highest match wins):
+ *   • chosen_option_id set OR status=completed              → 10
+ *   • any option has values populated                        → 7
+ *   • options[].length > 0                                   → 6
+ *   • any factor.gap_multiplier is set (and != 1)            → 5
+ *   • any factor.rating > 0                                  → 4
+ *   • any factor.category (primary/secondary)                → 3
+ *   • factors[].length > 0                                   → 2
+ *   • else                                                   → 1
+ */
+function computeCurrentStep(d: any): number {
+  if (!d) return 1;
+  if (d.chosen_option_id || d.status === 'completed') return 10;
+  const options = Array.isArray(d.options) ? d.options : [];
+  const factors = Array.isArray(d.factors) ? d.factors : [];
+  const anyOptionAssessed = options.some((o: any) =>
+    o && o.values && Object.keys(o.values).length > 0);
+  if (anyOptionAssessed) return 7;
+  if (options.length > 0) return 6;
+  const anyGap = factors.some((f: any) => {
+    const gm = Number(f?.gap_multiplier ?? f?.rating_gap_multiplier ?? 1);
+    return gm && gm !== 1;
+  });
+  if (anyGap) return 5;
+  const anyRating = factors.some((f: any) => Number(f?.rating || 0) > 0);
+  if (anyRating) return 4;
+  const anyClassified = factors.some((f: any) => f?.category);
+  if (anyClassified) return 3;
+  if (factors.length > 0) return 2;
+  return 1;
+}
+
 export default function DeziderListScreen() {
   const router = useRouter();
   const [items, setItems] = useState<DecisionItem[]>([]);
@@ -304,6 +341,7 @@ export default function DeziderListScreen() {
           onClose={() => { setCloneModalVisible(false); setCloneTarget(null); }}
           decision={cloneTarget}
           initialTab={cloneModalInitialTab}
+          currentStep={computeCurrentStep(cloneTarget)}
           onCloneSuccess={(newId: string) => {
             setCloneModalVisible(false);
             setCloneTarget(null);

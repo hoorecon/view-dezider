@@ -156,7 +156,10 @@ async def _mirror_template_to_store(template: dict) -> None:
             "lead_gen": template.get("lead_gen") or {},
             "policies": template.get("policies") or {},
         },
-         "$setOnInsert": {"install_count": 0}},
+         # New user-published templates default to `unverified` and MUST be
+         # moderated before showing a "jAI Verified" badge. Preserve existing
+         # status on re-mirror so admin approvals aren't lost.
+         "$setOnInsert": {"install_count": 0, "moderation_status": "unverified"}},
         upsert=True,
     )
 

@@ -110,6 +110,20 @@ export default function DeciderStoreHome() {
           <View style={[s.priceTag, { backgroundColor: price(c) === 'Free' ? '#DCFCE7' : '#FEF3C7' }]}>
             <Text style={[s.priceTagText, { color: price(c) === 'Free' ? '#166534' : '#B45309' }]}>{price(c)}</Text>
           </View>
+          {/* Moderation badge — bottom-left of the cover. Only jAI Verified
+              is celebrated; Unverified shown subtly so users know it's
+              user-submitted (not editorially vetted). */}
+          {(c as any).moderation_status === 'jai_verified' ? (
+            <View style={s.modBadgeVerified}>
+              <Ionicons name="shield-checkmark" size={10} color="#059669" />
+              <Text style={s.modBadgeVerifiedText}>jAI Verified</Text>
+            </View>
+          ) : (
+            <View style={s.modBadgeUnverified}>
+              <Ionicons name="time" size={10} color="#B45309" />
+              <Text style={s.modBadgeUnverifiedText}>Unverified</Text>
+            </View>
+          )}
           {isApp && (
             <View style={s.finderTag}>
               <Ionicons name="search" size={10} color="#FFF" />
@@ -440,6 +454,10 @@ const s = StyleSheet.create({
   sectionEmpty: { fontSize: 12.5, color: '#94A3B8', fontStyle: 'italic', paddingVertical: 10 },
   finderTag: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#4F46E5', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   finderTagText: { fontSize: 9.5, fontWeight: '900', color: '#FFF', letterSpacing: 0.4 },
+  modBadgeVerified: { position: 'absolute', bottom: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#D1FAE5', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
+  modBadgeVerifiedText: { fontSize: 9.5, fontWeight: '900', color: '#059669', letterSpacing: 0.2 },
+  modBadgeUnverified: { position: 'absolute', bottom: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FEF3C7', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
+  modBadgeUnverifiedText: { fontSize: 9.5, fontWeight: '900', color: '#B45309', letterSpacing: 0.2 },
   empty: { textAlign: 'center', color: '#94A3B8', marginTop: 40 },
   card: { backgroundColor: '#FFF', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   cardCover: { height: 84, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative' },

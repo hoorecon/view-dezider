@@ -19,6 +19,7 @@ import ShareStepModal from '../../src/components/ShareStepModal';
 import CLDViewer from '../../src/components/CLDViewer';
 import ExpertCallModal from '../../src/components/ExpertCallModal';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
+import Tooltip from '../../src/components/Tooltip';
 import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
@@ -67,6 +68,10 @@ function PRRDecisionDetailInner() {
   const [showCLD, setShowCLD] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
   const [saveTplModalVisible, setSaveTplModalVisible] = useState(false);
+  // Which tab (Clone vs Template) the shared CloneTemplateModal should
+  // open on. Header bookmark icon and Step-10 button both preselect
+  // 'template'; Step-side clone triggers can preselect 'clone'.
+  const [saveTplInitialTab, setSaveTplInitialTab] = useState<'clone' | 'template'>('template');
   const { isOn: isFeatureOn } = useFeatureGate();
 
   // Listen for Step 10's "Save as Template" button press. Uses
@@ -74,6 +79,7 @@ function PRRDecisionDetailInner() {
   // without threading a callback through DecisionContext.
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('prr-open-save-template', () => {
+      setSaveTplInitialTab('template');
       setSaveTplModalVisible(true);
     });
     return () => sub.remove();
@@ -342,14 +348,16 @@ function PRRDecisionDetailInner() {
           </View>
           {/* Save as Template — visible on every step 2..10 (was only in Step 10) */}
           {currentStep >= 2 && currentStep <= 10 && (
-            <TouchableOpacity
-              onPress={() => setSaveTplModalVisible(true)}
-              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 4, backgroundColor: '#F5F3FF' }}
-              accessibilityLabel="Save as Template"
-              testID="prr-save-as-template"
-            >
-              <Ionicons name="bookmark-outline" size={18} color="#7C3AED" />
-            </TouchableOpacity>
+            <Tooltip text="Save as Template — capture what's built so far (Private / Shared / Public)">
+              <TouchableOpacity
+                onPress={() => { setSaveTplInitialTab('template'); setSaveTplModalVisible(true); }}
+                style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 4, backgroundColor: '#F5F3FF' }}
+                accessibilityLabel="Save as Template"
+                testID="prr-save-as-template"
+              >
+                <Ionicons name="bookmark-outline" size={18} color="#7C3AED" />
+              </TouchableOpacity>
+            </Tooltip>
           )}
           <TouchableOpacity
             onPress={() => goHome(router)}
@@ -457,6 +465,7 @@ function PRRDecisionDetailInner() {
         onClose={() => setSaveTplModalVisible(false)}
         decision={decision as any}
         currentStep={currentStep}
+        initialTab={saveTplInitialTab}
         onCloneSuccess={() => setSaveTplModalVisible(false)}
         onTemplateSuccess={() => setSaveTplModalVisible(false)}
       />

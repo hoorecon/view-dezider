@@ -18,6 +18,7 @@ import { showAlert } from '../../src/utils/alert';
 import { safeBack } from '../../src/utils/navigation';
 import { useAuthStore } from '../../src/store/authStore';
 import StoreRating from '../../src/components/StoreRating';
+import PolicyConsentModal from '../../src/components/PolicyConsentModal';
 
 const MODE_INFO: Record<string, { label: string; desc: string; icon: string }> = {
   full: { label: 'Full clone', icon: 'layers',
@@ -36,6 +37,7 @@ export default function DeciderStoreDetail() {
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<string>('full');
   const [cloning, setCloning] = useState(false);
+  const [consentModalMode, setConsentModalMode] = useState<string | null>(null);
   const resumed = useRef(false);
 
   const load = useCallback(async () => {
@@ -79,17 +81,21 @@ export default function DeciderStoreDetail() {
       router.push(`/auth/login?next=${encodeURIComponent(backTo)}` as any);
       return;
     }
-    doClone(m);
-  }, [isAuthenticated, id, doClone, router]);
+    // Authenticated → gate on policy consent BEFORE cloning.
+    setConsentModalMode(m);
+  }, [isAuthenticated, id, router]);
 
   // Post-login auto-resume: arrived back with ?use=<mode> and now authenticated.
   useEffect(() => {
     if (authLoading || resumed.current) return;
     if (use && isAuthenticated && t) {
       resumed.current = true;
-      doClone(String(use));
+      // Even the post-auth auto-resume passes through the consent modal
+      // so no user ever proceeds without agreeing to the publisher's
+      // policies — including when the "Use" click happened pre-login.
+      setConsentModalMode(String(use));
     }
-  }, [use, isAuthenticated, authLoading, t, doClone]);
+  }, [use, isAuthenticated, authLoading, t]);
 
   if (loading) {
     return <SafeAreaView style={s.root}><ActivityIndicator color="#4F46E5" style={{ marginTop: 60 }} /></SafeAreaView>;
@@ -198,6 +204,17 @@ export default function DeciderStoreDetail() {
           )}
         </TouchableOpacity>
       </View>
+      <PolicyConsentModal
+        visible={!!consentModalMode}
+        onClose={() => { setConsentModalMode(null); resumed.current = false; }}
+        onAgree={() => {
+          const m = consentModalMode || 'full';
+          setConsentModalMode(null);
+          doClone(m);
+        }}
+        item={t}
+        actionLabel={isApp ? 'Use this Finder' : 'Use this template'}
+      />
     </SafeAreaView>
   );
 }

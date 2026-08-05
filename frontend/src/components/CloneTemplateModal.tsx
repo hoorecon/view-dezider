@@ -53,6 +53,8 @@ const COPY_LEVELS = [
     label: 'Copy Prioritization',
     icon: 'bar-chart-outline' as const,
     description: 'Factors + Classification + Ratings',
+    // At Step 5 the description dynamically upgrades to note the extra
+    // Realistic-Gap adjustment carried over. See renderCopyLevel().
     color: '#EC4899',
   },
   {
@@ -453,8 +455,20 @@ export default function CloneTemplateModal({
                         {type.label}{locked ? ` · Step ${COPY_LEVEL_MIN_STEP[type.key]}+` : ''}
                       </Text>
                       <Text style={styles.optionDesc}>
-                        {locked ? `Available after Step ${COPY_LEVEL_MIN_STEP[type.key]}` : type.description}
+                        {locked
+                          ? `Available after Step ${COPY_LEVEL_MIN_STEP[type.key]}`
+                          : (type.key === 'prioritization' && currentStep && currentStep >= 5)
+                            ? 'Factors + Classification + Ratings + Realistic-Gap adjustment (from Step 5)'
+                            : type.description}
                       </Text>
+                      {/* Step 5-specific hint: even if we're technically at
+                          Step 4, tell the user *what extra* they'd gain if
+                          they wait until Step 5 to save. */}
+                      {type.key === 'prioritization' && !locked && currentStep === 4 && (
+                        <Text style={[styles.optionDesc, { marginTop: 3, fontStyle: 'italic', color: '#B45309' }]}>
+                          Complete Step 5 to also carry the Realistic-Gap adjustment.
+                        </Text>
+                      )}
                     </View>
                     <View style={[
                       styles.radio,
