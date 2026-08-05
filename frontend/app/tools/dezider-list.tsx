@@ -26,6 +26,7 @@ import PaywallGate from '../../src/components/PaywallGate';
 import TimestampLine from '../../src/components/TimestampLine';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
+import Tooltip from '../../src/components/Tooltip';
 
 interface DecisionItem {
   id: string;
@@ -67,6 +68,9 @@ export default function DeziderListScreen() {
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
   const [cloneTarget, setCloneTarget] = useState<DecisionItem | null>(null);
+  // Which tab the CloneTemplateModal should land on. Explicit "Clone" icon
+  // pre-selects Clone; explicit "Template" icon pre-selects Template.
+  const [cloneModalInitialTab, setCloneModalInitialTab] = useState<'clone' | 'template'>('clone');
 
   const fetchItems = async () => {
     try {
@@ -136,13 +140,16 @@ export default function DeziderListScreen() {
         <TouchableOpacity onPress={() => goHome(router)} style={[styles.backBtn, { marginRight: 8 }]} accessibilityLabel="Home">
           <Ionicons name="home" size={20} color="#FFF" />
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setTemplateBrowserVisible(true)}
-          style={[styles.backBtn, { marginRight: 8 }]}
-          accessibilityLabel="Use a Template"
-        >
-          <Ionicons name="bookmark-outline" size={20} color="#FFF" />
-        </TouchableOpacity>
+        <Tooltip text="Open Template Library — browse Authorized / Mine / Shared / Public templates">
+          <TouchableOpacity
+            onPress={() => setTemplateBrowserVisible(true)}
+            style={[styles.backBtn, { marginRight: 8 }]}
+            accessibilityLabel="Use a Template"
+            testID="dezider-list-open-template-library"
+          >
+            <Ionicons name="bookmark-outline" size={20} color="#FFF" />
+          </TouchableOpacity>
+        </Tooltip>
         <PaywallGate module="dezider">
           <TouchableOpacity
             style={styles.createBtnHeader}
@@ -248,15 +255,28 @@ export default function DeziderListScreen() {
                   <View style={styles.listCardFooter}>
                     <TimestampLine entity={d} compact />
                     <View style={{ flex: 1 }} />
-                    <TouchableOpacity
-                      style={styles.cloneBtn}
-                      onPress={(e) => { e.stopPropagation(); setCloneTarget(d); setCloneModalVisible(true); }}
-                      hitSlop={10}
-                      testID={`clone-decision-${d.id}`}
-                      accessibilityLabel="Clone this decision"
-                    >
-                      <Ionicons name="copy-outline" size={16} color="#6366F1" />
-                    </TouchableOpacity>
+                    <Tooltip text="Clone as a new decision — copy factors, options and/or assessment">
+                      <TouchableOpacity
+                        style={styles.cloneBtn}
+                        onPress={(e) => { e.stopPropagation(); setCloneTarget(d); setCloneModalInitialTab('clone'); setCloneModalVisible(true); }}
+                        hitSlop={10}
+                        testID={`clone-decision-${d.id}`}
+                        accessibilityLabel="Clone this decision"
+                      >
+                        <Ionicons name="copy-outline" size={16} color="#6366F1" />
+                      </TouchableOpacity>
+                    </Tooltip>
+                    <Tooltip text="Save as Template (Private / Shared / Public)">
+                      <TouchableOpacity
+                        style={styles.cloneBtn}
+                        onPress={(e) => { e.stopPropagation(); setCloneTarget(d); setCloneModalInitialTab('template'); setCloneModalVisible(true); }}
+                        hitSlop={10}
+                        testID={`template-decision-${d.id}`}
+                        accessibilityLabel="Save this decision as a template"
+                      >
+                        <Ionicons name="bookmark-outline" size={16} color="#8B5CF6" />
+                      </TouchableOpacity>
+                    </Tooltip>
                     <TouchableOpacity
                       style={styles.deleteBtn}
                       onPress={(e) => { e.stopPropagation(); handleDelete(d.id); }}
@@ -283,6 +303,7 @@ export default function DeziderListScreen() {
           visible={cloneModalVisible}
           onClose={() => { setCloneModalVisible(false); setCloneTarget(null); }}
           decision={cloneTarget}
+          initialTab={cloneModalInitialTab}
           onCloneSuccess={(newId: string) => {
             setCloneModalVisible(false);
             setCloneTarget(null);

@@ -20,6 +20,15 @@ interface CloneTemplateModalProps {
   decision: any;
   onCloneSuccess: (newId: string) => void;
   onTemplateSuccess?: () => void;
+  /** Current step (1..10) of the parent PRR flow. Used to disable copy
+   *  levels the step does not yet support. Step 2 → Factors only;
+   *  Step 6 → up to Options; Step 7+ → all levels. Optional — when
+   *  omitted, every level is enabled (legacy behaviour). */
+  currentStep?: number;
+  /** Which tab to open on. Defaults to 'clone'. Set to 'template' from the
+   *  MyDezider list-page bookmark icon so the user lands directly on the
+   *  Save-as-Template workflow. */
+  initialTab?: 'clone' | 'template';
 }
 
 // Shared 5-level copy depth — used identically by BOTH the Clone and Template tabs.
@@ -62,6 +71,30 @@ const COPY_LEVELS = [
   },
 ];
 
+// Which copy levels are meaningful at which step. `factors` = Step 2 minimum;
+// `classification` = Step 3; `prioritization` = Step 4/5; `options` = Step 6;
+// `assessment` = Step 7 onwards (once option-vs-factor cells are populated).
+const COPY_LEVEL_MIN_STEP: Record<string, number> = {
+  factors: 2,
+  classification: 3,
+  prioritization: 4,
+  options: 6,
+  assessment: 7,
+};
+
+// Default standard policies pre-filled when publishing publicly. Editable in
+// the modal before Save. Kept short and India-context aware.
+const DEFAULT_PRIVACY_POLICY =
+  'By publishing this template publicly you agree that any lead-generation contact ' +
+  'details you provide (name, email, WhatsApp) may be shown to interested viewers ' +
+  'so they can reach out to you. JELCOS AI does not sell or share this data with ' +
+  'third parties and stores it only for the purpose of connecting viewers with you.';
+const DEFAULT_TERMS_OF_USE =
+  'This template is offered as a starting point for decision-making. The publisher ' +
+  'is not liable for outcomes of any decision made using this template. Viewers may ' +
+  'clone and modify the template for personal use; commercial re-distribution requires ' +
+  'written permission from the publisher.';
+
 type Tab = 'clone' | 'template';
 
 // Template names are auto-prefixed by visibility so they are easy to tell apart.
@@ -103,14 +136,31 @@ export default function CloneTemplateModal({
   decision,
   onCloneSuccess,
   onTemplateSuccess,
+  currentStep,
+  initialTab,
 }: CloneTemplateModalProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('clone');
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab || 'clone');
   const [selectedCloneLevel, setSelectedCloneLevel] = useState('prioritization');
   const [selectedTemplateType, setSelectedTemplateType] = useState('options');
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [visibility, setVisibility] = useState('private');
   const [sharedEmails, setSharedEmails] = useState('');
+
+  // Lead-Gen fields (visible only when visibility === 'public') — same schema
+  // is used for BOTH Public Decision Templates AND Decider Apps.
+  const [leadName, setLeadName] = useState('');
+  const [leadOrg, setLeadOrg] = useState('');
+  const [leadDesignation, setLeadDesignation] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadWhatsapp, setLeadWhatsapp] = useState('');
+  const [leadMobile, setLeadMobile] = useState('');
+  const [leadRedirectUrl, setLeadRedirectUrl] = useState('');
+
+  // Policy consent (visible only when visibility === 'public').
+  const [privacyPolicy, setPrivacyPolicy] = useState(DEFAULT_PRIVACY_POLICY);
+  const [termsOfUse, setTermsOfUse] = useState(DEFAULT_TERMS_OF_USE);
+  const [policyAgreed, setPolicyAgreed] = useState(false);
 
   // A flow counts as "Completed" only when the unified status model says so.
   // The Solution Box / API returns `status === 'completed'` (and progress_pct === 100)
@@ -131,11 +181,38 @@ export default function CloneTemplateModal({
 
   React.useEffect(() => {
     if (visible) {
+      // Respect the caller's preferred starting tab on every open.
+      if (initialTab && initialTab !== activeTab) setActiveTab(initialTab);
       setTitle(getDefaultTitle());
+      // Prefill lead-gen contact from the current user's profile when Public
+      // is selected — user can edit as needed. Uses decision.owner_* fields
+      // populated by the backend on /decisions/{id}.
+      if (!leadName && decision?.owner_name) setLeadName(decision.owner_name);
+      if (!leadEmail && decision?.owner_email) setLeadEmail(decision.owner_email);
       // If a non-completed flow had Public left selected, fall back to Private.
       if (!isCompleted && visibility === 'public') setVisibility('private');
+      // If the current step doesn't support the previously-selected copy
+      // level, downgrade to the highest one that IS supported.
+      if (currentStep) {
+        const min = COPY_LEVEL_MIN_STEP[selectedTemplateType] || 2;
+        if (currentStep < min) {
+          // Find the deepest level allowed at this step.
+          const allowed = [...COPY_LEVELS]
+            .reverse()
+            .find((l) => currentStep >= (COPY_LEVEL_MIN_STEP[l.key] || 2));
+          if (allowed) setSelectedTemplateType(allowed.key);
+        }
+      }
     }
-  }, [visible, activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, activeTab, currentStep]);
+
+  // Convenience — is a given copy level unavailable at the current step?
+  const isLevelLocked = (key: string): boolean => {
+    if (!currentStep) return false;
+    const min = COPY_LEVEL_MIN_STEP[key];
+    return typeof min === 'number' && currentStep < min;
+  };
 
   const handleClone = async () => {
     if (!title.trim()) {
@@ -175,7 +252,29 @@ export default function CloneTemplateModal({
       );
       return;
     }
-    
+    // Lead-Gen + policy validation is required only when publishing publicly.
+    if (visibility === 'public') {
+      if (!leadName.trim() || !leadEmail.trim() || !leadWhatsapp.trim()) {
+        showAlert(
+          'Contact details required',
+          'Public templates need a contact person name, email and WhatsApp number so interested viewers can reach out to you.'
+        );
+        return;
+      }
+      if (!policyAgreed) {
+        showAlert('Policies', 'Please agree to the Privacy Policy and Terms of Use before publishing.');
+        return;
+      }
+    }
+    // Guard against saving a level the current step cannot back with real data.
+    if (currentStep && isLevelLocked(selectedTemplateType)) {
+      showAlert(
+        'Not available at this step',
+        `"${COPY_LEVELS.find((l) => l.key === selectedTemplateType)?.label}" needs data from a later step. Pick a level supported at Step ${currentStep}.`
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const shared_with = visibility === 'shared'
@@ -186,12 +285,30 @@ export default function CloneTemplateModal({
       const prefix = TEMPLATE_PREFIXES[visibility] || TEMPLATE_PREFIXES.private;
       const finalName = (prefix + stripTemplatePrefix(title.trim())).trim();
 
-      await api.post(`/decisions/${decision.id}/save-as-template`, {
+      const payload: any = {
         name: finalName,
         template_type: selectedTemplateType,
         visibility,
         shared_with,
-      });
+      };
+      if (visibility === 'public') {
+        payload.lead_gen = {
+          contact_name: leadName.trim(),
+          organization: leadOrg.trim(),
+          designation: leadDesignation.trim(),
+          email: leadEmail.trim(),
+          whatsapp: leadWhatsapp.trim(),
+          mobile: leadMobile.trim(),
+          redirect_url: leadRedirectUrl.trim(),
+        };
+        payload.policies = {
+          privacy_policy: privacyPolicy.trim(),
+          terms_of_use: termsOfUse.trim(),
+          agreed_at: new Date().toISOString(),
+        };
+      }
+
+      await api.post(`/decisions/${decision.id}/save-as-template`, payload);
       onTemplateSuccess?.();
       onClose();
       const visLabel = visibility === 'public' ? 'publicly' : visibility === 'shared' ? `with ${shared_with.length} account(s)` : 'privately';
@@ -298,33 +415,58 @@ export default function CloneTemplateModal({
             ) : (
               <View style={styles.optionsSection}>
                 <Text style={styles.sectionLabel}>What to copy?</Text>
-                {COPY_LEVELS.map((type) => (
+                {currentStep ? (
+                  <Text style={styles.sectionSubLabel}>
+                    Some levels are disabled — the data they need is added in later steps. You&apos;re on Step {currentStep}.
+                  </Text>
+                ) : null}
+                {COPY_LEVELS.map((type) => {
+                  const locked = isLevelLocked(type.key);
+                  const isActive = selectedTemplateType === type.key && !locked;
+                  return (
                   <TouchableOpacity
                     key={type.key}
+                    activeOpacity={locked ? 1 : 0.7}
                     style={[
                       styles.optionCard,
-                      selectedTemplateType === type.key && styles.optionCardSelected,
-                      selectedTemplateType === type.key && { borderColor: type.color },
+                      isActive && styles.optionCardSelected,
+                      isActive && { borderColor: type.color },
+                      locked && styles.optionCardLocked,
                     ]}
-                    onPress={() => setSelectedTemplateType(type.key)}
+                    onPress={() => {
+                      if (locked) {
+                        showAlert(
+                          'Not available at this step',
+                          `${type.label} needs data added in Step ${COPY_LEVEL_MIN_STEP[type.key]}. Continue the flow to unlock this option.`
+                        );
+                        return;
+                      }
+                      setSelectedTemplateType(type.key);
+                    }}
+                    testID={`template-copy-${type.key}${locked ? '-locked' : ''}`}
                   >
                     <View style={[styles.optionIcon, { backgroundColor: `${type.color}15` }]}>
-                      <Ionicons name={type.icon} size={20} color={type.color} />
+                      <Ionicons name={locked ? 'lock-closed-outline' : type.icon} size={20} color={locked ? COLORS.textMuted : type.color} />
                     </View>
                     <View style={styles.optionInfo}>
-                      <Text style={styles.optionLabel}>{type.label}</Text>
-                      <Text style={styles.optionDesc}>{type.description}</Text>
+                      <Text style={[styles.optionLabel, locked && { color: COLORS.textMuted }]}>
+                        {type.label}{locked ? ` · Step ${COPY_LEVEL_MIN_STEP[type.key]}+` : ''}
+                      </Text>
+                      <Text style={styles.optionDesc}>
+                        {locked ? `Available after Step ${COPY_LEVEL_MIN_STEP[type.key]}` : type.description}
+                      </Text>
                     </View>
                     <View style={[
                       styles.radio,
-                      selectedTemplateType === type.key && { borderColor: type.color, backgroundColor: type.color },
+                      isActive && { borderColor: type.color, backgroundColor: type.color },
                     ]}>
-                      {selectedTemplateType === type.key && (
+                      {isActive && (
                         <Ionicons name="checkmark" size={14} color="#FFF" />
                       )}
                     </View>
                   </TouchableOpacity>
-                ))}
+                  );
+                })}
 
                 {/* Visibility Selector */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Who can see this?</Text>
@@ -386,6 +528,44 @@ export default function CloneTemplateModal({
                           autoCapitalize="none"
                           keyboardType="email-address"
                         />
+                      </View>
+                    )}
+
+                    {/* Public-only: Lead-Gen contact + Policy consent. Same
+                        block is reused for Public Decider Apps (see the Apps
+                        publish flow). */}
+                    {opt.key === 'public' && visibility === 'public' && (
+                      <View style={styles.publicExtras}>
+                        <Text style={styles.publicExtrasHead}>Lead-Gen · How interested viewers reach out to you</Text>
+                        <TextInput style={styles.leadInput} value={leadName} onChangeText={setLeadName}
+                          placeholder="Contact person name *" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.leadInput} value={leadOrg} onChangeText={setLeadOrg}
+                          placeholder="Organization" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.leadInput} value={leadDesignation} onChangeText={setLeadDesignation}
+                          placeholder="Designation" placeholderTextColor={COLORS.textMuted} />
+                        <TextInput style={styles.leadInput} value={leadEmail} onChangeText={setLeadEmail}
+                          placeholder="Email *" placeholderTextColor={COLORS.textMuted}
+                          autoCapitalize="none" keyboardType="email-address" />
+                        <TextInput style={styles.leadInput} value={leadWhatsapp} onChangeText={setLeadWhatsapp}
+                          placeholder="WhatsApp number *" placeholderTextColor={COLORS.textMuted}
+                          keyboardType="phone-pad" />
+                        <TextInput style={styles.leadInput} value={leadMobile} onChangeText={setLeadMobile}
+                          placeholder="Contact mobile number" placeholderTextColor={COLORS.textMuted}
+                          keyboardType="phone-pad" />
+                        <TextInput style={styles.leadInput} value={leadRedirectUrl} onChangeText={setLeadRedirectUrl}
+                          placeholder="Redirection link (opens in new tab)" placeholderTextColor={COLORS.textMuted}
+                          autoCapitalize="none" keyboardType="url" />
+
+                        <Text style={[styles.publicExtrasHead, { marginTop: 12 }]}>Policies · Editable, pre-filled with standard copy</Text>
+                        <Text style={styles.policyLabel}>Privacy Policy</Text>
+                        <TextInput style={styles.policyInput} value={privacyPolicy} onChangeText={setPrivacyPolicy} multiline />
+                        <Text style={[styles.policyLabel, { marginTop: 8 }]}>Terms of Use</Text>
+                        <TextInput style={styles.policyInput} value={termsOfUse} onChangeText={setTermsOfUse} multiline />
+
+                        <TouchableOpacity style={styles.consentRow} onPress={() => setPolicyAgreed(!policyAgreed)} testID="template-policy-consent">
+                          <Ionicons name={policyAgreed ? 'checkbox' : 'square-outline'} size={20} color={policyAgreed ? COLORS.primary : COLORS.textMuted} />
+                          <Text style={styles.consentText}>I agree to the Privacy Policy and Terms of Use above.</Text>
+                        </TouchableOpacity>
                       </View>
                     )}
                   </React.Fragment>
@@ -654,5 +834,66 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     minHeight: 60,
     textAlignVertical: 'top',
+  },
+  optionCardLocked: {
+    opacity: 0.5,
+    backgroundColor: '#F8FAFC',
+  },
+  publicExtras: {
+    marginTop: 10,
+    marginBottom: 6,
+    padding: 12,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    gap: 6,
+  },
+  publicExtrasHead: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#065F46',
+    marginBottom: 4,
+  },
+  leadInput: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 13.5,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  policyLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  policyInput: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 12.5,
+    color: COLORS.textSecondary,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    minHeight: 60,
+    textAlignVertical: 'top',
+    lineHeight: 17,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 6,
+  },
+  consentText: {
+    fontSize: 12.5,
+    color: '#065F46',
+    fontWeight: '600',
+    flex: 1,
   },
 });

@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -67,6 +68,16 @@ function PRRDecisionDetailInner() {
   const [showCallModal, setShowCallModal] = useState(false);
   const [saveTplModalVisible, setSaveTplModalVisible] = useState(false);
   const { isOn: isFeatureOn } = useFeatureGate();
+
+  // Listen for Step 10's "Save as Template" button press. Uses
+  // DeviceEventEmitter so the child step can trigger the shared modal
+  // without threading a callback through DecisionContext.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('prr-open-save-template', () => {
+      setSaveTplModalVisible(true);
+    });
+    return () => sub.remove();
+  }, []);
 
   const handleSubmitContribution = async () => {
     const ok = await submitContribution();
@@ -445,6 +456,7 @@ function PRRDecisionDetailInner() {
         visible={saveTplModalVisible}
         onClose={() => setSaveTplModalVisible(false)}
         decision={decision as any}
+        currentStep={currentStep}
         onCloneSuccess={() => setSaveTplModalVisible(false)}
         onTemplateSuccess={() => setSaveTplModalVisible(false)}
       />

@@ -2,11 +2,12 @@
 
 import uuid
 import logging
+from typing import Any, Dict
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends
 from core.database import db
 from core.auth import get_current_user
-from models.decisions_models import SaveTemplateRequest, UseTemplateRequest
+from models.decisions_models import SaveTemplateRequest, UseTemplateRequest, TemplateContentUpdate
 from .services import consume_entitlement
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,14 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
         "source_decision_title": original.get("title", ""),
         "context": original.get("context", ""), "factors": factors,
         "options": options, "created_at": now,
+        # Carry the source decision's editorial metadata so downstream store
+        # cards (life_area, category, decision_type) render correctly.
+        "life_area": original.get("life_area") or original.get("folder") or "",
+        "category": original.get("category") or "",
+        "decision_type": original.get("decision_type") or "",
+        # Public-only publisher metadata & policy consent.
+        "lead_gen": (data.lead_gen.dict() if data.lead_gen else None),
+        "policies": (data.policies.dict() if data.policies else None),
     }
     await db.templates.insert_one(template)
     # Mirror PUBLIC templates into the Decider Store so they show under the
@@ -142,6 +151,10 @@ async def _mirror_template_to_store(template: dict) -> None:
             "created_by_name": template.get("created_by_name", ""),
             "created_at": template.get("created_at", now),
             "updated_at": now,
+            # Attach publisher lead-gen + agreed policies so store viewers can
+            # see who to contact + what they're agreeing to when using it.
+            "lead_gen": template.get("lead_gen") or {},
+            "policies": template.get("policies") or {},
         },
          "$setOnInsert": {"install_count": 0}},
         upsert=True,
@@ -158,21 +171,36 @@ async def _unmirror_template_from_store(template_id: str) -> None:
 async def get_templates(user: dict = Depends(get_current_user)):
     user_email = user.get("email", "").lower()
     user_id = user["user_id"]
-    all_templates = await db.templates.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    all_templates = await db.templates.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     my_templates, shared_templates, public_templates, authorized_templates = [], [], [], []
     for t in all_templates:
         visibility = t.get("visibility", "private")
         created_by = t.get("created_by", "")
         shared_with = [e.lower() for e in t.get("shared_with", [])]
-        is_authorized = t.get("authorized", False)
+        is_authorized = t.get("authorized", False) or t.get("is_official", False)
+
+        # Authorized bucket — editorial / admin-published templates.
         if is_authorized and visibility == "public":
             authorized_templates.append(t)
+
+        # Mine — anything I created (regardless of visibility).
         if created_by == user_id:
             my_templates.append(t)
-        elif visibility == "shared" and user_email in shared_with:
+
+        # Shared — visibility=shared and I'm on the share list.
+        if visibility == "shared" and user_email in shared_with:
             shared_templates.append(t)
-        elif visibility == "public" and created_by != user_id and not is_authorized:
+
+        # Public — ANY template with visibility=public. This includes:
+        #   • my own public templates (so I can verify what others see)
+        #   • other users' public templates
+        #   • admin / system authorized public templates (10 founder pack etc.)
+        # Fixes the "my public template shows under Mine but not under Public"
+        # + "10 admin templates in /decider-store missing from Templates→Public"
+        # bugs. Deduping happens client-side by template id.
+        if visibility == "public":
             public_templates.append(t)
+
     return {"my_templates": my_templates, "shared_templates": shared_templates,
             "public_templates": public_templates, "authorized_templates": authorized_templates}
 
@@ -291,3 +319,55 @@ async def update_template(template_id: str, data: SaveTemplateRequest, user: dic
     except Exception as e:
         logger.warning("mirror sync on update failed: %s", str(e)[:160])
     return {"message": "Template updated successfully"}
+
+
+# ────────────────────────────────────────────────────────────────────
+# PATCH — edit template content (Steps 1..7) OR just flip visibility.
+# Handles issues #6 (Private ↔ Public ↔ Shared toggle) and #7 (edit the
+# actual factor / option / classification / prioritization content of a
+# saved template) with a single endpoint.
+# ────────────────────────────────────────────────────────────────────
+@router.patch("/templates/{template_id}")
+async def patch_template(template_id: str, data: TemplateContentUpdate, user: dict = Depends(get_current_user)):
+    template = await db.templates.find_one({"id": template_id, "created_by": user["user_id"]}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found or not authorized")
+
+    # Downgrading TO public requires the same guard as save-as-template.
+    payload = data.dict(exclude_unset=True)
+    new_visibility = payload.get("visibility", template.get("visibility", "private"))
+    if new_visibility == "public" and template.get("visibility") != "public":
+        # Only require lead-gen block if not already present.
+        lg = payload.get("lead_gen") or template.get("lead_gen") or {}
+        if not (lg.get("contact_name") and lg.get("email") and lg.get("whatsapp")):
+            raise HTTPException(
+                status_code=400,
+                detail="Public templates need contact name, email and WhatsApp in lead_gen block.",
+            )
+
+    update_fields: Dict[str, Any] = {}
+    for key in ("name", "visibility", "context", "factors", "options", "formulas",
+                "equal_weightage", "life_area", "category", "decision_type"):
+        if key in payload and payload[key] is not None:
+            update_fields[key] = payload[key]
+    if "shared_with" in payload and payload["shared_with"] is not None:
+        update_fields["shared_with"] = [e.strip().lower() for e in payload["shared_with"] if e.strip()]
+    if "lead_gen" in payload and payload["lead_gen"] is not None:
+        update_fields["lead_gen"] = payload["lead_gen"]
+    if "policies" in payload and payload["policies"] is not None:
+        update_fields["policies"] = payload["policies"]
+    update_fields["updated_at"] = datetime.now(timezone.utc)
+
+    await db.templates.update_one({"id": template_id}, {"$set": update_fields})
+
+    # Sync the Decider Store mirror row: (a) upsert if now public,
+    # (b) drop if no longer public.
+    try:
+        fresh = await db.templates.find_one({"id": template_id}, {"_id": 0})
+        if fresh and fresh.get("visibility") == "public":
+            await _mirror_template_to_store(fresh)
+        else:
+            await _unmirror_template_from_store(template_id)
+    except Exception as e:
+        logger.warning("mirror sync on patch failed: %s", str(e)[:160])
+    return {"message": "Template updated", "updated_fields": list(update_fields.keys())}

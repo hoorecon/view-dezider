@@ -233,11 +233,50 @@ class CloneDecisionRequest(BaseModel):
 # Decision Templates
 # ────────────────────────────────────────────
 
+class LeadGenInfo(BaseModel):
+    """Publisher-facing contact block attached to Public templates & Public
+    Decider Apps so interested viewers can reach out."""
+    contact_name: Optional[str] = None
+    organization: Optional[str] = None
+    designation: Optional[str] = None
+    email: Optional[str] = None
+    whatsapp: Optional[str] = None
+    mobile: Optional[str] = None
+    redirect_url: Optional[str] = None
+
+
+class PolicyBlock(BaseModel):
+    privacy_policy: Optional[str] = None
+    terms_of_use: Optional[str] = None
+    agreed_at: Optional[str] = None
+
+
 class SaveTemplateRequest(BaseModel):
     name: str
     template_type: str = "options"
     visibility: str = "private"
     shared_with: List[str] = []
+    lead_gen: Optional[LeadGenInfo] = None
+    policies: Optional[PolicyBlock] = None
+
+
+class TemplateContentUpdate(BaseModel):
+    """PATCH-style payload for editing a saved template's content & metadata
+    (used by the "Edit template" flow in MyDezider → Template Library → Mine).
+    Every field is optional; only the ones you send get patched."""
+    name: Optional[str] = None
+    visibility: Optional[str] = None
+    shared_with: Optional[List[str]] = None
+    context: Optional[str] = None
+    factors: Optional[List[Dict[str, Any]]] = None
+    options: Optional[List[Dict[str, Any]]] = None
+    formulas: Optional[List[Dict[str, Any]]] = None
+    equal_weightage: Optional[bool] = None
+    lead_gen: Optional[LeadGenInfo] = None
+    policies: Optional[PolicyBlock] = None
+    life_area: Optional[str] = None
+    category: Optional[str] = None
+    decision_type: Optional[str] = None
 
 
 class UseTemplateRequest(BaseModel):

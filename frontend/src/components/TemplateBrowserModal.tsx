@@ -14,6 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
+import TemplateEditModal from './TemplateEditModal';
+import Tooltip from './Tooltip';
 
 // Cross-platform confirm that works on web + mobile
 const confirmAction = (title: string, message: string, onConfirm: () => void) => {
@@ -82,6 +84,8 @@ export default function TemplateBrowserModal({
   const [importing, setImporting] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  // Inline template editor for the "Mine" tab.
+  const [editTarget, setEditTarget] = useState<Template | null>(null);
 
   const isAdmin = ['admin', 'co_admin', 'super_admin'].includes(userRole);
 
@@ -442,12 +446,23 @@ export default function TemplateBrowserModal({
                         )}
                         {/* Delete button for own templates */}
                         {activeTab === 'my' && (
-                          <TouchableOpacity
-                            onPress={() => handleDeleteTemplate(template)}
-                            style={styles.deleteBtn}
-                          >
-                            <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-                          </TouchableOpacity>
+                          <>
+                            <Tooltip text="Edit this template — name, factors, options, visibility, lead-gen & policies">
+                              <TouchableOpacity
+                                onPress={() => setEditTarget(template)}
+                                style={styles.deleteBtn}
+                                testID={`template-edit-${template.id}`}
+                              >
+                                <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                              </TouchableOpacity>
+                            </Tooltip>
+                            <TouchableOpacity
+                              onPress={() => handleDeleteTemplate(template)}
+                              style={styles.deleteBtn}
+                            >
+                              <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                            </TouchableOpacity>
+                          </>
                         )}
                       </View>
                     </View>
@@ -487,6 +502,14 @@ export default function TemplateBrowserModal({
           )}
         </View>
       </View>
+
+      {/* Inline template editor — Mine tab pencil icon opens this. */}
+      <TemplateEditModal
+        visible={!!editTarget}
+        template={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => { setEditTarget(null); fetchTemplates(); }}
+      />
     </Modal>
   );
 }

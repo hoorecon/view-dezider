@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, TextInput, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, TextInput, Platform, DeviceEventEmitter } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -331,32 +331,18 @@ export default function Step10() {
               style={styles.nextButton}
             />
             <TouchableOpacity
-              onPress={async () => {
-                try {
-                  const token = await AsyncStorage.getItem('session_token');
-                  const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
-                  const resp = await fetch(`${baseUrl}/api/decision-templates`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({
-                      name: decision.title,
-                      life_area: decision.life_area || decision.folder || '',
-                      decision_type: decision.decision_type || '',
-                      description: decision.context,
-                      factors: decision.factors,
-                    }),
-                  });
-                  const data = await resp.json();
-                  if (data.is_approved) {
-                    Alert.alert('Saved', 'Template published successfully!');
-                  } else {
-                    Alert.alert('Submitted', 'Template submitted for admin review.');
-                  }
-                } catch (err) {
-                  Alert.alert('Error', 'Failed to save template');
-                }
+              onPress={() => {
+                // Route to the shared CloneTemplateModal (owned by the PRR
+                // screen) via DeviceEventEmitter so this button uses the
+                // same save flow as the header bookmark icon — including
+                // visibility, lead-gen and policy consent when Public.
+                // Fixes the "Save as Template button below Complete Decision
+                // does nothing" regression.
+                DeviceEventEmitter.emit('prr-open-save-template', { fromStep: 10 });
               }}
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: '#EDE9FE', borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary }}
+              accessibilityLabel="Save as Template"
+              testID="step10-save-as-template"
             >
               <Ionicons name="bookmark-outline" size={16} color={COLORS.primary} />
               <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary }}>Save as Template</Text>
