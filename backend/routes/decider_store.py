@@ -548,7 +548,8 @@ async def update_template(template_id: str, request: Request, user: dict = Depen
     allowed = ["title", "subtitle", "description", "category", "decision_type",
                "cover_icon", "cover_color", "pricing_type", "price_paise", "currency",
                "creator_split_pct", "allowed_clone_modes", "factors", "options", "is_public",
-               "auto_push_on_authorize", "kind", "finder_settings", "catalog_node_id"]
+               "auto_push_on_authorize", "kind", "finder_settings", "catalog_node_id",
+               "lead_gen", "policies"]
     update = {k: body[k] for k in allowed if k in body}
     if "kind" in update and update["kind"] not in ("template", "app"):
         update["kind"] = "template"

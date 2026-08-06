@@ -52,6 +52,8 @@ type Template = {
   price_paise?: number; creator_split_pct?: number; allowed_clone_modes?: string[];
   factors?: Factor[]; options?: any[]; status?: string; is_public?: boolean;
   install_count?: number; kind?: string; finder_settings?: any; catalog_node_id?: string | null;
+  lead_gen?: { contact_name?: string; email?: string; whatsapp?: string; website?: string } | null;
+  policies?: { privacy_policy_url?: string; terms_url?: string } | null;
 };
 
 export default function AdminDeciderStore() {
@@ -87,6 +89,49 @@ export default function AdminDeciderStore() {
 
   // Finder defaults + Landing settings modal
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Per-item Publisher Contact override modal
+  const [pubEditItem, setPubEditItem] = useState<Template | null>(null);
+  const [pubContactName, setPubContactName] = useState('');
+  const [pubEmail, setPubEmail] = useState('');
+  const [pubWhatsapp, setPubWhatsapp] = useState('');
+  const [pubWebsite, setPubWebsite] = useState('');
+  const [pubPrivacyUrl, setPubPrivacyUrl] = useState('');
+  const [pubTermsUrl, setPubTermsUrl] = useState('');
+  const openPublisherEditor = (t: Template) => {
+    setPubEditItem(t);
+    setPubContactName(t.lead_gen?.contact_name || '');
+    setPubEmail(t.lead_gen?.email || '');
+    setPubWhatsapp(t.lead_gen?.whatsapp || '');
+    setPubWebsite(t.lead_gen?.website || '');
+    setPubPrivacyUrl(t.policies?.privacy_policy_url || '');
+    setPubTermsUrl(t.policies?.terms_url || '');
+  };
+  const savePublisherEditor = async () => {
+    if (!pubEditItem) return;
+    setBusy(true);
+    try {
+      await api.put(`/decider-store/${pubEditItem.template_id}`, {
+        lead_gen: {
+          contact_name: pubContactName.trim(),
+          email: pubEmail.trim(),
+          whatsapp: pubWhatsapp.trim(),
+          website: pubWebsite.trim(),
+        },
+        policies: {
+          privacy_policy_url: pubPrivacyUrl.trim(),
+          terms_url: pubTermsUrl.trim(),
+        },
+      });
+      setPubEditItem(null);
+      await load();
+      showAlert('Saved', 'Publisher contact & policies updated for this item.');
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Try again');
+    } finally {
+      setBusy(false);
+    }
+  };
   const [fdMin, setFdMin] = useState('3');
   const [fdMax, setFdMax] = useState('15');
   const [fdTop, setFdTop] = useState('5');
@@ -689,6 +734,11 @@ export default function AdminDeciderStore() {
                   </TouchableOpacity>
                 </Tooltip>
               )}
+              <Tooltip text="Edit Publisher Contact & Policies for this item (overrides the global defaults)">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#EEF2FF' }]} onPress={() => openPublisherEditor(t)}>
+                  <Ionicons name="person-circle" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Publisher</Text>
+                </TouchableOpacity>
+              </Tooltip>
               <Tooltip text="Permanently delete this template/app. This cannot be undone.">
                 <TouchableOpacity style={[s.act, { backgroundColor: '#FEE2E2' }]} onPress={() => remove(t)}>
                   <Ionicons name="trash" size={13} color="#DC2626" /><Text style={[s.actText, { color: '#DC2626' }]}>Delete</Text>
@@ -1174,6 +1224,35 @@ export default function AdminDeciderStore() {
             <TouchableOpacity style={s.createBtn} onPress={saveClassify} disabled={busy}>
               {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.createBtnText}>Save classification</Text>}
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Per-item Publisher Contact & Policies override */}
+      <Modal visible={!!pubEditItem} transparent animationType="slide" onRequestClose={() => setPubEditItem(null)}>
+        <View style={s.overlay}>
+          <View style={s.modalCard}>
+            <View style={s.mHead}>
+              <Text style={s.mTitle}>Publisher Contact · {pubEditItem?.title}</Text>
+              <TouchableOpacity onPress={() => setPubEditItem(null)}><Ionicons name="close" size={22} color="#64748B" /></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              <Text style={s.help}>Overrides the global Publisher Defaults for this specific item. Leave blank to inherit the global defaults.</Text>
+              <Text style={s.secLabel}>👤 Lead-gen contact</Text>
+              <TextInput style={s.input} value={pubContactName} onChangeText={setPubContactName} placeholder="Contact name" placeholderTextColor="#9CA3AF" />
+              <TextInput style={s.input} value={pubEmail} onChangeText={setPubEmail} placeholder="Email" placeholderTextColor="#9CA3AF" autoCapitalize="none" keyboardType="email-address" />
+              <TextInput style={s.input} value={pubWhatsapp} onChangeText={setPubWhatsapp} placeholder="WhatsApp (with country code)" placeholderTextColor="#9CA3AF" keyboardType="phone-pad" />
+              <TextInput style={s.input} value={pubWebsite} onChangeText={setPubWebsite} placeholder="Website (optional)" placeholderTextColor="#9CA3AF" autoCapitalize="none" />
+              <Text style={s.secLabel}>📜 Policies (URLs shown to end-users before Clone)</Text>
+              <TextInput style={s.input} value={pubPrivacyUrl} onChangeText={setPubPrivacyUrl} placeholder="Privacy Policy URL" placeholderTextColor="#9CA3AF" autoCapitalize="none" />
+              <TextInput style={s.input} value={pubTermsUrl} onChangeText={setPubTermsUrl} placeholder="Terms of Use URL" placeholderTextColor="#9CA3AF" autoCapitalize="none" />
+            </ScrollView>
+            <View style={s.mBtns}>
+              <TouchableOpacity style={s.mCancel} onPress={() => setPubEditItem(null)}><Text style={s.mCancelText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={s.mSave} onPress={savePublisherEditor} disabled={busy}>
+                {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.mSaveText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
