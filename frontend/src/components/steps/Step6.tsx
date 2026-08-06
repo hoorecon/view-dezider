@@ -283,6 +283,25 @@ export default function Step6() {
                 {option.ai_rationale ? (
                   <Text style={localStyles.rationale}>{option.ai_rationale}</Text>
                 ) : null}
+                {/* Optional 2-3 line option description — user-editable inline.
+                    Shown on Decider Apps / template flows so users can briefly
+                    understand each finalist before assessment. */}
+                <TextInput
+                  style={localStyles.optDescInput}
+                  placeholder="Add a short description (optional, 2-3 lines) — e.g., key features, pricing tier, best-fit use case…"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={(option as any).description || ''}
+                  onChangeText={(v) => {
+                    const updated = decision.options.map((o) =>
+                      o.id === option.id ? { ...o, description: v } : o
+                    );
+                    saveDecision({ options: updated });
+                  }}
+                  multiline
+                  numberOfLines={2}
+                  maxLength={280}
+                  testID={`step6-opt-desc-${option.id}`}
+                />
               </View>
               <TouchableOpacity onPress={() => removeOption(option.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close-circle" size={22} color={COLORS.error} />
@@ -573,6 +592,13 @@ const localStyles = StyleSheet.create({
   },
   metaChipText: { fontSize: 9, fontWeight: '700', color: '#0369A1' },
   rationale: { fontSize: 11, color: '#64748B', lineHeight: 16, marginTop: 4, fontStyle: 'italic' },
+  optDescInput: {
+    marginTop: 8, backgroundColor: '#F8FAFC', borderRadius: 8,
+    borderWidth: 1, borderColor: '#E2E8F0',
+    paddingHorizontal: 10, paddingVertical: 8,
+    fontSize: 12.5, color: '#0F172A', lineHeight: 17,
+    minHeight: 44, textAlignVertical: 'top',
+  },
   // Modal
   modalOverlay: {
     flex: 1,

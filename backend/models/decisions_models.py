@@ -107,6 +107,11 @@ class DecisionOption(BaseModel):
     # {"entry_id": ..., "label": ...} — UI shows a 🔗 chip that deep-links to
     # the Solution Finder entry (where the detailed Q5 action plan lives).
     sf_ref: Optional[Dict[str, Any]] = None
+    # ── Optional short blurb (2-3 lines) — surfaced in Step 6 (Add Options)
+    # and on Decider Apps so users can briefly understand what each finalist
+    # is before diving into the assessment. Set from the sheet importer OR
+    # edited inline in Step 6.
+    description: Optional[str] = None
 
 
 class PRRDecision(BaseModel):

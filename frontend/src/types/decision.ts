@@ -77,6 +77,7 @@ export interface DecisionOption {
   price_range?: string;                // store item price badge
   rating?: number;                     // store item avg rating badge
   sf_ref?: { entry_id: string; label?: string };  // inserted from a Solution Finder SMART Goal
+  description?: string;                // optional 2-3 line blurb shown in Step 6 & Decider Apps
 }
 
 // A single AI/Store suggestion returned by POST /api/ai/find-best-options
