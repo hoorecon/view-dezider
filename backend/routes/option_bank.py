@@ -55,6 +55,24 @@ async def bank_stats(template_id: str, user: dict = Depends(require_admin)):
             "by_source": by_source}
 
 
+@router.get("/{template_id}/bank/rows")
+async def bank_rows(template_id: str, limit: int = 100000, user: dict = Depends(require_admin)):
+    """Return raw bank rows for bulk-edit download. Flattens `values` into
+    top-level columns so the resulting CSV opens cleanly in Excel/Sheets."""
+    await _template(template_id)
+    docs = await db[BANK].find(
+        {"template_id": template_id}, {"_id": 0}
+    ).to_list(max(1, min(int(limit or 100000), 100000)))
+    rows = []
+    for d in docs:
+        vals = d.get("vals") or d.get("values") or {}
+        flat = {k: v for k, v in d.items() if k not in ("vals", "values")}
+        for k, v in vals.items():
+            flat[f"val__{k}"] = v
+        rows.append(flat)
+    return {"template_id": template_id, "rows": rows, "count": len(rows)}
+
+
 @router.post("/{template_id}/bank/sync-template")
 async def bank_sync_template(template_id: str, user: dict = Depends(require_admin)):
     """Copy the template's embedded options into the bank (values are already

@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Modal, Switch, Linking,
+  ActivityIndicator, Modal, Switch, Linking, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -57,6 +57,11 @@ type Template = {
 export default function AdminDeciderStore() {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
+  // Admin-side view filters: which kind (templates vs apps) and which
+  // moderation bucket to show. Both persist across restarts via just
+  // component state — no need for URL params here.
+  const [adminKindTab, setAdminKindTab] = useState<'template' | 'app'>('template');
+  const [adminVerifFilter, setAdminVerifFilter] = useState<'all' | 'jai_verified' | 'unverified' | 'disapproved'>('all');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -299,11 +304,9 @@ export default function AdminDeciderStore() {
     if (!bankForId) return;
     setBankBusy(true);
     try {
-      const r = await api.get(`/decider-store/${bankForId}/bank/rows`, { params: { limit: 100000 } })
-        .catch(async () => api.get(`/decider-store/${bankForId}/bank`, { params: { limit: 100000 } }));
-      const rows: any[] = r.data?.rows || r.data?.items || [];
-      if (!rows.length) { setBankToast('Bank is empty — nothing to download.'); setTimeout(() => setBankToast(''), 4000); return; }
-      // Union of all keys → column headers, escaping quotes for Excel-safe CSV.
+      const r = await api.get(`/decider-store/${bankForId}/bank/rows`, { params: { limit: 100000 } });
+      const rows: any[] = r.data?.rows || [];
+      if (!rows.length) { setBankToast('Bank is empty — sync template options first.'); setTimeout(() => setBankToast(''), 4000); return; }
       const cols = Array.from(rows.reduce((set: Set<string>, row: any) => {
         Object.keys(row || {}).forEach((k) => set.add(k));
         return set;
@@ -320,13 +323,59 @@ export default function AdminDeciderStore() {
         a.href = url; a.download = `bank_${bankForId}_${Date.now()}.csv`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        setBankToast(`Downloaded ${rows.length} rows — edit in Excel/Sheets and re-import via /bank/ingest/bulk.`);
+        setBankToast(`Downloaded ${rows.length} rows — edit in Excel/Sheets and re-import with the Upload button below.`);
       } else {
-        setBankToast(`Prepared ${rows.length} rows — download not supported on this platform.`);
+        setBankToast(`Prepared ${rows.length} rows.`);
       }
-      setTimeout(() => setBankToast(''), 5000);
+      setTimeout(() => setBankToast(''), 5500);
     } catch (e: any) {
       setBankToast(`Failed — ${e?.response?.data?.detail || 'try again'}`);
+    } finally { setBankBusy(false); }
+  };
+
+  // Import edited CSV back into the bank via /bank/ingest/bulk. The CSV
+  // must carry `name` + `val__<sub_factor_id>` columns (matches the download
+  // export format).
+  const uploadBankCsv = async (file: File) => {
+    if (!bankForId || !file) return;
+    setBankBusy(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length < 2) throw new Error('CSV must have a header row + at least 1 data row');
+      // Simple CSV parser (handles double-quoted commas).
+      const parseCsvLine = (line: string): string[] => {
+        const out: string[] = []; let cur = ''; let inQ = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; continue; }
+          if (ch === '"') { inQ = !inQ; continue; }
+          if (ch === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+          cur += ch;
+        }
+        out.push(cur);
+        return out;
+      };
+      const header = parseCsvLine(lines[0]);
+      const items = lines.slice(1).map((ln) => {
+        const cells = parseCsvLine(ln);
+        const row: any = {}; const values: any = {};
+        header.forEach((h, i) => {
+          const v = cells[i];
+          if (v === undefined) return;
+          if (h.startsWith('val__')) values[h.slice(5)] = v;
+          else row[h] = v;
+        });
+        return { name: row.name || '(unnamed)', description: row.description || '', source_ref: row.source_ref || null, values };
+      });
+      const r = await api.post(`/decider-store/${bankForId}/bank/ingest/bulk`, { items, source: 'bulk' });
+      const d = r.data || {};
+      setBankToast(`Uploaded · +${d.inserted || 0} new, ${d.updated || 0} updated, ${d.skipped || 0} skipped`);
+      setTimeout(() => setBankToast(''), 5500);
+      const st = await api.get(`/decider-store/${bankForId}/bank`);
+      setBankStats(st.data);
+    } catch (e: any) {
+      setBankToast(`Upload failed — ${e?.message || e?.response?.data?.detail || 'try again'}`);
     } finally { setBankBusy(false); }
   };
 
@@ -502,12 +551,44 @@ export default function AdminDeciderStore() {
           )}
         </View>
 
+        {/* 2-tab filter + Verification filter — same pattern as public
+            Decider Store so admins can browse by kind and quickly find
+            Unverified items to review. */}
+        <View style={s.adminTabBar}>
+          <TouchableOpacity style={[s.adminTab, adminKindTab === 'template' && s.adminTabOn]} onPress={() => setAdminKindTab('template')} testID="admin-tab-templates">
+            <Ionicons name="document-text" size={13} color={adminKindTab === 'template' ? '#FFF' : '#4F46E5'} />
+            <Text style={[s.adminTabText, adminKindTab === 'template' && s.adminTabTextOn]}>Decision Templates ({templates.filter(t => t.kind !== 'app').length})</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.adminTab, adminKindTab === 'app' && s.adminTabOn]} onPress={() => setAdminKindTab('app')} testID="admin-tab-apps">
+            <Ionicons name="cube" size={13} color={adminKindTab === 'app' ? '#FFF' : '#4F46E5'} />
+            <Text style={[s.adminTabText, adminKindTab === 'app' && s.adminTabTextOn]}>Decider Apps ({templates.filter(t => t.kind === 'app').length})</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          {(['all', 'jai_verified', 'unverified', 'disapproved'] as const).map((v) => (
+            <TouchableOpacity key={v} style={[s.adminVerifChip, adminVerifFilter === v && s.adminVerifChipOn]} onPress={() => setAdminVerifFilter(v)}>
+              <Text style={[s.adminVerifText, adminVerifFilter === v && s.adminVerifTextOn]}>
+                {v === 'all' ? 'All' : v === 'jai_verified' ? '✓ jAI' : v === 'unverified' ? '⏳ Unv' : '✕ Disap'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* Templates list */}
         {loading ? (
           <ActivityIndicator color="#4F46E5" style={{ marginTop: 24 }} />
-        ) : templates.length === 0 ? (
-          <Text style={s.empty}>No templates yet. Import one above.</Text>
-        ) : templates.map(t => (
+        ) : (() => {
+          const filtered = templates.filter(t => {
+            const kindOk = adminKindTab === 'app' ? t.kind === 'app' : t.kind !== 'app';
+            const ms = (t as any).moderation_status;
+            const verOk = adminVerifFilter === 'all'
+              ? true
+              : adminVerifFilter === 'unverified'
+                ? (!ms || ms === 'unverified')
+                : ms === adminVerifFilter;
+            return kindOk && verOk;
+          });
+          if (filtered.length === 0) return <Text style={s.empty}>No {adminKindTab === 'app' ? 'apps' : 'templates'} match the current filters.</Text>;
+          return filtered.map(t => (
           <View key={t.template_id} style={s.tCard}>
             <View style={s.tHead}>
               <Text style={s.tTitle} numberOfLines={2}>{t.title}</Text>
@@ -607,7 +688,8 @@ export default function AdminDeciderStore() {
               </Tooltip>
             </View>
           </View>
-        ))}
+          ));
+        })()}
       </ScrollView>
 
       {/* Google Sheet URL modal */}
@@ -757,8 +839,35 @@ export default function AdminDeciderStore() {
                 <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#065F46' }]} disabled={bankBusy}
                   onPress={() => downloadBankExcel()}
                   testID="admin-bank-download-xlsx">
-                  <Text style={s.bankBtnText}>⬇ Download Bank as Excel (bulk edit)</Text>
+                  <Text style={s.bankBtnText}>⬇ Download Bank as Excel/CSV (bulk edit)</Text>
                 </TouchableOpacity>
+                {/* Upload edited CSV back. Web-only file picker — hidden
+                    <input> triggered by a styled button. */}
+                {Platform.OS === 'web' && (
+                  <View>
+                    <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#1D4ED8' }]} disabled={bankBusy}
+                      onPress={() => {
+                        try {
+                          // @ts-ignore — DOM only on web
+                          (document.getElementById('bank-upload-input') as HTMLInputElement)?.click();
+                        } catch {}
+                      }} testID="admin-bank-upload-xlsx">
+                      <Text style={s.bankBtnText}>⬆ Upload edited CSV / Excel</Text>
+                    </TouchableOpacity>
+                    {/* @ts-ignore — raw HTML on web only */}
+                    <input
+                      id="bank-upload-input"
+                      type="file"
+                      accept=".csv,text/csv,application/vnd.ms-excel"
+                      style={{ display: 'none' }}
+                      onChange={(e: any) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadBankCsv(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </View>
+                )}
                 <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#059669' }]} disabled={bankBusy}
                   onPress={() => bankAction('sync-template')}>
                   <Text style={s.bankBtnText}>Sync template options → bank</Text>
@@ -1080,6 +1189,15 @@ const s = StyleSheet.create({
   parsedPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: '#F0FDF4', borderRadius: 10, padding: 10 },
   parsedText: { fontSize: 12.5, color: '#166534', fontWeight: '600' },
   empty: { textAlign: 'center', color: '#94A3B8', marginTop: 24 },
+  adminTabBar: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', marginBottom: 8, borderRadius: 10 },
+  adminTab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE' },
+  adminTabOn: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
+  adminTabText: { fontSize: 12, fontWeight: '800', color: '#4F46E5' },
+  adminTabTextOn: { color: '#FFF' },
+  adminVerifChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: 'transparent' },
+  adminVerifChipOn: { backgroundColor: '#065F46' },
+  adminVerifText: { fontSize: 10.5, fontWeight: '800', color: '#334155' },
+  adminVerifTextOn: { color: '#FFF' },
   tCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12 },
   tHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   tTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#0F172A' },
