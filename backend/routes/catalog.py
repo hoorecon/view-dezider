@@ -303,6 +303,32 @@ async def list_nodes(
     return {"items": nodes, "total": len(nodes)}
 
 
+@router.get("/life-areas-public")
+async def list_life_areas_public():
+    """Public, unauthenticated version of `/life-areas` used by the Decider
+    Store filter drawer. Returns the same 10 canonical Level-0 Life Areas in
+    Admin Central Catalog order so the storefront filter always shows the
+    full L0 list (not just the L0 values that happen to appear on templates).
+    """
+    cursor = db.catalog_nodes.find(
+        {"level": 0, "is_active": {"$ne": False}},
+        {"_id": 0},
+    ).sort([("sort_order", 1), ("name", 1)])
+    rows = await cursor.to_list(50)
+    out = []
+    for r in rows:
+        out.append({
+            "id": r.get("life_area_id") or r.get("node_id"),
+            "node_id": r.get("node_id"),
+            "name": r.get("name"),
+            "slug": r.get("slug"),
+            "icon": r.get("icon") or "ellipse",
+            "color": r.get("color") or "#8B5CF6",
+            "sort_order": r.get("sort_order", 0),
+        })
+    return {"items": out, "total": len(out)}
+
+
 @router.get("/life-areas")
 async def list_life_areas(user: dict = Depends(get_current_user)):
     """Convenience endpoint: returns ONLY the 10 Level-0 life areas in their

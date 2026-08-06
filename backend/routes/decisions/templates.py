@@ -140,6 +140,12 @@ async def _mirror_template_to_store(template: dict) -> None:
             "decision_type": template.get("decision_type") or "General",
             "factor_count": len(factors),
             "option_count": len(options),
+            # Embed the actual content arrays so the detail page can render
+            # factors + options without an extra fetch, AND so store-side
+            # filters that read from `factors[]` (e.g. min_factors range)
+            # keep working for user-published templates too.
+            "factors": factors,
+            "options": options,
             "is_public": True,
             "is_free": True,
             "pricing_type": "free",

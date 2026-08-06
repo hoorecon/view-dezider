@@ -44,6 +44,20 @@ const SECTIONS: Array<{ key: SectionKey; label: string; icon: any }> = [
   { key: 'policies', label: 'Policies',      icon: 'shield-checkmark-outline' },
 ];
 
+// Standard defaults — auto-injected when a template has no policies yet, so
+// the publisher can edit rather than write from scratch.
+const DEFAULT_PRIVACY_POLICY =
+  'By publishing this template publicly you agree that any lead-generation ' +
+  'contact details you provide (name, email, WhatsApp) may be shown to interested ' +
+  'viewers so they can reach out to you. JELCOS AI does not sell or share this ' +
+  'data with third parties and stores it only for the purpose of connecting ' +
+  'viewers with you.';
+const DEFAULT_TERMS_OF_USE =
+  'This template is offered as a starting point for decision-making. The publisher ' +
+  'is not liable for outcomes of any decision made using this template. Viewers may ' +
+  'clone and modify the template for personal use; commercial re-distribution requires ' +
+  'written permission from the publisher.';
+
 const CATEGORY_LABELS: Record<string, string> = { primary: 'Mandatory', secondary: 'Optional' };
 const VISIBILITY_LABELS: Record<string, string> = {
   private: 'Private (only me)',
@@ -81,8 +95,8 @@ export default function TemplateEditModal({ visible, onClose, template, onSaved 
     setVisibility(template.visibility || 'private');
     setSharedWith((template.shared_with || []).join(', '));
     setLeadGen({ ...(template.lead_gen || {}) });
-    setPrivacyPolicy((template.policies || {}).privacy_policy || '');
-    setTermsOfUse((template.policies || {}).terms_of_use || '');
+    setPrivacyPolicy((template.policies || {}).privacy_policy || DEFAULT_PRIVACY_POLICY);
+    setTermsOfUse((template.policies || {}).terms_of_use || DEFAULT_TERMS_OF_USE);
   }, [visible, template]);
 
   const patchFactor = (idx: number, key: string, val: any) => {

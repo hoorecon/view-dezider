@@ -46,8 +46,14 @@ export default function DeciderStoreHome() {
   const [cats, setCats] = useState<{ key: string; count: number }[]>([]);
   const [cat, setCat] = useState<string>('all');
   const [q, setQ] = useState('');
-  const [tab, setTab] = useState<'app' | 'template'>('app');
+  const [tab, setTab] = useState<'app' | 'template'>('template');
   const [facets, setFacets] = useState<Facets>({ life_areas: [], org_types: [], publisher_types: [] });
+  // L0 canonical life-area list from Central Catalog. Used as the LIFE AREA
+  // filter chip set (instead of the observed values on templates).
+  const [l0LifeAreas, setL0LifeAreas] = useState<Array<{ id: string; name: string; icon?: string; color?: string }>>([]);
+  // Sub-category autosuggest — string typed by user, matches against
+  // template `category` values.
+  const [subQuery, setSubQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [f, setF] = useState<{ life_area?: string; org_types: string[]; publisher_type?: string;
     min_factors?: string; max_factors?: string; min_options?: string; max_options?: string;
@@ -85,14 +91,19 @@ export default function DeciderStoreHome() {
       if (f.moderation && f.moderation.length > 0 && f.moderation.length < 2) {
         params.moderation = f.moderation.join(',');
       }
-      const [r, m, fx] = await Promise.all([
+      const [r, m, fx, la] = await Promise.all([
         api.get('/decider-store', { params }),
         api.get('/decider-store/meta'),
         api.get('/decider-store/facets').catch(() => ({ data: { life_areas: [], org_types: [], publisher_types: [] } })),
+        // Canonical L0 Life-Area list from Admin Central Catalog Manager —
+        // ensures the LIFE AREA filter shows ALL 10 L0 areas in the same
+        // order used everywhere else, not just those present on templates.
+        api.get('/catalog/life-areas-public').catch(() => ({ data: { items: [] } })),
       ]);
       setCards(r.data.templates || []);
       setCats(m.data.categories || []);
       setFacets(fx.data as Facets);
+      setL0LifeAreas((la.data?.items || []).map((x: any) => ({ id: x.id, name: x.name, icon: x.icon, color: x.color })));
     } catch {
       /* transient — leave existing */
     } finally { setLoading(false); setRefreshing(false); }
@@ -203,15 +214,22 @@ export default function DeciderStoreHome() {
         </View>
       </View>
 
-      {/* 2-tab bar — Decider Apps / Decision Templates (independent filters) */}
+      {/* 2-tab bar — Templates FIRST (manual assessment), then Decider Apps
+          (fully automated). Subtitles clarify the modal difference. */}
       <View style={s.tabBar}>
-        <TouchableOpacity style={[s.tabBtn, tab === 'app' && s.tabBtnOn]} onPress={() => setTab('app')}>
-          <Ionicons name="cube" size={15} color={tab === 'app' ? '#FFF' : '#4F46E5'} />
-          <Text style={[s.tabTxt, tab === 'app' && s.tabTxtOn]}>Decider Apps · Finders</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={[s.tabBtn, tab === 'template' && s.tabBtnOn]} onPress={() => setTab('template')}>
           <Ionicons name="document-text" size={15} color={tab === 'template' ? '#FFF' : '#4F46E5'} />
-          <Text style={[s.tabTxt, tab === 'template' && s.tabTxtOn]}>Decision Templates</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.tabTxt, tab === 'template' && s.tabTxtOn]}>Decision Templates</Text>
+            <Text style={[s.tabSubTxt, tab === 'template' && s.tabSubTxtOn]}>Manual Assessment of Options</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.tabBtn, tab === 'app' && s.tabBtnOn]} onPress={() => setTab('app')}>
+          <Ionicons name="cube" size={15} color={tab === 'app' ? '#FFF' : '#4F46E5'} />
+          <View style={{ flex: 1 }}>
+            <Text style={[s.tabTxt, tab === 'app' && s.tabTxtOn]}>Decider Apps @ Best Option Finders</Text>
+            <Text style={[s.tabSubTxt, tab === 'app' && s.tabSubTxtOn]}>Fully Automated AI Assessment</Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity style={s.filterBtn} onPress={() => setFiltersOpen(!filtersOpen)}>
           <Ionicons name="options" size={16} color="#4F46E5" />
@@ -241,18 +259,62 @@ export default function DeciderStoreHome() {
       {/* Filter drawer (collapsible) */}
       {filtersOpen && (
         <View style={s.filterPanel}>
+          {/* Life area — canonical L0 list from Admin Central Catalog Manager.
+              Falls back to observed values only if the L0 endpoint is empty
+              (e.g. brand-new install without seeded catalog). */}
           <View style={s.fRow}>
-            <Text style={s.fLabel}>Life area</Text>
+            <Text style={s.fLabel}>Life area (L0)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
               <TouchableOpacity style={[s.fChip, !f.life_area && s.fChipOn]} onPress={() => setF({ ...f, life_area: undefined })}>
                 <Text style={[s.fChipTxt, !f.life_area && s.fChipTxtOn]}>All</Text>
               </TouchableOpacity>
-              {facets.life_areas.map((la) => (
-                <TouchableOpacity key={la} style={[s.fChip, f.life_area === la && s.fChipOn]} onPress={() => setF({ ...f, life_area: la })}>
-                  <Text style={[s.fChipTxt, f.life_area === la && s.fChipTxtOn]}>{la}</Text>
+              {(l0LifeAreas.length > 0
+                ? l0LifeAreas.map((x) => ({ key: x.name, label: x.name, icon: x.icon, color: x.color }))
+                : facets.life_areas.map((la) => ({ key: la, label: la, icon: undefined, color: undefined }))
+              ).map((la) => (
+                <TouchableOpacity
+                  key={la.key}
+                  style={[s.fChip, f.life_area === la.key && s.fChipOn, f.life_area === la.key && la.color ? { backgroundColor: la.color + '25', borderColor: la.color } : null]}
+                  onPress={() => setF({ ...f, life_area: la.key })}
+                >
+                  {la.icon ? <Ionicons name={la.icon as any} size={11} color={f.life_area === la.key && la.color ? la.color : '#334155'} /> : null}
+                  <Text style={[s.fChipTxt, f.life_area === la.key && s.fChipTxtOn, f.life_area === la.key && la.color ? { color: la.color } : null]}>{la.label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          </View>
+
+          {/* Sub-category — autosuggest text input that matches against the
+              existing category tags (Client & Revenue, Financial, Growth, …).
+              Nudges the store toward the free-form tag under the selected
+              L0 without cluttering the chip row. */}
+          <View style={s.fRow}>
+            <Text style={s.fLabel}>Sub-category (tag)</Text>
+            <TextInput
+              value={subQuery}
+              onChangeText={setSubQuery}
+              placeholder={cats.length ? `Type to filter e.g. "${cats[0].key}"` : 'Type to filter…'}
+              placeholderTextColor="#94A3B8"
+              style={s.fInput}
+            />
+            {!!subQuery && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginTop: 6 }}>
+                {cats.filter((c) => c.key.toLowerCase().includes(subQuery.toLowerCase())).slice(0, 8).map((c) => (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={[s.fChip, cat === c.key && s.fChipOn]}
+                    onPress={() => { setCat(c.key); setSubQuery(c.key); }}
+                  >
+                    <Text style={[s.fChipTxt, cat === c.key && s.fChipTxtOn]}>{c.key}</Text>
+                  </TouchableOpacity>
+                ))}
+                {cat && (
+                  <TouchableOpacity style={[s.fChip, { backgroundColor: '#FEE2E2' }]} onPress={() => { setCat('all'); setSubQuery(''); }}>
+                    <Text style={[s.fChipTxt, { color: '#B91C1C' }]}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </ScrollView>
+            )}
           </View>
           <View style={s.fRow}>
             <Text style={s.fLabel}>Applicable org type(s)</Text>
@@ -463,10 +525,12 @@ const s = StyleSheet.create({
   catChipText: { fontSize: 12.5, color: '#475569', fontWeight: '700' },
   catChipTextOn: { color: '#FFF' },
   tabBar: { flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#F8FAFC', alignItems: 'center' },
-  tabBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE', flex: 1, justifyContent: 'center' },
+  tabBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE', flex: 1, justifyContent: 'flex-start', minHeight: 46 },
   tabBtnOn: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
   tabTxt: { color: '#4F46E5', fontSize: 12, fontWeight: '800' },
   tabTxtOn: { color: '#FFF' },
+  tabSubTxt: { color: '#4F46E5', fontSize: 10, opacity: 0.75, fontWeight: '600', marginTop: 1 },
+  tabSubTxtOn: { color: '#E0E7FF', opacity: 1 },
   filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#FFF' },
   filterBtnTxt: { fontSize: 12, fontWeight: '700', color: '#4F46E5' },
   filterPanel: { backgroundColor: '#FFF', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', gap: 4 },
@@ -475,6 +539,7 @@ const s = StyleSheet.create({
   fChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: '#F1F5F9', flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: 'transparent' },
   fChipOn: { backgroundColor: '#4F46E5' },
   fChipTxt: { fontSize: 11, color: '#334155', fontWeight: '700' },
+  fInput: { backgroundColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12.5, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
   fChipTxtOn: { color: '#FFF' },
   fNum: { flex: 1, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: '#0F172A' },
   fApplyBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#4F46E5' },

@@ -7,7 +7,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -190,6 +190,65 @@ export default function DeciderStoreDetail() {
           ))}
           {options.length > 16 && <View style={s.optPill}><Text style={s.optPillText}>+{options.length - 16} more</Text></View>}
         </View>
+
+        {/* Publisher contact block (Play-Store style). Shown only when
+            the publisher supplied any lead-gen details. */}
+        {(() => {
+          const lg = (t?.lead_gen || {}) as any;
+          const anyLead = !!(lg.contact_name || lg.organization || lg.email || lg.whatsapp || lg.mobile || lg.redirect_url);
+          if (!anyLead) return null;
+          return (
+            <View style={s.publisherCard}>
+              <Text style={s.sectionTitle}>Publisher · Contact</Text>
+              <Text style={s.publisherHint}>Reach out to the publisher directly. Tap a row to open.</Text>
+              {lg.contact_name ? (
+                <View style={s.pubRow}>
+                  <Ionicons name="person-circle" size={16} color="#4F46E5" />
+                  <Text style={s.pubKey}>Name</Text>
+                  <Text style={s.pubVal} numberOfLines={1}>{lg.contact_name}</Text>
+                </View>
+              ) : null}
+              {(lg.organization || lg.designation) ? (
+                <View style={s.pubRow}>
+                  <Ionicons name="business" size={16} color="#4F46E5" />
+                  <Text style={s.pubKey}>Org</Text>
+                  <Text style={s.pubVal} numberOfLines={1}>
+                    {lg.organization || ''}{lg.designation ? ` — ${lg.designation}` : ''}
+                  </Text>
+                </View>
+              ) : null}
+              {lg.email ? (
+                <TouchableOpacity style={s.pubRow} onPress={() => Linking.openURL(`mailto:${lg.email}`)}>
+                  <Ionicons name="mail" size={16} color="#4F46E5" />
+                  <Text style={s.pubKey}>Email</Text>
+                  <Text style={[s.pubVal, s.pubLink]} numberOfLines={1}>{lg.email}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {lg.whatsapp ? (
+                <TouchableOpacity style={s.pubRow} onPress={() => Linking.openURL(`https://wa.me/${String(lg.whatsapp).replace(/[^0-9]/g,'')}`)}>
+                  <Ionicons name="logo-whatsapp" size={16} color="#059669" />
+                  <Text style={s.pubKey}>WhatsApp</Text>
+                  <Text style={[s.pubVal, s.pubLink]} numberOfLines={1}>{lg.whatsapp}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {lg.mobile ? (
+                <TouchableOpacity style={s.pubRow} onPress={() => Linking.openURL(`tel:${String(lg.mobile).replace(/[^0-9+]/g,'')}`)}>
+                  <Ionicons name="call" size={16} color="#4F46E5" />
+                  <Text style={s.pubKey}>Phone</Text>
+                  <Text style={[s.pubVal, s.pubLink]} numberOfLines={1}>{lg.mobile}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {lg.redirect_url ? (
+                <TouchableOpacity style={s.pubRow} onPress={() => Linking.openURL(lg.redirect_url)}>
+                  <Ionicons name="open" size={16} color="#4F46E5" />
+                  <Text style={s.pubKey}>Website</Text>
+                  <Text style={[s.pubVal, s.pubLink]} numberOfLines={1}>{lg.redirect_url}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          );
+        })()}
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -248,6 +307,12 @@ const s = StyleSheet.create({
   optWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   optPill: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, maxWidth: '48%' },
   optPillText: { fontSize: 12, color: '#334155', fontWeight: '600' },
+  publisherCard: { marginTop: 18, padding: 14, borderRadius: 12, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', gap: 6 },
+  publisherHint: { fontSize: 12, color: '#5B21B6', marginBottom: 6, fontStyle: 'italic' },
+  pubRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  pubKey: { fontSize: 12, fontWeight: '800', color: '#4F46E5', width: 68 },
+  pubVal: { flex: 1, fontSize: 13, color: '#0F172A', fontWeight: '600' },
+  pubLink: { color: '#4F46E5', textDecorationLine: 'underline' },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#E2E8F0', padding: 14 },
   useBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#4F46E5', borderRadius: 14, paddingVertical: 15, maxWidth: 720, width: '100%', alignSelf: 'center' },
   useBtnText: { color: '#FFF', fontSize: 15.5, fontWeight: '800' },

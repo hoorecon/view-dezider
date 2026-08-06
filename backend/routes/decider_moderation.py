@@ -185,12 +185,27 @@ async def backfill_default_moderation_status() -> Dict[str, int]:
 
     # First — mirror any PUBLIC template that has no `decider_store_templates`
     # row yet. Uses the same helper the save endpoint calls so schema stays
-    # in lock-step.
+    # in lock-step. Also RE-mirrors existing rows whose factor_count / factors[]
+    # is out of sync with the source template (this covers the "0 factors /
+    # 0 options showing even though the template has 19" bug on legacy rows
+    # that were upserted before the content-embed fix landed).
     try:
         from routes.decisions.templates import _mirror_template_to_store
         async for t in db.templates.find({"visibility": "public"}, {"_id": 0}):
-            exists = await db.decider_store_templates.find_one({"template_id": t["id"]}, {"_id": 1})
-            if exists:
+            src_factors = t.get("factors") or []
+            src_options = t.get("options") or []
+            exists = await db.decider_store_templates.find_one(
+                {"template_id": t["id"]},
+                {"_id": 0, "factor_count": 1, "option_count": 1, "factors": 1, "options": 1},
+            )
+            needs_refresh = (
+                not exists
+                or int(exists.get("factor_count") or 0) != len(src_factors)
+                or int(exists.get("option_count") or 0) != len(src_options)
+                or len(exists.get("factors") or []) != len(src_factors)
+                or len(exists.get("options") or []) != len(src_options)
+            )
+            if not needs_refresh:
                 continue
             try:
                 await _mirror_template_to_store(t)
