@@ -66,7 +66,12 @@ export default function DeciderStoreHome() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const numCols = width >= 900 ? 3 : width >= 600 ? 2 : 1;
+  // WebFrame constrains the app to a 960px max column on desktop. Compute
+  // numCols against the effective container width — NOT the raw window
+  // width — so the grid doesn't briefly render 3 cols inside a 960px card
+  // and then reflow, causing a "wide background flash" on first paint.
+  const effectiveWidth = Math.min(width, 960);
+  const numCols = effectiveWidth >= 900 ? 3 : effectiveWidth >= 600 ? 2 : 1;
 
   const load = useCallback(async () => {
     try {
@@ -546,7 +551,7 @@ const s = StyleSheet.create({
   fApplyTxt: { color: '#FFF', fontWeight: '800', fontSize: 12 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 4, marginBottom: 2 },
   ratingTxt: { fontSize: 10, color: '#64748B', marginLeft: 4, fontWeight: '700' },
-  grid: { padding: 14, maxWidth: 1100, width: '100%', alignSelf: 'center' },
+  grid: { padding: 14, maxWidth: 960, width: '100%', alignSelf: 'center' },
   gridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-start' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 2 },
   sectionTitle: { fontSize: 16, fontWeight: '900', color: '#0F172A' },

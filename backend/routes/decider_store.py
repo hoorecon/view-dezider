@@ -514,6 +514,91 @@ async def import_factor_group_sheet(request: Request, user: dict = Depends(get_c
         raise HTTPException(400, f"Could not read the Excel file: {str(e)[:150]}")
 
 
+@router.post("/seed/indusind-account-finder")
+async def seed_indusind_account_finder(user: dict = Depends(get_current_user)):
+    """Idempotent seeder — publishes (or refreshes) the editorial Decider App
+    'Best IndusInd Current Account Type Finder' from the bundled sheet at
+    `backend/assets/indus_one_business_account.xlsx`. Admin-only.
+
+    Call this ONCE on each environment (dev / staging / prod) after deploy.
+    Re-running upserts on `title` so it's safe to hit multiple times.
+    """
+    if not _is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    import os
+    from core.factor_group_import import parse_factor_group_sheet
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "assets", "indus_one_business_account.xlsx")
+    if not os.path.isfile(path):
+        raise HTTPException(500, "Bundled xlsx not found — redeploy backend with /assets/.")
+    try:
+        with open(path, "rb") as f:
+            parsed = parse_factor_group_sheet(f.read())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    now = _now()
+    tpl_id = str(uuid.uuid4())
+    pubcfg = await db.decider_config.find_one({"id": "admin_publisher_defaults"}, {"_id": 0}) or {}
+    lead_gen = {k: v for k, v in pubcfg.items() if k != "id" and v}
+    title = "Best IndusInd Current Account Type Finder"
+    doc = {
+        "template_id": tpl_id, "id": tpl_id,
+        "title": title,
+        "subtitle": "AI-personalized pick across T25 / T50 / T100 / T300 / T500 Current Accounts",
+        "description": ("Find the ideal IndusInd Current Account variant for YOUR business by "
+                        "rating factors that matter to you (Cash Transactions, Payment Services, "
+                        "Remittances, Exports, Imports, Merchant Services, etc.). Each option is "
+                        "scored dynamically against your expectations — no one-size-fits-all."),
+        "category": "Finance",
+        "life_area": "Finance",
+        "applicable_org_types": ["Solopreneur", "Startup", "MSME"],
+        "decision_type": "aspiration",
+        "cover_icon": "wallet",
+        "cover_color": "#0F766E",
+        "kind": "app",
+        "finder_settings": {},
+        "catalog_node_id": None,
+        "pricing_type": "free",
+        "is_free": True,
+        "price_paise": 0,
+        "currency": "INR",
+        "creator_split_pct": 70,
+        "allowed_clone_modes": ["full", "values_only"],
+        "auto_push_on_authorize": False,
+        "factors": parsed["factors"],
+        "options": parsed["options"],
+        "factor_count": len(parsed["factors"]),
+        "option_count": len(parsed["options"]),
+        "created_by": user["user_id"],
+        "creator_name": user.get("name") or "JELCOS AI Editorial",
+        "publisher_type": "editorial",
+        "source": "admin",
+        "status": "authorized",
+        "is_public": True,
+        "is_official": True,
+        "is_approved": True,
+        "install_count": 0,
+        "rating_avg": 0.0,
+        "rating_count": 0,
+        "moderation_status": "jai_verified",
+        "moderation_updated_at": now,
+        "lead_gen": lead_gen,
+        "policies": {},
+        "created_at": now, "updated_at": now,
+        "authorized_at": now, "authorized_by": user["user_id"],
+    }
+    existing = await db.decider_store_templates.find_one({"title": title}, {"_id": 0, "template_id": 1})
+    if existing:
+        doc["template_id"] = existing["template_id"]
+        doc["id"] = existing["template_id"]
+        await db.decider_store_templates.update_one({"template_id": existing["template_id"]}, {"$set": doc})
+        return {"message": "updated", "template_id": existing["template_id"],
+                "factors": len(parsed["factors"]), "options": len(parsed["options"])}
+    await db.decider_store_templates.insert_one(doc)
+    return {"message": "created", "template_id": tpl_id,
+            "factors": len(parsed["factors"]), "options": len(parsed["options"])}
+
+
 @router.post("")
 async def create_template(request: Request, user: dict = Depends(get_current_user)):
     body = await request.json()
