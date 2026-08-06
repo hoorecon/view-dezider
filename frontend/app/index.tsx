@@ -80,10 +80,21 @@ export default function Index() {
     'Which MBA offer to pick?',
   ];
 
-  // Admin-selectable homepage variant. Defaults to 'modern' if the API is
-  // unreachable. Query-string override (?variant=classic) lets admin preview
+  // Admin-selectable homepage variant. Defaults to 'classic' (matches the
+  // admin-selected default at /admin/home-variant). We also cache the last
+  // resolved variant in sessionStorage so we don't flash the wrong hero on
+  // subsequent navigations back to /.
+  // Query-string override (?variant=classic|modern) lets admin preview
   // without changing the persisted default.
-  const [heroVariant, setHeroVariant] = React.useState<'modern' | 'classic'>('modern');
+  const [heroVariant, setHeroVariant] = React.useState<'modern' | 'classic'>(() => {
+    if (Platform.OS === 'web') {
+      try {
+        const cached = window.sessionStorage?.getItem('heroVariant');
+        if (cached === 'modern' || cached === 'classic') return cached;
+      } catch { /* noop */ }
+    }
+    return 'classic';
+  });
   React.useEffect(() => {
     // URL override — admin preview link
     if (Platform.OS === 'web') {
@@ -92,7 +103,13 @@ export default function Index() {
     }
     fetch((process.env.EXPO_PUBLIC_BACKEND_URL || '') + '/api/home-variant')
       .then((r) => r.json())
-      .then((d) => { if (d?.variant === 'classic') setHeroVariant('classic'); })
+      .then((d) => {
+        const v = d?.variant === 'modern' ? 'modern' : 'classic';
+        setHeroVariant(v);
+        if (Platform.OS === 'web') {
+          try { window.sessionStorage?.setItem('heroVariant', v); } catch { /* noop */ }
+        }
+      })
       .catch(() => { /* keep default */ });
   }, []);
 

@@ -52,8 +52,11 @@ type Template = {
   price_paise?: number; creator_split_pct?: number; allowed_clone_modes?: string[];
   factors?: Factor[]; options?: any[]; status?: string; is_public?: boolean;
   install_count?: number; kind?: string; finder_settings?: any; catalog_node_id?: string | null;
-  lead_gen?: { contact_name?: string; email?: string; whatsapp?: string; website?: string } | null;
-  policies?: { privacy_policy_url?: string; terms_url?: string } | null;
+  lead_gen?: {
+    contact_name?: string; organization?: string; designation?: string;
+    email?: string; whatsapp?: string; mobile?: string; redirect_url?: string;
+  } | null;
+  policies?: { privacy_policy?: string; terms_of_use?: string } | null;
 };
 
 export default function AdminDeciderStore() {
@@ -92,20 +95,31 @@ export default function AdminDeciderStore() {
 
   // Per-item Publisher Contact override modal
   const [pubEditItem, setPubEditItem] = useState<Template | null>(null);
+  const [pubGlobal, setPubGlobal] = useState<any>({});
   const [pubContactName, setPubContactName] = useState('');
+  const [pubOrg, setPubOrg] = useState('');
+  const [pubDesignation, setPubDesignation] = useState('');
   const [pubEmail, setPubEmail] = useState('');
   const [pubWhatsapp, setPubWhatsapp] = useState('');
-  const [pubWebsite, setPubWebsite] = useState('');
+  const [pubMobile, setPubMobile] = useState('');
+  const [pubRedirectUrl, setPubRedirectUrl] = useState('');
   const [pubPrivacyUrl, setPubPrivacyUrl] = useState('');
   const [pubTermsUrl, setPubTermsUrl] = useState('');
-  const openPublisherEditor = (t: Template) => {
+  const openPublisherEditor = async (t: Template) => {
     setPubEditItem(t);
     setPubContactName(t.lead_gen?.contact_name || '');
+    setPubOrg(t.lead_gen?.organization || '');
+    setPubDesignation(t.lead_gen?.designation || '');
     setPubEmail(t.lead_gen?.email || '');
     setPubWhatsapp(t.lead_gen?.whatsapp || '');
-    setPubWebsite(t.lead_gen?.website || '');
-    setPubPrivacyUrl(t.policies?.privacy_policy_url || '');
-    setPubTermsUrl(t.policies?.terms_url || '');
+    setPubMobile(t.lead_gen?.mobile || '');
+    setPubRedirectUrl(t.lead_gen?.redirect_url || '');
+    setPubPrivacyUrl(t.policies?.privacy_policy || '');
+    setPubTermsUrl(t.policies?.terms_of_use || '');
+    try {
+      const r = await api.get('/admin/publisher-defaults');
+      setPubGlobal(r.data || {});
+    } catch { setPubGlobal({}); }
   };
   const savePublisherEditor = async () => {
     if (!pubEditItem) return;
@@ -114,13 +128,16 @@ export default function AdminDeciderStore() {
       await api.put(`/decider-store/${pubEditItem.template_id}`, {
         lead_gen: {
           contact_name: pubContactName.trim(),
+          organization: pubOrg.trim(),
+          designation: pubDesignation.trim(),
           email: pubEmail.trim(),
           whatsapp: pubWhatsapp.trim(),
-          website: pubWebsite.trim(),
+          mobile: pubMobile.trim(),
+          redirect_url: pubRedirectUrl.trim(),
         },
         policies: {
-          privacy_policy_url: pubPrivacyUrl.trim(),
-          terms_url: pubTermsUrl.trim(),
+          privacy_policy: pubPrivacyUrl.trim(),
+          terms_of_use: pubTermsUrl.trim(),
         },
       });
       setPubEditItem(null);
@@ -1237,12 +1254,15 @@ export default function AdminDeciderStore() {
               <TouchableOpacity onPress={() => setPubEditItem(null)}><Ionicons name="close" size={22} color="#64748B" /></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-              <Text style={s.help}>Overrides the global Publisher Defaults for this specific item. Leave blank to inherit the global defaults.</Text>
+              <Text style={s.help}>Overrides the global Publisher Defaults for this specific item. Placeholders show the current global default — leave a field blank to inherit it.</Text>
               <Text style={s.secLabel}>👤 Lead-gen contact</Text>
-              <TextInput style={s.input} value={pubContactName} onChangeText={setPubContactName} placeholder="Contact name" placeholderTextColor="#9CA3AF" />
-              <TextInput style={s.input} value={pubEmail} onChangeText={setPubEmail} placeholder="Email" placeholderTextColor="#9CA3AF" autoCapitalize="none" keyboardType="email-address" />
-              <TextInput style={s.input} value={pubWhatsapp} onChangeText={setPubWhatsapp} placeholder="WhatsApp (with country code)" placeholderTextColor="#9CA3AF" keyboardType="phone-pad" />
-              <TextInput style={s.input} value={pubWebsite} onChangeText={setPubWebsite} placeholder="Website (optional)" placeholderTextColor="#9CA3AF" autoCapitalize="none" />
+              <TextInput style={s.input} value={pubContactName} onChangeText={setPubContactName} placeholder={pubGlobal.contact_name || 'Contact name'} placeholderTextColor="#9CA3AF" />
+              <TextInput style={s.input} value={pubOrg} onChangeText={setPubOrg} placeholder={pubGlobal.organization || 'Organization'} placeholderTextColor="#9CA3AF" />
+              <TextInput style={s.input} value={pubDesignation} onChangeText={setPubDesignation} placeholder={pubGlobal.designation || 'Designation'} placeholderTextColor="#9CA3AF" />
+              <TextInput style={s.input} value={pubEmail} onChangeText={setPubEmail} placeholder={pubGlobal.email || 'Email'} placeholderTextColor="#9CA3AF" autoCapitalize="none" keyboardType="email-address" />
+              <TextInput style={s.input} value={pubWhatsapp} onChangeText={setPubWhatsapp} placeholder={pubGlobal.whatsapp || 'WhatsApp (with country code)'} placeholderTextColor="#9CA3AF" keyboardType="phone-pad" />
+              <TextInput style={s.input} value={pubMobile} onChangeText={setPubMobile} placeholder={pubGlobal.mobile || 'Mobile'} placeholderTextColor="#9CA3AF" keyboardType="phone-pad" />
+              <TextInput style={s.input} value={pubRedirectUrl} onChangeText={setPubRedirectUrl} placeholder={pubGlobal.redirect_url || 'Website / Redirect URL'} placeholderTextColor="#9CA3AF" autoCapitalize="none" />
               <Text style={s.secLabel}>📜 Policies (URLs shown to end-users before Clone)</Text>
               <TextInput style={s.input} value={pubPrivacyUrl} onChangeText={setPubPrivacyUrl} placeholder="Privacy Policy URL" placeholderTextColor="#9CA3AF" autoCapitalize="none" />
               <TextInput style={s.input} value={pubTermsUrl} onChangeText={setPubTermsUrl} placeholder="Terms of Use URL" placeholderTextColor="#9CA3AF" autoCapitalize="none" />

@@ -54,6 +54,13 @@ async def patch_defaults(body: PublisherDefaults, _: dict = Depends(require_supe
     patch = {k: v for k, v in body.dict().items() if v is not None}
     if patch:
         await db.decider_config.update_one({"id": CFG_DOC_ID}, {"$set": patch}, upsert=True)
+    # Auto-propagate the new defaults to every admin-authored item that
+    # doesn't carry its own `lead_gen.contact_name` override, so already
+    # published admin items immediately pick up the change.
+    try:
+        await apply_defaults_to_admin_items()
+    except Exception:
+        pass
     return await get_defaults(_=_)
 
 
@@ -66,12 +73,28 @@ async def apply_defaults_to_admin_items() -> Dict[str, int]:
     defaults = {k: v for k, v in cfg.items() if k in _DEFAULT and k != "id" and v}
     if not defaults:
         return {"templates_updated": 0, "store_updated": 0}
-    q = {
-        "$and": [
-            {"$or": [{"is_official": True}, {"is_approved": True}, {"created_by": {"$in": [None, "", "system"]}}]},
-            {"$or": [{"lead_gen": {"$exists": False}}, {"lead_gen": None}, {"lead_gen": {}}, {"lead_gen.contact_name": {"$in": ["", None]}}]},
-        ]
-    }
+    # Admin-authored items: either explicitly official/approved, OR seeded by
+    # the system (no created_by). We DON'T touch user-published items.
+    admin_scope = {"$or": [
+        {"is_official": True}, {"is_approved": True},
+        {"created_by": {"$in": [None, "", "system"]}},
+    ]}
+    # Only override where publisher hasn't set their own contact_name.
+    empty_or_missing = {"$or": [
+        {"lead_gen": {"$exists": False}}, {"lead_gen": None}, {"lead_gen": {}},
+        {"lead_gen.contact_name": {"$in": ["", None]}},
+    ]}
+    q = {"$and": [admin_scope, empty_or_missing]}
     r1 = await db.templates.update_many(q, {"$set": {"lead_gen": defaults}})
     r2 = await db.decider_store_templates.update_many(q, {"$set": {"lead_gen": defaults}})
+    # For items already carrying admin defaults (contact_name matches the
+    # current default contact_name), MERGE the newly-changed fields in so
+    # edits like email / whatsapp / redirect_url actually reflect on those
+    # already published items. Publisher-authored items (different name)
+    # are still untouched.
+    if defaults.get("contact_name"):
+        merge_q = {"$and": [admin_scope, {"lead_gen.contact_name": defaults["contact_name"]}]}
+        merge_set = {f"lead_gen.{k}": v for k, v in defaults.items()}
+        await db.templates.update_many(merge_q, {"$set": merge_set})
+        await db.decider_store_templates.update_many(merge_q, {"$set": merge_set})
     return {"templates_updated": r1.modified_count, "store_updated": r2.modified_count}
