@@ -410,6 +410,12 @@ from routes.decider_moderation import (  # noqa: E402
 )
 api_router.include_router(decider_moderation_router)
 
+from routes.admin_publisher_defaults import (  # noqa: E402
+    router as admin_publisher_defaults_router,
+    apply_defaults_to_admin_items,
+)
+api_router.include_router(admin_publisher_defaults_router)
+
 from routes.user_home_quicklinks import router as user_home_quicklinks_router  # noqa: E402
 api_router.include_router(user_home_quicklinks_router)
 
@@ -584,6 +590,9 @@ async def _run_boot_work(boot_owner: bool):
             r2 = await backfill_default_policies()
             if (r2.get("templates_updated") or 0) + (r2.get("store_updated") or 0) > 0:
                 logger.info(f"[boot] default policies backfilled: {r2}")
+            r3 = await apply_defaults_to_admin_items()
+            if (r3.get("templates_updated") or 0) + (r3.get("store_updated") or 0) > 0:
+                logger.info(f"[boot] admin publisher defaults applied: {r3}")
     except Exception as e:
         logger.error(f"decider moderation boot backfill failed: {e}")
 

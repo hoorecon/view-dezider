@@ -264,7 +264,7 @@ export default function DeciderStoreHome() {
               (e.g. brand-new install without seeded catalog). */}
           <View style={s.fRow}>
             <Text style={s.fLabel}>Life area (L0)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               <TouchableOpacity style={[s.fChip, !f.life_area && s.fChipOn]} onPress={() => setF({ ...f, life_area: undefined })}>
                 <Text style={[s.fChipTxt, !f.life_area && s.fChipTxtOn]}>All</Text>
               </TouchableOpacity>
@@ -281,7 +281,7 @@ export default function DeciderStoreHome() {
                   <Text style={[s.fChipTxt, f.life_area === la.key && s.fChipTxtOn, f.life_area === la.key && la.color ? { color: la.color } : null]}>{la.label}</Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </View>
           </View>
 
           {/* Sub-category — autosuggest text input that matches against the

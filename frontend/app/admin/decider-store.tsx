@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { safeBack } from '../../src/utils/navigation';
+import Tooltip from '../../src/components/Tooltip';
 import { pickAndReadFile } from '../../src/utils/filePick';
 
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || '';
@@ -262,12 +263,15 @@ export default function AdminDeciderStore() {
   const [bankForId, setBankForId] = useState<string | null>(null);
   const [bankStats, setBankStats] = useState<any>(null);
   const [bankBusy, setBankBusy] = useState(false);
+  // In-modal toast (replaces system Alert which used to render BEHIND the
+  // Bank modal on RN Web / web preview). Auto-clears after 4s.
+  const [bankToast, setBankToast] = useState('');
   const openBank = async (t: Template) => {
-    setBankForId(t.template_id); setBankStats(null);
+    setBankForId(t.template_id); setBankStats(null); setBankToast('');
     try {
       const r = await api.get(`/decider-store/${t.template_id}/bank`);
       setBankStats(r.data);
-    } catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+    } catch (e: any) { setBankToast(`Failed — ${e?.response?.data?.detail || 'try again'}`); }
   };
   const bankAction = async (path: string, method: 'post' | 'delete' = 'post') => {
     if (!bankForId) return;
@@ -277,13 +281,52 @@ export default function AdminDeciderStore() {
         ? await api.delete(`/decider-store/${bankForId}/bank`)
         : await api.post(`/decider-store/${bankForId}/bank/${path}`);
       const d = r.data;
-      showAlert('Done', d.deleted != null
-        ? `Deleted ${d.deleted} bank rows`
-        : `${d.source}: +${d.inserted} new, ${d.updated} updated, ${d.skipped || 0} skipped`);
+      setBankToast(d.deleted != null
+        ? `Done · Deleted ${d.deleted} bank rows`
+        : `Done · ${d.source}: +${d.inserted} new, ${d.updated} updated, ${d.skipped || 0} skipped`);
+      setTimeout(() => setBankToast(''), 4500);
       const st = await api.get(`/decider-store/${bankForId}/bank`);
       setBankStats(st.data);
     } catch (e: any) {
-      showAlert('Failed', e?.response?.data?.detail || 'Try again');
+      setBankToast(`Failed — ${e?.response?.data?.detail || 'try again'}`);
+    } finally { setBankBusy(false); }
+  };
+  // Downloads the current Option Bank as an Excel-friendly CSV so the admin
+  // can edit hundreds of rows in Excel / Google Sheets and re-import later.
+  // Uses the existing GET /bank endpoint which returns the rows array; we
+  // stream it to a Blob and force download on web.
+  const downloadBankExcel = async () => {
+    if (!bankForId) return;
+    setBankBusy(true);
+    try {
+      const r = await api.get(`/decider-store/${bankForId}/bank/rows`, { params: { limit: 100000 } })
+        .catch(async () => api.get(`/decider-store/${bankForId}/bank`, { params: { limit: 100000 } }));
+      const rows: any[] = r.data?.rows || r.data?.items || [];
+      if (!rows.length) { setBankToast('Bank is empty — nothing to download.'); setTimeout(() => setBankToast(''), 4000); return; }
+      // Union of all keys → column headers, escaping quotes for Excel-safe CSV.
+      const cols = Array.from(rows.reduce((set: Set<string>, row: any) => {
+        Object.keys(row || {}).forEach((k) => set.add(k));
+        return set;
+      }, new Set<string>()));
+      const esc = (v: any) => {
+        const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      const csv = [cols.join(','), ...rows.map((row: any) => cols.map((c) => esc(row[c])).join(','))].join('\n');
+      if (typeof window !== 'undefined' && (window as any).URL && (window as any).document) {
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `bank_${bankForId}_${Date.now()}.csv`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setBankToast(`Downloaded ${rows.length} rows — edit in Excel/Sheets and re-import via /bank/ingest/bulk.`);
+      } else {
+        setBankToast(`Prepared ${rows.length} rows — download not supported on this platform.`);
+      }
+      setTimeout(() => setBankToast(''), 5000);
+    } catch (e: any) {
+      setBankToast(`Failed — ${e?.response?.data?.detail || 'try again'}`);
     } finally { setBankBusy(false); }
   };
 
@@ -314,6 +357,20 @@ export default function AdminDeciderStore() {
       load();
     } catch (e: any) { showAlert('Sync failed', e?.response?.data?.detail || 'Try again'); }
     finally { setBusy(false); }
+  };
+
+  // One-click moderation toggle from the row action bar. Uses the admin
+  // moderation endpoints introduced in the previous iteration so behaviour
+  // stays consistent with the dedicated /admin/decider-moderation screen.
+  const setModerationStatus = async (t: Template, status: 'jai_verified' | 'unverified' | 'disapproved') => {
+    setBusy(true);
+    try {
+      const path = status === 'jai_verified' ? 'approve' : status === 'unverified' ? 'reset' : 'disapprove';
+      await api.post(`/admin/moderation/${t.template_id}/${path}`, status === 'disapproved' ? { reason: 'Blocked by admin' } : {});
+      load();
+    } catch (e: any) {
+      showAlert('Moderation update failed', e?.response?.data?.detail || 'Try again');
+    } finally { setBusy(false); }
   };
 
   const openFrom = async () => {
@@ -478,39 +535,76 @@ export default function AdminDeciderStore() {
               ))}
             </View>
             <View style={s.tActions}>
-              <TouchableOpacity style={[s.act, { backgroundColor: '#EEF2FF' }]} onPress={() => openClassify(t)}>
-                <Ionicons name="options" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Classify</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.act, { backgroundColor: '#F1F5F9' }]} onPress={() => toggleKind(t)}>
-                <Ionicons name="swap-horizontal" size={13} color="#475569" /><Text style={[s.actText, { color: '#475569' }]}>{t.kind === 'app' ? '→ Template' : '→ Finder'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.act, { backgroundColor: '#EDE9FE' }]} onPress={() => openCatalog(t)}>
-                <Ionicons name="git-network" size={13} color="#7C3AED" /><Text style={[s.actText, { color: '#7C3AED' }]}>{t.catalog_node_id ? 'Catalog ✓' : 'Catalog'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.act, { backgroundColor: '#ECFDF5' }]} onPress={() => openBank(t)}>
-                <Ionicons name="server" size={13} color="#059669" /><Text style={[s.actText, { color: '#059669' }]}>Bank</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => openData(t)}>
-                <Ionicons name="create" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Edit Data</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.act, { backgroundColor: '#E0F2FE' }]} onPress={() => pushStores(t)}>
-                <Ionicons name="cloud-upload" size={13} color="#0369A1" /><Text style={[s.actText, { color: '#0369A1' }]}>Push to Stores</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.act, { backgroundColor: '#F3E8FF' }]} onPress={() => syncStores(t)}>
-                <Ionicons name="sync" size={13} color="#9333EA" /><Text style={[s.actText, { color: '#9333EA' }]}>Sync</Text>
-              </TouchableOpacity>
-              {!(t.status === 'authorized' && t.is_public) ? (
-                <TouchableOpacity style={[s.act, { backgroundColor: '#DCFCE7' }]} onPress={() => authorize(t)}>
-                  <Ionicons name="rocket" size={13} color="#16A34A" /><Text style={[s.actText, { color: '#16A34A' }]}>Authorize</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => unpublish(t)}>
-                  <Ionicons name="eye-off" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Unpublish</Text>
-                </TouchableOpacity>
+              {/* Moderation status pill + one-click toggle. Only enabled
+                  when item is public (`status=authorized`). */}
+              {t.is_public && (
+                (t as any).moderation_status === 'jai_verified' ? (
+                  <Tooltip text="Currently jAI Verified · Tap to move back to Unverified">
+                    <TouchableOpacity style={[s.act, { backgroundColor: '#D1FAE5' }]} onPress={() => setModerationStatus(t, 'unverified')} testID={`admin-unverify-${t.template_id}`}>
+                      <Ionicons name="shield-checkmark" size={13} color="#059669" /><Text style={[s.actText, { color: '#059669' }]}>jAI Verified</Text>
+                    </TouchableOpacity>
+                  </Tooltip>
+                ) : (
+                  <Tooltip text="Currently Unverified · Tap to mark as jAI Verified">
+                    <TouchableOpacity style={[s.act, { backgroundColor: '#FEF3C7' }]} onPress={() => setModerationStatus(t, 'jai_verified')} testID={`admin-verify-${t.template_id}`}>
+                      <Ionicons name="time" size={13} color="#B45309" /><Text style={[s.actText, { color: '#B45309' }]}>Unverified · Verify</Text>
+                    </TouchableOpacity>
+                  </Tooltip>
+                )
               )}
-              <TouchableOpacity style={[s.act, { backgroundColor: '#FEE2E2' }]} onPress={() => remove(t)}>
-                <Ionicons name="trash" size={13} color="#DC2626" /><Text style={[s.actText, { color: '#DC2626' }]}>Delete</Text>
-              </TouchableOpacity>
+              <Tooltip text="Classify factors as Mandatory/Optional and set priority ratings (used for Full-clone)">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#EEF2FF' }]} onPress={() => openClassify(t)}>
+                  <Ionicons name="options" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Classify</Text>
+                </TouchableOpacity>
+              </Tooltip>
+              <Tooltip text={t.kind === 'app' ? 'Convert to Template (manual assessment by users)' : 'Convert to Decider App / Finder (fully automated AI assessment)'}>
+                <TouchableOpacity style={[s.act, { backgroundColor: '#F1F5F9' }]} onPress={() => toggleKind(t)}>
+                  <Ionicons name="swap-horizontal" size={13} color="#475569" /><Text style={[s.actText, { color: '#475569' }]}>{t.kind === 'app' ? '→ Template' : '→ Finder'}</Text>
+                </TouchableOpacity>
+              </Tooltip>
+              <Tooltip text="Link this item to a Central Catalog Manager L0 Life-area / L1 node (for cross-app taxonomy)">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#EDE9FE' }]} onPress={() => openCatalog(t)}>
+                  <Ionicons name="git-network" size={13} color="#7C3AED" /><Text style={[s.actText, { color: '#7C3AED' }]}>{t.catalog_node_id ? 'Catalog ✓' : 'Catalog'}</Text>
+                </TouchableOpacity>
+              </Tooltip>
+              <Tooltip text="Option Bank — the 10M-scale catalogue of options the Finder ranks against. Bulk import/purge here.">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#ECFDF5' }]} onPress={() => openBank(t)}>
+                  <Ionicons name="server" size={13} color="#059669" /><Text style={[s.actText, { color: '#059669' }]}>Bank</Text>
+                </TouchableOpacity>
+              </Tooltip>
+              <Tooltip text="Edit each option's per-factor value cells (small tweaks). For bulk edits, use Bank → Download Excel.">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => openData(t)}>
+                  <Ionicons name="create" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Edit Data</Text>
+                </TouchableOpacity>
+              </Tooltip>
+              <Tooltip text="Push this template's options into Solution Store + create empty ReviewNet rating slots for each">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#E0F2FE' }]} onPress={() => pushStores(t)}>
+                  <Ionicons name="cloud-upload" size={13} color="#0369A1" /><Text style={[s.actText, { color: '#0369A1' }]}>Push to Stores</Text>
+                </TouchableOpacity>
+              </Tooltip>
+              <Tooltip text="Sync template options from Solution Store (quantitative values) + ReviewNet (qualitative ratings)">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#F3E8FF' }]} onPress={() => syncStores(t)}>
+                  <Ionicons name="sync" size={13} color="#9333EA" /><Text style={[s.actText, { color: '#9333EA' }]}>Sync</Text>
+                </TouchableOpacity>
+              </Tooltip>
+              {!(t.status === 'authorized' && t.is_public) ? (
+                <Tooltip text="Publish this item to the public Decider Store">
+                  <TouchableOpacity style={[s.act, { backgroundColor: '#DCFCE7' }]} onPress={() => authorize(t)}>
+                    <Ionicons name="rocket" size={13} color="#16A34A" /><Text style={[s.actText, { color: '#16A34A' }]}>Authorize</Text>
+                  </TouchableOpacity>
+                </Tooltip>
+              ) : (
+                <Tooltip text="Hide from the public Decider Store (keeps the data; you can re-Authorize any time)">
+                  <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => unpublish(t)}>
+                    <Ionicons name="eye-off" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Unpublish</Text>
+                  </TouchableOpacity>
+                </Tooltip>
+              )}
+              <Tooltip text="Permanently delete this template/app. This cannot be undone.">
+                <TouchableOpacity style={[s.act, { backgroundColor: '#FEE2E2' }]} onPress={() => remove(t)}>
+                  <Ionicons name="trash" size={13} color="#DC2626" /><Text style={[s.actText, { color: '#DC2626' }]}>Delete</Text>
+                </TouchableOpacity>
+              </Tooltip>
             </View>
           </View>
         ))}
@@ -639,7 +733,7 @@ export default function AdminDeciderStore() {
       </Modal>
 
       {/* Option Bank modal (10M-scale Finder ingestion) */}
-      <Modal visible={!!bankForId} transparent animationType="fade" onRequestClose={() => setBankForId(null)}>
+      <Modal visible={!!bankForId} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setBankForId(null)}>
         <View style={s.overlay}>
           <View style={s.sheet}>
             <View style={s.mHeader}>
@@ -657,6 +751,14 @@ export default function AdminDeciderStore() {
                 {Object.entries(bankStats.by_source || {}).map(([src, n]: any) => (
                   <Text key={src} style={s.bankSrc}>• {src}: {Number(n).toLocaleString()}</Text>
                 ))}
+                {/* Bulk edit affordance — export the whole bank to Excel,
+                    edit locally, re-import. Way faster than "Edit Data"
+                    for multi-option updates. */}
+                <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#065F46' }]} disabled={bankBusy}
+                  onPress={() => downloadBankExcel()}
+                  testID="admin-bank-download-xlsx">
+                  <Text style={s.bankBtnText}>⬇ Download Bank as Excel (bulk edit)</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={[s.bankBtn, { backgroundColor: '#059669' }]} disabled={bankBusy}
                   onPress={() => bankAction('sync-template')}>
                   <Text style={s.bankBtnText}>Sync template options → bank</Text>
@@ -670,9 +772,17 @@ export default function AdminDeciderStore() {
                   <Text style={[s.bankBtnText, { color: '#DC2626' }]}>Clear bank</Text>
                 </TouchableOpacity>
                 <Text style={s.bankApiNote}>
-                  Partner API / Deep-Import bulk loads: POST /api/decider-store/{bankForId}/bank/ingest/partner
-                  or …/ingest/bulk (see SRS v3.23).
+                  Bulk import via Excel: after downloading, edit values, then hit the &ldquo;Ingest bulk&rdquo; API
+                  (POST /api/decider-store/{bankForId}/bank/ingest/bulk) with the rows JSON.
+                  Partner API: POST /api/decider-store/{bankForId}/bank/ingest/partner.
                 </Text>
+                {/* In-modal inline banner — replaces the system Alert
+                    which used to render BEHIND the modal on web/RN Web. */}
+                {!!bankToast && (
+                  <View style={[s.bankBtn, { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' }]}>
+                    <Text style={[s.bankBtnText, { color: '#065F46' }]}>{bankToast}</Text>
+                  </View>
+                )}
               </>
             )}
           </View>

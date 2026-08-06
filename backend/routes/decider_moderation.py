@@ -234,6 +234,25 @@ async def backfill_default_moderation_status() -> Dict[str, int]:
             {"$set": {"moderation_status": status, "moderation_updated_at": now}},
         )
         fixed_s += 1
+
+    # One-time hotfix — admin-published Decider Apps (kind='app', is_official
+    # OR created_by='system'/None/empty) that were mistakenly marked as
+    # `unverified` on import should be `jai_verified`. Business Model Chooser
+    # is the canonical case. Skips items already flagged disapproved (keep
+    # admin's decision).
+    await db.decider_store_templates.update_many(
+        {
+            "kind": "app",
+            "moderation_status": {"$ne": "disapproved"},
+            "$or": [
+                {"is_official": True},
+                {"is_approved": True},
+                {"created_by": {"$in": [None, "", "system"]}},
+                {"created_by": {"$exists": False}},
+            ],
+        },
+        {"$set": {"moderation_status": "jai_verified", "moderation_updated_at": now}},
+    )
     return {"templates_updated": fixed_t, "store_updated": fixed_s, "mirrored_missing": fixed_mirror}
 
 
