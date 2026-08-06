@@ -18,6 +18,7 @@ import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '..
 import { showAlert } from '../../utils/alert';
 import { api } from '../../utils/api';
 import InsertFromModulesButton from '../PassableValuePicker';
+import { FactorTreeSections } from '../FactorGroups';
 import type { Factor } from '../../types/decision';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import LoaderMusicChip from '../LoaderMusicChip';
@@ -1105,10 +1106,12 @@ export default function Step7() {
               </TouchableOpacity>
             )}
 
-            {decision.factors
-              .filter(f => !f.parent_id)
-              .sort((a, b) => b.rating - a.rating)
-              .map((factor) => {
+            {(() => {
+              const topFactors = decision.factors
+                .filter(f => !f.parent_id)
+                .sort((a, b) => b.rating - a.rating);
+              const anyGrouped = topFactors.some((f: any) => Array.isArray(f.group_path) && f.group_path.length);
+              const renderTopFactor = (factor: Factor) => {
                 const subs = decision.factors.filter(f => f.parent_id === factor.id).sort((a, b) => a.order - b.order);
                 const hasSubs = subs.length > 0;
 
@@ -1163,7 +1166,11 @@ export default function Step7() {
                     )}
                   </View>
                 );
-              })}
+              };
+              return anyGrouped
+                ? <FactorTreeSections factors={topFactors as any} renderFactor={(f) => renderTopFactor(f as any)} testIdPrefix={`step7-fg-${option.id}`} />
+                : topFactors.map(renderTopFactor);
+            })()}
           </Card>
         );
       })}

@@ -55,6 +55,12 @@ class Factor(BaseModel):
     linked_value: Optional[str] = None       # dependent → parent value name
     default_operator: Optional[str] = None   # pre-selected operator in Step 2
     default_expected: Optional[Any] = None   # pre-filled expected (overridable)
+    # ── Nested Factor Group (max 3 levels; June 2026) ──
+    # Path from root group → sub-group → sub-sub-group. Used ONLY by
+    #   Step 2 (Define Factors)  and  Step 7 (Assessment)
+    # to render collapsible sections. Steps 3, 4, 5, 6 treat factors as flat.
+    # Example: ["Cash Transactions", "Cash Deposit"]
+    group_path: Optional[List[str]] = None
 
 
 class OptionAssessment(BaseModel):

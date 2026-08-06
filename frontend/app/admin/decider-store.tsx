@@ -45,6 +45,10 @@ type Factor = {
   id: string; name: string; order?: number; factor_type?: string;
   category?: string; priority?: number; possible_values?: string[];
   sub_factors?: SubFactor[];
+  // Nested Factor Group path (max 3 levels). Used by Step-2 (Define Factors)
+  // and Step-7 (Assessment) to render collapsible groups. Steps 3/4/5 ignore
+  // this and treat factors as a flat list.
+  group_path?: string[];
 };
 type Template = {
   template_id: string; title: string; subtitle?: string; description?: string;
@@ -227,6 +231,30 @@ export default function AdminDeciderStore() {
     } finally { setBusy(false); }
   };
 
+  // Import a row-per-factor XLSX (e.g., IndusInd Current Account sheet) with
+  // 1–3 level Factor Group columns → previews factors & options with
+  // `group_path` preserved. Then the standard Create dialog publishes it as
+  // a Decider App.
+  const doImportFactorGroupSheet = async () => {
+    try {
+      const file = await pickAndReadFile();
+      if (!file) return;
+      setBusy(true);
+      const r = await api.post('/decider-store/import/factor-group-sheet', { file_b64: file.base64 });
+      setParsed(r.data);
+      showAlert(
+        'Imported (Factor Groups)',
+        `Parsed ${r.data.factors.length} factors (with groups) · ${r.data.options.length} options. Fill the details below and create as a Decider App.`
+      );
+      if (!fTitle) setFTitle(file.filename.replace(/\.(xlsx|xls|csv)$/i, ''));
+      // Default this flow to publish as a Decider App (not a Template).
+      setFKind('app');
+      setShowCreate(true);
+    } catch (e: any) {
+      showAlert('Import failed', e?.response?.data?.detail || 'Could not parse the file.');
+    } finally { setBusy(false); }
+  };
+
   const createTemplate = async () => {
     if (!fTitle.trim()) return showAlert('Title required', 'Give the template a title.');
     if (!parsed) return showAlert('Import first', 'Import factors & options from Excel or Google Sheet first.');
@@ -362,27 +390,90 @@ export default function AdminDeciderStore() {
   // can edit hundreds of rows in Excel / Google Sheets and re-import later.
   // Uses the existing GET /bank endpoint which returns the rows array; we
   // stream it to a Blob and force download on web.
+  // ── Bank CSV export / import (human-readable) ──────────────────────
+  // Column headers use factor names and group paths so admins can edit in
+  // Excel without deciphering UUIDs. Values are plain numbers.
+  //
+  //   option_name | description | source_ref | [Group>Sub] Factor :: SubFactor | ...
+  //
+  // On upload we match columns by header string; unknown columns are ignored.
+  const buildBankColMap = (tpl: Template) => {
+    // Map: subFactorId -> readable column header. Includes group path.
+    const colBySid = new Map<string, string>();
+    const sidByCol = new Map<string, string>();
+    for (const f of tpl.factors || []) {
+      const subs = subsOf(f);
+      const groupPrefix = (f.group_path && f.group_path.length)
+        ? `[${f.group_path.join(' > ')}] ` : '';
+      for (const sf of subs) {
+        const isSingleton = subs.length === 1 && sf.id === f.id;
+        const header = isSingleton
+          ? `${groupPrefix}${f.name}`
+          : `${groupPrefix}${f.name} :: ${sf.name}`;
+        colBySid.set(sf.id, header);
+        sidByCol.set(header, sf.id);
+        // Also allow matching by bare sub-factor name (fallback).
+        sidByCol.set(sf.name, sf.id);
+      }
+    }
+    return { colBySid, sidByCol };
+  };
+
   const downloadBankExcel = async () => {
     if (!bankForId) return;
     setBankBusy(true);
     try {
+      const tpl = templates.find((t) => t.template_id === bankForId) || null;
+      const { colBySid } = tpl ? buildBankColMap(tpl) : { colBySid: new Map<string, string>() };
       const r = await api.get(`/decider-store/${bankForId}/bank/rows`, { params: { limit: 100000 } });
       const rows: any[] = r.data?.rows || [];
       if (!rows.length) { setBankToast('Bank is empty — sync template options first.'); setTimeout(() => setBankToast(''), 4000); return; }
-      const cols = Array.from(rows.reduce((set: Set<string>, row: any) => {
-        Object.keys(row || {}).forEach((k) => set.add(k));
-        return set;
-      }, new Set<string>()));
-      const esc = (v: any) => {
-        const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
-        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      // Fixed lead columns + dynamic factor columns (in factor-order, group-first).
+      const factorCols: string[] = [];
+      if (tpl) {
+        for (const f of tpl.factors || []) {
+          for (const sf of subsOf(f)) {
+            const c = colBySid.get(sf.id); if (c) factorCols.push(c);
+          }
+        }
+      }
+      const leadCols = ['option_name', 'description', 'source_ref'];
+      const extractNum = (v: any): string => {
+        if (v == null) return '';
+        if (typeof v === 'number') return String(v);
+        if (typeof v === 'string') return v;
+        if (typeof v === 'object') {
+          if (v.num !== undefined && v.num !== null) return String(v.num);
+          if (v.raw !== undefined && v.raw !== null) return typeof v.raw === 'object' ? '' : String(v.raw);
+          if (v.txt !== undefined) return String(v.txt);
+        }
+        return '';
       };
-      const csv = [cols.join(','), ...rows.map((row: any) => cols.map((c) => esc(row[c])).join(','))].join('\n');
+      const esc = (s: string) => /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      const csvRows: string[] = [ [...leadCols, ...factorCols].map(esc).join(',') ];
+      for (const row of rows) {
+        const cells: string[] = [
+          esc(String(row.name || '')),
+          esc(String(row.description || '')),
+          esc(String(row.source_ref || '')),
+        ];
+        for (const col of factorCols) {
+          // Reverse-lookup: find sub-factor id whose readable header matches col.
+          let sid: string | undefined;
+          for (const [id, h] of colBySid.entries()) { if (h === col) { sid = id; break; } }
+          const rawVal = (row as any)[`val__${sid}`] ?? ((row as any).vals ? (row as any).vals[sid || ''] : undefined);
+          cells.push(esc(extractNum(rawVal)));
+        }
+        csvRows.push(cells.join(','));
+      }
+      const csv = csvRows.join('\n');
       if (typeof window !== 'undefined' && (window as any).URL && (window as any).document) {
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `bank_${bankForId}_${Date.now()}.csv`;
+        a.href = url;
+        const safe = (tpl?.title || bankForId).replace(/[^a-z0-9-]+/gi, '_').slice(0, 40);
+        a.download = `bank_${safe}_${Date.now()}.csv`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url);
         setBankToast(`Downloaded ${rows.length} rows — edit in Excel/Sheets and re-import with the Upload button below.`);
@@ -395,9 +486,8 @@ export default function AdminDeciderStore() {
     } finally { setBankBusy(false); }
   };
 
-  // Import edited CSV back into the bank via /bank/ingest/bulk. The CSV
-  // must carry `name` + `val__<sub_factor_id>` columns (matches the download
-  // export format).
+  // Import edited CSV back into the bank via /bank/ingest/bulk.
+  // Header format is what downloadBankExcel produces (see buildBankColMap).
   const uploadBankCsv = async (file: File) => {
     if (!bankForId || !file) return;
     setBankBusy(true);
@@ -405,7 +495,6 @@ export default function AdminDeciderStore() {
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
       if (lines.length < 2) throw new Error('CSV must have a header row + at least 1 data row');
-      // Simple CSV parser (handles double-quoted commas).
       const parseCsvLine = (line: string): string[] => {
         const out: string[] = []; let cur = ''; let inQ = false;
         for (let i = 0; i < line.length; i++) {
@@ -418,17 +507,36 @@ export default function AdminDeciderStore() {
         out.push(cur);
         return out;
       };
-      const header = parseCsvLine(lines[0]);
+      const header = parseCsvLine(lines[0]).map((h) => h.trim());
+      const tpl = templates.find((t) => t.template_id === bankForId) || null;
+      const { sidByCol } = tpl ? buildBankColMap(tpl) : { sidByCol: new Map<string, string>() };
+      // Column index resolution — support both new (factor-name) and legacy (val__UUID) headers.
+      const colToSid: Record<number, string> = {};
+      const leadIdx: Record<string, number> = {};
+      header.forEach((h, i) => {
+        const lower = h.toLowerCase();
+        if (lower === 'option_name' || lower === 'name') leadIdx.name = i;
+        else if (lower === 'description') leadIdx.description = i;
+        else if (lower === 'source_ref') leadIdx.source_ref = i;
+        else if (h.startsWith('val__')) colToSid[i] = h.slice(5);
+        else if (sidByCol.has(h)) colToSid[i] = sidByCol.get(h)!;
+      });
       const items = lines.slice(1).map((ln) => {
         const cells = parseCsvLine(ln);
-        const row: any = {}; const values: any = {};
-        header.forEach((h, i) => {
-          const v = cells[i];
-          if (v === undefined) return;
-          if (h.startsWith('val__')) values[h.slice(5)] = v;
-          else row[h] = v;
+        const values: any = {};
+        Object.keys(colToSid).forEach((k) => {
+          const i = Number(k);
+          const raw = cells[i];
+          if (raw === undefined || raw === '') return;
+          const num = Number(raw);
+          values[colToSid[i]] = Number.isFinite(num) ? { num, txt: String(raw) } : raw;
         });
-        return { name: row.name || '(unnamed)', description: row.description || '', source_ref: row.source_ref || null, values };
+        return {
+          name: (cells[leadIdx.name ?? -1] || '(unnamed)').trim(),
+          description: (cells[leadIdx.description ?? -1] || '').trim(),
+          source_ref: (cells[leadIdx.source_ref ?? -1] || '').trim() || null,
+          values,
+        };
       });
       const r = await api.post(`/decider-store/${bankForId}/bank/ingest/bulk`, { items, source: 'bulk' });
       const d = r.data || {};
@@ -603,6 +711,15 @@ export default function AdminDeciderStore() {
             <TouchableOpacity style={[s.tool, { backgroundColor: '#FEF3C7' }]} onPress={() => setGsheetOpen(true)} disabled={busy}>
               <Ionicons name="logo-google" size={16} color="#B45309" />
               <Text style={[s.toolText, { color: '#B45309' }]}>Import Google Sheet</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.tool, { backgroundColor: '#FCE7F3' }]}
+              onPress={doImportFactorGroupSheet}
+              disabled={busy}
+              testID="admin-import-factor-group-sheet"
+            >
+              <Ionicons name="folder-open" size={16} color="#BE185D" />
+              <Text style={[s.toolText, { color: '#BE185D' }]}>Import Factor-Group Sheet</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[s.tool, { backgroundColor: '#E0F2FE' }]} onPress={openFrom} disabled={busy}>
               <Ionicons name="git-compare" size={16} color="#0369A1" />

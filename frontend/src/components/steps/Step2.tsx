@@ -28,6 +28,8 @@ import {
   assignVariableIds,
 } from '../../utils/decisionHelpers';
 import LoaderMusicChip from '../LoaderMusicChip';
+import FactorGroupEditorModal from '../FactorGroupEditorModal';
+import { FactorTreeSections } from '../FactorGroups';
 import { useAiTouchpoint } from '../../utils/aiEstimates';
 import DecisionLinkPicker from '../DecisionLinkPicker';
 import { useRouter } from 'expo-router';
@@ -68,6 +70,20 @@ export default function Step2() {
   const aiBestFactorsEnabled = useAiTouchpoint('tp_best_factors');
   const [linkPickerOpen, setLinkPickerOpen] = useState(false);
   const router = useRouter();
+
+  // ── Nested Factor Group editor (max 3 levels; see FactorGroups.tsx) ──
+  const [groupEditorFor, setGroupEditorFor] = useState<Factor | null>(null);
+  const [groupsEnabled, setGroupsEnabled] = useState<boolean>(() => {
+    // Auto-turn ON if any factor already carries a group_path.
+    return (decision.factors || []).some((f: any) => Array.isArray(f?.group_path) && f.group_path.length);
+  });
+  const saveFactorGroupPath = async (factorId: string, groupPath: string[]) => {
+    const updated = decision.factors.map((f) =>
+      f.id === factorId ? { ...f, group_path: groupPath.length ? groupPath : undefined } : f
+    );
+    await saveDecision({ ...decision, factors: updated } as any);
+    if (groupPath.length && !groupsEnabled) setGroupsEnabled(true);
+  };
 
   // ── Dynamic UI objects (Decider Apps): single flag that makes every main
   // factor's widget configurable (Text input / Checkbox / Radio / Dropdown). ──
@@ -1321,7 +1337,30 @@ export default function Step2() {
         </TouchableOpacity>
       )}
 
-      {topLevelFactors.map((factor) => {
+      {/* ── Factor Groups toolbar (nested up to 3 levels; Step 2 & Step 7 only) ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <TouchableOpacity
+          onPress={() => setGroupsEnabled(!groupsEnabled)}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            backgroundColor: groupsEnabled ? COLORS.primary : '#EEF2FF',
+            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+            borderWidth: 1, borderColor: groupsEnabled ? COLORS.primary : '#C7D2FE',
+          }}
+          testID="step2-toggle-groups"
+        >
+          <Ionicons name="folder" size={14} color={groupsEnabled ? '#FFF' : '#4F46E5'} />
+          <Text style={{ fontSize: 12, fontWeight: '800', color: groupsEnabled ? '#FFF' : '#4F46E5' }}>
+            {groupsEnabled ? 'Factor Groups: ON' : 'Enable Factor Groups'}
+          </Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 11, color: COLORS.textMuted, flex: 1 }}>
+          Bucket factors into collapsible groups (up to 3 levels). Applies to Step 2 & Step 7 only.
+        </Text>
+      </View>
+
+      {(() => {
+        const renderFactorRow = (factor: Factor) => {
         const subs = getSubFactors(factor.id);
         const hasChildren = subs.length > 0;
         const isExpanded = expandedGroups[factor.id] !== false;
@@ -1365,6 +1404,24 @@ export default function Step2() {
                     </View>
                   )}
                   <Text style={[styles.factorName, { flex: 1 }]}>{factor.name}</Text>
+                  {groupsEnabled && (
+                    <TouchableOpacity
+                      onPress={() => setGroupEditorFor(factor)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 4,
+                        backgroundColor: (factor.group_path && factor.group_path.length) ? '#EEF2FF' : '#F1F5F9',
+                        borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4,
+                        borderWidth: 1, borderColor: (factor.group_path && factor.group_path.length) ? '#C7D2FE' : '#E2E8F0',
+                        marginRight: 6, maxWidth: 180,
+                      }}
+                      testID={`step2-group-chip-${factor.id}`}
+                    >
+                      <Ionicons name="folder" size={11} color={(factor.group_path && factor.group_path.length) ? '#4F46E5' : '#94A3B8'} />
+                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: (factor.group_path && factor.group_path.length) ? '#4F46E5' : '#94A3B8' }} numberOfLines={1}>
+                        {(factor.group_path && factor.group_path.length) ? factor.group_path.join(' › ') : 'Group'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => startFactorRename(factor)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1709,7 +1766,20 @@ export default function Step2() {
             )}
           </Card>
         );
-      })}
+        };
+        return groupsEnabled
+          ? <FactorTreeSections factors={topLevelFactors as any} renderFactor={(f) => renderFactorRow(f as any)} testIdPrefix="step2-fg" />
+          : topLevelFactors.map((f) => renderFactorRow(f));
+      })()}
+
+      {/* Nested Factor-Group editor modal (max 3 levels) */}
+      <FactorGroupEditorModal
+        visible={!!groupEditorFor}
+        factor={groupEditorFor as any}
+        allFactors={decision.factors as any}
+        onClose={() => setGroupEditorFor(null)}
+        onSave={(id, path) => saveFactorGroupPath(id, path)}
+      />
 
       <View style={styles.addFactorRow}>
         <TextInput

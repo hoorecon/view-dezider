@@ -31,6 +31,7 @@ from core.database import db
 from core.decider_import import (
     parse_import, gsheet_to_csv_url, build_import_template_xlsx,
 )
+from core.factor_group_import import parse_from_b64 as parse_factor_group_b64
 
 router = APIRouter(prefix="/decider-store", tags=["The Decider Store"])
 
@@ -490,6 +491,27 @@ async def import_gsheet(request: Request, user: dict = Depends(get_current_user)
     except Exception as e:
         raise HTTPException(400, f"Failed to fetch/parse the sheet: {str(e)[:150]}")
     return parsed
+
+
+@router.post("/import/factor-group-sheet")
+async def import_factor_group_sheet(request: Request, user: dict = Depends(get_current_user)):
+    """Import a row-per-factor XLSX with 1-3 level Factor Group columns
+    (e.g., IndusInd Current Account sheet).
+
+    Body: {file_b64: "..."}
+    Returns: {factors[], options[], warnings[]} — preview only, not saved.
+    Combine with `POST /decider-store` (kind='app') to publish.
+    """
+    if not _is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    body = await request.json()
+    b64 = body.get("file_b64") or ""
+    try:
+        return parse_factor_group_b64(b64)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(400, f"Could not read the Excel file: {str(e)[:150]}")
 
 
 @router.post("")

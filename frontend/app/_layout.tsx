@@ -398,6 +398,10 @@ export default function RootLayout() {
         <Stack.Screen name="auth/register" />
         <Stack.Screen name="auth/forgot-password" />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        {/* Public Decider Store — fade animation prevents the home page from
+            briefly showing behind the storefront during route transitions. */}
+        <Stack.Screen name="decider-store/index" options={{ headerShown: false, animation: 'fade' }} />
+        <Stack.Screen name="decider-store/[id]" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen 
           name="prr/new" 
           options={{ 
