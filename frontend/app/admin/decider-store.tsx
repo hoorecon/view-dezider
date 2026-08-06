@@ -511,6 +511,14 @@ export default function AdminDeciderStore() {
           <Text style={s.title}>The Decider Store</Text>
           <Text style={s.sub}>Author · import · authorize public Decision Templates</Text>
         </View>
+        <TouchableOpacity
+          style={s.pubDefaultsBtn}
+          onPress={() => router.push('/admin/publisher-defaults')}
+          testID="admin-publisher-defaults-link"
+        >
+          <Ionicons name="person-circle" size={16} color="#4F46E5" />
+          <Text style={s.pubDefaultsText}>Publisher Defaults</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={s.body}>
@@ -1179,6 +1187,8 @@ const s = StyleSheet.create({
   backBtn: { padding: 4 },
   title: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
   sub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  pubDefaultsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE' },
+  pubDefaultsText: { fontSize: 12, fontWeight: '700', color: '#4F46E5' },
   body: { padding: 16, paddingBottom: 60, maxWidth: 640, width: '100%', alignSelf: 'center' },
   card: { backgroundColor: '#FFF', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 },
   cardTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 6 },
