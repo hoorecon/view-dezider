@@ -69,6 +69,24 @@ export default function ShortUrlScreen() {
     } catch { /* user cancelled */ }
   };
 
+  const onEmail = () => {
+    if (!data) return;
+    const subject = encodeURIComponent(data.title);
+    const body = encodeURIComponent((data.share_message || '') + '\n\n' + shareUrl);
+    const href = `mailto:?subject=${subject}&body=${body}`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.href = href;
+    } else {
+      Linking.openURL(href).catch(() => {});
+    }
+  };
+
+  const onWhatsApp = () => {
+    if (!data) return;
+    const text = encodeURIComponent((data.share_message || data.title) + '\n' + shareUrl);
+    Linking.openURL(`https://wa.me/?text=${text}`).catch(() => {});
+  };
+
   const onContinue = async () => {
     if (!data) return;
     // For external URLs → Linking.openURL. Internal → router.replace.

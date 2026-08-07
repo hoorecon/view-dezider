@@ -690,7 +690,7 @@ export default function AdminDeciderStore() {
           <Text style={s.pubDefaultsText}>Publisher Defaults</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[s.pubDefaultsBtn, { backgroundColor: '#FCE7F3', borderColor: '#FBCFE8' }]}
+          style={[s.pubDefaultsBtn, { backgroundColor: '#DCFCE7', borderColor: '#BBF7D0' }]}
           onPress={async () => {
             try {
               setBusy(true);
@@ -698,25 +698,24 @@ export default function AdminDeciderStore() {
               const d = r.data || {};
               showAlert(
                 'IndusInd App Seeded',
-                `${d.message === 'updated' ? 'Refreshed' : 'Published'} — ${d.factors || 0} factors × ${d.options || 0} options.\nSwitch to the Decider Apps tab to view it.`
+                `${d.message === 'updated' ? 'Refreshed' : 'Published'} — ${d.factors || 0} factors × ${d.options || 0} options.`
               );
               await load();
             } catch (e: any) {
-              const detail = e?.response?.data?.detail || e?.message || 'Try again';
               const status = e?.response?.status;
               showAlert(
                 'Seed failed',
                 status === 404 || status === 405
-                  ? `Backend endpoint missing on this environment (HTTP ${status}). Redeploy the backend container with the latest code, then retry.`
-                  : `${detail}`
+                  ? `Backend endpoint missing on this environment (HTTP ${status}). Redeploy backend + fix Cloudflare routing.`
+                  : `${e?.response?.data?.detail || e?.message || 'Try again'}`
               );
             } finally { setBusy(false); }
           }}
           disabled={busy}
           testID="admin-seed-indusind"
         >
-          <Ionicons name="wallet" size={16} color="#BE185D" />
-          <Text style={[s.pubDefaultsText, { color: '#BE185D' }]}>Seed IndusInd App</Text>
+          <Ionicons name="wallet" size={16} color="#166534" />
+          <Text style={[s.pubDefaultsText, { color: '#166534' }]}>Seed IndusInd (dev helper)</Text>
         </TouchableOpacity>
       </View>
 
@@ -902,6 +901,48 @@ export default function AdminDeciderStore() {
                   <Ionicons name="person-circle" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Publisher</Text>
                 </TouchableOpacity>
               </Tooltip>
+              {(t.kind || 'template') === 'template' && (
+                <Tooltip text="Convert this Decision Template into a Decider App. The Option Bank (Excel/CSV) can then be attached so end-users get AI-assessed rankings automatically.">
+                  <TouchableOpacity
+                    style={[s.act, { backgroundColor: '#DCFCE7' }]}
+                    onPress={async () => {
+                      try {
+                        setBusy(true);
+                        await api.put(`/decider-store/${t.template_id}`, { kind: 'app' });
+                        showAlert('Converted', `"${t.title}" is now a Decider App. Attach an Option Bank via the 💾 Bank icon to enable AI-scored recommendations.`);
+                        await load();
+                      } catch (e: any) {
+                        showAlert('Failed', e?.response?.data?.detail || 'Try again');
+                      } finally { setBusy(false); }
+                    }}
+                    testID={`convert-app-${t.template_id}`}
+                  >
+                    <Ionicons name="arrow-up-circle" size={13} color="#166534" />
+                    <Text style={[s.actText, { color: '#166534' }]}>Convert to App</Text>
+                  </TouchableOpacity>
+                </Tooltip>
+              )}
+              {t.kind === 'app' && (
+                <Tooltip text="Revert this Decider App back to a Decision Template. The Option Bank stays attached but is no longer auto-scored.">
+                  <TouchableOpacity
+                    style={[s.act, { backgroundColor: '#FEF3C7' }]}
+                    onPress={async () => {
+                      try {
+                        setBusy(true);
+                        await api.put(`/decider-store/${t.template_id}`, { kind: 'template' });
+                        showAlert('Reverted', `"${t.title}" is now a Decision Template.`);
+                        await load();
+                      } catch (e: any) {
+                        showAlert('Failed', e?.response?.data?.detail || 'Try again');
+                      } finally { setBusy(false); }
+                    }}
+                    testID={`revert-template-${t.template_id}`}
+                  >
+                    <Ionicons name="arrow-down-circle" size={13} color="#B45309" />
+                    <Text style={[s.actText, { color: '#B45309' }]}>Revert to Template</Text>
+                  </TouchableOpacity>
+                </Tooltip>
+              )}
               <Tooltip text="Permanently delete this template/app. This cannot be undone.">
                 <TouchableOpacity style={[s.act, { backgroundColor: '#FEE2E2' }]} onPress={() => remove(t)}>
                   <Ionicons name="trash" size={13} color="#DC2626" /><Text style={[s.actText, { color: '#DC2626' }]}>Delete</Text>
