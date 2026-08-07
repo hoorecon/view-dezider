@@ -689,34 +689,6 @@ export default function AdminDeciderStore() {
           <Ionicons name="person-circle" size={16} color="#4F46E5" />
           <Text style={s.pubDefaultsText}>Publisher Defaults</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[s.pubDefaultsBtn, { backgroundColor: '#DCFCE7', borderColor: '#BBF7D0' }]}
-          onPress={async () => {
-            try {
-              setBusy(true);
-              const r = await api.post('/decider-store/seed/indusind-account-finder', {});
-              const d = r.data || {};
-              showAlert(
-                'IndusInd App Seeded',
-                `${d.message === 'updated' ? 'Refreshed' : 'Published'} — ${d.factors || 0} factors × ${d.options || 0} options.`
-              );
-              await load();
-            } catch (e: any) {
-              const status = e?.response?.status;
-              showAlert(
-                'Seed failed',
-                status === 404 || status === 405
-                  ? `Backend endpoint missing on this environment (HTTP ${status}). Redeploy backend + fix Cloudflare routing.`
-                  : `${e?.response?.data?.detail || e?.message || 'Try again'}`
-              );
-            } finally { setBusy(false); }
-          }}
-          disabled={busy}
-          testID="admin-seed-indusind"
-        >
-          <Ionicons name="wallet" size={16} color="#166534" />
-          <Text style={[s.pubDefaultsText, { color: '#166534' }]}>Seed IndusInd (dev helper)</Text>
-        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={s.body}>
@@ -902,14 +874,41 @@ export default function AdminDeciderStore() {
                 </TouchableOpacity>
               </Tooltip>
               {(t.kind || 'template') === 'template' && (
-                <Tooltip text="Convert this Decision Template into a Decider App. The Option Bank (Excel/CSV) can then be attached so end-users get AI-assessed rankings automatically.">
+                <Tooltip text="Convert this Decision Template into a Decider App. Requires ≥3 options and a factor-value for every option (populate via the Bank).">
                   <TouchableOpacity
                     style={[s.act, { backgroundColor: '#DCFCE7' }]}
                     onPress={async () => {
+                      // Eligibility: need ≥3 options AND every option must have
+                      // at least one non-empty factor-value in its `values` map.
+                      const opts = (t.options || []) as any[];
+                      const optCount = opts.length;
+                      if (optCount < 3) {
+                        showAlert(
+                          'Cannot convert yet',
+                          `Decider Apps need at least 3 options to compare. This item has ${optCount}. Add more options in Step 6 (or via the Bank) first.`
+                        );
+                        return;
+                      }
+                      const missing = opts
+                        .map((o) => ({
+                          name: o.name || '(unnamed)',
+                          hasValues: o.values && Object.values(o.values).some((v: any) =>
+                            v !== null && v !== undefined && String(typeof v === 'object' ? (v.num ?? v.raw ?? v.txt ?? '') : v).trim() !== ''
+                          ),
+                        }))
+                        .filter((o) => !o.hasValues)
+                        .map((o) => o.name);
+                      if (missing.length) {
+                        showAlert(
+                          'Cannot convert yet',
+                          `Every option needs at least one factor-value. Missing values for: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` (+${missing.length - 5} more)` : ''}. Attach an Option Bank via the 💾 Bank icon first.`
+                        );
+                        return;
+                      }
                       try {
                         setBusy(true);
                         await api.put(`/decider-store/${t.template_id}`, { kind: 'app' });
-                        showAlert('Converted', `"${t.title}" is now a Decider App. Attach an Option Bank via the 💾 Bank icon to enable AI-scored recommendations.`);
+                        showAlert('Converted', `"${t.title}" is now a Decider App (${optCount} options).`);
                         await load();
                       } catch (e: any) {
                         showAlert('Failed', e?.response?.data?.detail || 'Try again');

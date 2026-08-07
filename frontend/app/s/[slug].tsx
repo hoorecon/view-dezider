@@ -54,14 +54,28 @@ export default function ShortUrlScreen() {
   const publicBase = (typeof window !== 'undefined' && window.location?.origin) || 'https://jelcos.ai';
   const shareUrl = `${publicBase}/s/${slug}`;
 
+  // Substitute [LINK] with the short URL. If the admin body doesn't include
+  // [LINK] we append the URL on a new line so recipients can still click.
+  const withLink = (body: string): string => {
+    if (!body) return shareUrl;
+    return body.includes('[LINK]') ? body.replace(/\[LINK\]/g, shareUrl) : `${body}\n${shareUrl}`;
+  };
+  const emailSubject = () => (data?.share_subject && data.share_subject.trim())
+    || (data?.title ? `Try "${data.title}"` : 'Have a look');
+  const emailBody = () => withLink((data?.share_body_email || data?.share_message || '').trim());
+  const whatsappBody = () => withLink((data?.share_body_whatsapp || data?.share_message || '').trim());
+
   const onShare = async () => {
     if (!data) return;
-    const message = (data.share_message || data.title) + '\n' + shareUrl;
+    const message = withLink((data.share_message || data.title || '').trim());
     try {
       if (Platform.OS !== 'web') {
         await Share.share({ message, url: shareUrl, title: data.title });
       } else if ((navigator as any).share) {
-        await (navigator as any).share({ title: data.title, text: data.share_message, url: shareUrl });
+        // Web Share API on desktop Gmail integration only forwards URL — so
+        // we bake the message INTO the url-safe text field. Recipients see
+        // both the pre-filled body and the tracked short URL.
+        await (navigator as any).share({ title: data.title, text: message, url: shareUrl });
       } else {
         await Clipboard.setStringAsync(message);
         showAlert('Copied', 'Share message + link copied to clipboard.');
@@ -71,11 +85,14 @@ export default function ShortUrlScreen() {
 
   const onEmail = () => {
     if (!data) return;
-    const subject = encodeURIComponent(data.title);
-    const body = encodeURIComponent((data.share_message || '') + '\n\n' + shareUrl);
+    const subject = encodeURIComponent(emailSubject());
+    const body = encodeURIComponent(emailBody());
     const href = `mailto:?subject=${subject}&body=${body}`;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.location.href = href;
+      // Some browsers block window.location = 'mailto:' from an async
+      // handler; open in a new window so the mail client actually launches.
+      const w = window.open(href, '_blank');
+      if (!w) window.location.href = href;
     } else {
       Linking.openURL(href).catch(() => {});
     }
@@ -83,8 +100,13 @@ export default function ShortUrlScreen() {
 
   const onWhatsApp = () => {
     if (!data) return;
-    const text = encodeURIComponent((data.share_message || data.title) + '\n' + shareUrl);
-    Linking.openURL(`https://wa.me/?text=${text}`).catch(() => {});
+    const text = encodeURIComponent(whatsappBody());
+    const href = `https://wa.me/?text=${text}`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(href, '_blank');
+    } else {
+      Linking.openURL(href).catch(() => {});
+    }
   };
 
   const onContinue = async () => {
