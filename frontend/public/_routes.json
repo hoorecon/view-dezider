@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "description": "Exclude /api/* from Cloudflare Pages so the jelcos-api-proxy Worker Route (jelcos.ai/api/*) takes over. Without this, Pages' SPA fallback serves index.html for /api/* and never gives the Worker a chance.",
+  "include": ["/*"],
+  "exclude": ["/api/*"]
+}
