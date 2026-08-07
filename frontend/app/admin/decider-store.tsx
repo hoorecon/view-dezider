@@ -689,6 +689,35 @@ export default function AdminDeciderStore() {
           <Ionicons name="person-circle" size={16} color="#4F46E5" />
           <Text style={s.pubDefaultsText}>Publisher Defaults</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.pubDefaultsBtn, { backgroundColor: '#FCE7F3', borderColor: '#FBCFE8' }]}
+          onPress={async () => {
+            try {
+              setBusy(true);
+              const r = await api.post('/decider-store/seed/indusind-account-finder', {});
+              const d = r.data || {};
+              showAlert(
+                'IndusInd App Seeded',
+                `${d.message === 'updated' ? 'Refreshed' : 'Published'} — ${d.factors || 0} factors × ${d.options || 0} options.\nSwitch to the Decider Apps tab to view it.`
+              );
+              await load();
+            } catch (e: any) {
+              const detail = e?.response?.data?.detail || e?.message || 'Try again';
+              const status = e?.response?.status;
+              showAlert(
+                'Seed failed',
+                status === 404 || status === 405
+                  ? `Backend endpoint missing on this environment (HTTP ${status}). Redeploy the backend container with the latest code, then retry.`
+                  : `${detail}`
+              );
+            } finally { setBusy(false); }
+          }}
+          disabled={busy}
+          testID="admin-seed-indusind"
+        >
+          <Ionicons name="wallet" size={16} color="#BE185D" />
+          <Text style={[s.pubDefaultsText, { color: '#BE185D' }]}>Seed IndusInd App</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={s.body}>
