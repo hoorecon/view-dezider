@@ -70,15 +70,18 @@ export default function ShortUrlScreen() {
     const message = withLink((data.share_message || data.title || '').trim());
     try {
       if (Platform.OS !== 'web') {
+        // Mobile — native share sheet honours message text.
         await Share.share({ message, url: shareUrl, title: data.title });
-      } else if ((navigator as any).share) {
-        // Web Share API on desktop Gmail integration only forwards URL — so
-        // we bake the message INTO the url-safe text field. Recipients see
-        // both the pre-filled body and the tracked short URL.
-        await (navigator as any).share({ title: data.title, text: message, url: shareUrl });
       } else {
-        await Clipboard.setStringAsync(message);
-        showAlert('Copied', 'Share message + link copied to clipboard.');
+        // Desktop web — navigator.share's Gmail bridge on Chrome strips the
+        // `text` field and only passes the URL. Copying the full formatted
+        // message to the clipboard is deterministic. User pastes into any
+        // channel (Gmail, WhatsApp Web, LinkedIn, Slack, etc.).
+        try {
+          await (navigator.clipboard as any).writeText(message);
+        } catch { /* older browsers */ }
+        showAlert('Copied to clipboard',
+          'The full message (with link) is on your clipboard. Paste it into Gmail, WhatsApp Web, LinkedIn, etc.\n\nTip: use the ✉️ Email or 💬 WhatsApp buttons for a one-tap pre-filled composer.');
       }
     } catch { /* user cancelled */ }
   };
@@ -87,14 +90,18 @@ export default function ShortUrlScreen() {
     if (!data) return;
     const subject = encodeURIComponent(emailSubject());
     const body = encodeURIComponent(emailBody());
-    const href = `mailto:?subject=${subject}&body=${body}`;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      // Some browsers block window.location = 'mailto:' from an async
-      // handler; open in a new window so the mail client actually launches.
-      const w = window.open(href, '_blank');
-      if (!w) window.location.href = href;
+      // On desktop web, `mailto:` is unreliable (many users have no default
+      // mail handler). Open Gmail's compose URL directly — it honours the
+      // `su` (subject) and `body` params and pre-fills both fields.
+      const gmailHref = `https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`;
+      const w = window.open(gmailHref, '_blank');
+      if (!w) {
+        // Popup blocked — fall back to mailto: which the user's OS may open.
+        window.location.href = `mailto:?subject=${subject}&body=${body}`;
+      }
     } else {
-      Linking.openURL(href).catch(() => {});
+      Linking.openURL(`mailto:?subject=${subject}&body=${body}`).catch(() => {});
     }
   };
 
