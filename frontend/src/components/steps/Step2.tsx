@@ -816,6 +816,12 @@ export default function Step2() {
         List factors, group them with sub-factors (splitting 100%), then assign expected values, operators, and units.
       </Text>
 
+      {/* ── FinderApp mode: hide Formulas · Fetch My Best Factors ·
+              Link a Decision · Import factors & options · Deep Import.
+              The Decider App already ships with the factors & option-values
+              needed; showing these tools only confuses the end-user and
+              risks corrupting the pre-authored template. ── */}
+      {!isDeciderApp && (<>
       {/* Formulas button — opens a dedicated modal to declare dependency
           formulas over `fN` variable ids (e.g. f7 = f1*f2/100). */}
       <TouchableOpacity
@@ -913,6 +919,7 @@ export default function Step2() {
         {/* Deep Import — opt-in multi-page crawl with factor-first review */}
         <DeepImport decisionId={decision.id} onMerged={fetchDecision} />
       </View>
+      </>)}
 
       {/* 1-tap import accuracy verdict — appears after a URL import completes */}
       {importFeedback && (

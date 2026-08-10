@@ -884,23 +884,6 @@ export default function NewDecisionIntake() {
             )}
             {step < 4 && (
               <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 8 }}>
-                {/* "Fresh Decision" — visible only on the final step of modules
-                    that have a templates step. Skips template fetching and
-                    lands the user directly on Step 2 (Factors) of the
-                    decision builder with the already-typed-or-default title.
-                    Saves new users from the "Find Templates → empty list"
-                    detour and keeps server-side template-search calls down. */}
-                {step === 3 && moduleCfg.hasTemplatesStep && (
-                  <TouchableOpacity
-                    testID="new-decision-fresh-btn"
-                    style={[s.navBtnFresh, !canProceed() && s.navBtnDisabled]}
-                    onPress={() => handleCreateDecision(undefined, 'CUSTOM_BLANK', 2)}
-                    disabled={!canProceed() || creating}
-                  >
-                    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
-                    <Text style={s.navBtnFreshText}>Fresh Decision</Text>
-                  </TouchableOpacity>
-                )}
                 <TouchableOpacity
                   style={[s.navBtnNext, !canProceed() && s.navBtnDisabled]}
                   onPress={() => {
@@ -920,6 +903,23 @@ export default function NewDecisionIntake() {
                     size={18} color="#FFF"
                   />
                 </TouchableOpacity>
+                {/* "Fresh Decision" — visible only on the final step of modules
+                    that have a templates step. Skips template fetching and
+                    lands the user directly on Step 2 (Factors) of the
+                    decision builder with the already-typed-or-default title.
+                    Now appears to the RIGHT of the primary "Find Templates"
+                    CTA per user's requested order (v3.174). */}
+                {step === 3 && moduleCfg.hasTemplatesStep && (
+                  <TouchableOpacity
+                    testID="new-decision-fresh-btn"
+                    style={[s.navBtnFresh, !canProceed() && s.navBtnDisabled]}
+                    onPress={() => handleCreateDecision(undefined, 'CUSTOM_BLANK', 2)}
+                    disabled={!canProceed() || creating}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+                    <Text style={s.navBtnFreshText}>Fresh Decision</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>

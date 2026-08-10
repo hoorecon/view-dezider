@@ -17,6 +17,11 @@ export default function Step5() {
   const aiBestOptionsEnabled = useAiTouchpoint('tp_best_options');
   const [aiLoading, setAiLoading] = useState(false);
 
+  // In FinderApp mode, the ranking is auto-computed against the pre-authored
+  // Option Bank via /finder/{id} → so we hide "Find My Best Options" and let
+  // the top-of-page Run Finder banner do the work.
+  const isDeciderApp = (decision as any)?.decider_kind === 'app';
+
   // "Find My Best Options" — persists current ratings, asks AI (+ Solution Store)
   // for the top 3-5 options tailored to the life area & prioritized factors,
   // prefills them into Step 6 for review, then advances.
@@ -199,9 +204,9 @@ export default function Step5() {
       </Card>
 
       <TouchableOpacity
-        style={[localS.aiBtn, aiLoading && { opacity: 0.7 }, !aiBestOptionsEnabled && { display: 'none' }]}
+        style={[localS.aiBtn, aiLoading && { opacity: 0.7 }, (!aiBestOptionsEnabled || isDeciderApp) && { display: 'none' }]}
         onPress={handleFindBestOptions}
-        disabled={aiLoading || !aiBestOptionsEnabled}
+        disabled={aiLoading || !aiBestOptionsEnabled || isDeciderApp}
         activeOpacity={0.85}
         accessibilityLabel="Find My Best Options with AI"
       >
@@ -212,7 +217,7 @@ export default function Step5() {
           {aiLoading ? 'Finding your best options…' : 'Find My Best Options'}
         </Text>
       </TouchableOpacity>
-      {aiBestOptionsEnabled && (
+      {aiBestOptionsEnabled && !isDeciderApp && (
         <Text style={localS.aiHint}>
           AI picks the top options for this Life Area & your prioritized factors (incl. matching Solution Store items). Review &amp; remove any in the next step.
         </Text>
@@ -224,8 +229,19 @@ export default function Step5() {
           <Text style={styles.backButtonText}>Adjust Priority</Text>
         </TouchableOpacity>
         <GradientButton
-          title="Add Options"
-          onPress={applyRatingsAndContinue}
+          title={isDeciderApp ? 'Run Finder' : 'Add Options'}
+          onPress={async () => {
+            if (isDeciderApp) {
+              // FinderApp flow: persist ratings, then jump directly to the
+              // Finder Results screen (new Step 7 = old Step 8). Skips
+              // Step 6 (Define Options) and old Step 7 (Assess & Calculate).
+              const factorsWithRatings = calculateRatingsFromOrder(decision.factors, !!decision.equal_weightage);
+              await saveDecision({ factors: factorsWithRatings });
+              setCurrentStep(8);
+            } else {
+              applyRatingsAndContinue();
+            }
+          }}
           style={styles.nextButton}
         />
       </View>

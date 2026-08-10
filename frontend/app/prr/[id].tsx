@@ -206,10 +206,22 @@ function PRRDecisionDetailInner() {
     10: 'Final Decision',
   };
 
+  // Step indicator — FinderApp flow uses an 8-step reduced sequence
+  //   Steps 1-5: common (unchanged),
+  //   New Step 6 = old Step 7 (Assess & Calculate, read-only drill-down),
+  //   New Step 7 = old Step 8 (Finder Results, auto Top 5),
+  //   New Step 8 = old Step 10 (Final Decision).
+  // Old Step 6 (Define Options) and old Step 9 (MPPS) are skipped.
+  const isFinderApp = (decision as any)?.decider_kind === 'app';
+  const finderAppStepMap: Record<number, number> = { 2: 2, 3: 3, 4: 4, 5: 5, 7: 6, 8: 7, 10: 8 };
+  const stepsForIndicator = isFinderApp
+    ? [2, 3, 4, 5, 7, 8, 10]
+    : [2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const displayStepNumber = (raw: number) => isFinderApp ? (finderAppStepMap[raw] || raw) : raw;
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {(contributionMode && stepAccess === 'hidden' ? [contribStep] : [2, 3, 4, 5, 6, 7, 8, 9, 10]).map((step) => (
+        {(contributionMode && stepAccess === 'hidden' ? [contribStep] : stepsForIndicator).map((step) => (
           <TouchableOpacity
             key={step}
             testID={`step-dot-${step}`}
@@ -221,7 +233,7 @@ function PRRDecisionDetailInner() {
             ]}
           >
             <Text style={[styles.stepDotText, step <= currentStep && styles.stepDotTextActive]}>
-              {step}
+              {displayStepNumber(step)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -396,18 +408,25 @@ function PRRDecisionDetailInner() {
             </View>
           );
         })()}
-        {(decision as any)?.decider_kind === 'app' && !contributionMode && (
+        {(decision as any)?.decider_kind === 'app' && !contributionMode && (currentStep === 2 || currentStep === 5) && (
           <TouchableOpacity
             onPress={() => router.push(`/finder/${id}` as any)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, backgroundColor: currentStep === 5 ? '#4F46E5' : '#EEF2FF', borderWidth: 1, borderColor: currentStep === 5 ? '#4F46E5' : '#C7D2FE', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 }}
             accessibilityLabel="Run Finder"
+            testID="run-finder-banner"
           >
-            <Ionicons name="search-circle" size={20} color="#4F46E5" />
+            <Ionicons name="search-circle" size={20} color={currentStep === 5 ? '#FFF' : '#4F46E5'} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13.5, fontWeight: '800', color: '#3730A3' }}>Run Finder — auto-rank the best options</Text>
-              <Text style={{ fontSize: 11.5, color: '#6366F1', marginTop: 1 }}>Set expectations (Step 2) & priorities, then find your Top matches.</Text>
+              <Text style={{ fontSize: 13.5, fontWeight: '800', color: currentStep === 5 ? '#FFF' : '#3730A3' }}>
+                {currentStep === 5 ? 'Run Finder — see your Top matches' : 'Run Finder — auto-rank the best options'}
+              </Text>
+              <Text style={{ fontSize: 11.5, color: currentStep === 5 ? '#E0E7FF' : '#6366F1', marginTop: 1 }}>
+                {currentStep === 5
+                  ? 'Skip Steps 6-7 (Define & Assess) — jump straight to results.'
+                  : 'Set expectations (Step 2) & priorities, then find your Top matches.'}
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#6366F1" />
+            <Ionicons name="chevron-forward" size={18} color={currentStep === 5 ? '#FFF' : '#6366F1'} />
           </TouchableOpacity>
         )}
         {contributionMode && (

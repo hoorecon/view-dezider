@@ -922,12 +922,23 @@ export default function Step7() {
     );
   };
 
+  const isDeciderApp = (decision as any)?.decider_kind === 'app';
   return (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Step 7: Assess & Calculate</Text>
+    <View style={styles.stepContent} pointerEvents={isDeciderApp ? 'box-only' : 'auto'}>
+      <Text style={styles.stepTitle}>{isDeciderApp ? 'Step 6: Assess & Calculate (read-only)' : 'Step 7: Assess & Calculate'}</Text>
       <Text style={styles.stepDescription}>
-        Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
+        {isDeciderApp
+          ? 'Auto-computed from the Decider App\'s Option Bank against your expected values from Step 2. Editing is disabled — to change any assessment %, go back to Step 2, revise your expected value, then re-run the Finder.'
+          : 'Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.'}
       </Text>
+      {isDeciderApp && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF9C3', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 10, padding: 10, marginBottom: 10 }}>
+          <Ionicons name="lock-closed" size={16} color="#B45309" />
+          <Text style={{ flex: 1, fontSize: 12, color: '#78350F', lineHeight: 16 }}>
+            Read-only — data is derived from the Option Bank. Change expected values in Step 2 and tap Run Finder to refresh.
+          </Text>
+        </View>
+      )}
 
       <View style={[mdXls.bar, { flexWrap: 'wrap' }]}>
         <TouchableOpacity style={mdXls.btn} onPress={handleDownloadTemplate} disabled={xlsBusy} testID="md-xls-download">
