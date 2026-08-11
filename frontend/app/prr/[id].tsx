@@ -355,7 +355,7 @@ function PRRDecisionDetailInner() {
           )}
           <View style={styles.headerStatusBadge}>
             <Text style={styles.headerStatusText}>
-              Step {currentStep}/10
+              Step {isFinderApp ? (finderAppStepMap[currentStep] || currentStep) : currentStep}/{isFinderApp ? 8 : 10}
             </Text>
           </View>
           {/* Save as Template — visible on every step 2..10 (was only in Step 10) */}
@@ -408,25 +408,19 @@ function PRRDecisionDetailInner() {
             </View>
           );
         })()}
-        {(decision as any)?.decider_kind === 'app' && !contributionMode && (currentStep === 2 || currentStep === 5) && (
+        {(decision as any)?.decider_kind === 'app' && !contributionMode && currentStep === 5 && (
           <TouchableOpacity
             onPress={() => router.push(`/finder/${id}` as any)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, backgroundColor: currentStep === 5 ? '#4F46E5' : '#EEF2FF', borderWidth: 1, borderColor: currentStep === 5 ? '#4F46E5' : '#C7D2FE', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, backgroundColor: '#4F46E5', borderWidth: 1, borderColor: '#4F46E5', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 }}
             accessibilityLabel="Run Finder"
             testID="run-finder-banner"
           >
-            <Ionicons name="search-circle" size={20} color={currentStep === 5 ? '#FFF' : '#4F46E5'} />
+            <Ionicons name="search-circle" size={20} color="#FFF" />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13.5, fontWeight: '800', color: currentStep === 5 ? '#FFF' : '#3730A3' }}>
-                {currentStep === 5 ? 'Run Finder — see your Top matches' : 'Run Finder — auto-rank the best options'}
-              </Text>
-              <Text style={{ fontSize: 11.5, color: currentStep === 5 ? '#E0E7FF' : '#6366F1', marginTop: 1 }}>
-                {currentStep === 5
-                  ? 'Skip Steps 6-7 (Define & Assess) — jump straight to results.'
-                  : 'Set expectations (Step 2) & priorities, then find your Top matches.'}
-              </Text>
+              <Text style={{ fontSize: 13.5, fontWeight: '800', color: '#FFF' }}>Run Finder — see your top matches</Text>
+              <Text style={{ fontSize: 11.5, color: '#E0E7FF', marginTop: 1 }}>Auto-ranked against your priorities & expected values.</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={currentStep === 5 ? '#FFF' : '#6366F1'} />
+            <Ionicons name="chevron-forward" size={18} color="#FFF" />
           </TouchableOpacity>
         )}
         {contributionMode && (
