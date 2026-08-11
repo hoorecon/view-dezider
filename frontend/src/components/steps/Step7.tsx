@@ -940,6 +940,7 @@ export default function Step7() {
         </View>
       )}
 
+      {!isDeciderApp && (
       <View style={[mdXls.bar, { flexWrap: 'wrap' }]}>
         <TouchableOpacity style={mdXls.btn} onPress={handleDownloadTemplate} disabled={xlsBusy} testID="md-xls-download">
           <Ionicons name="download-outline" size={15} color="#1F6FEB" />
@@ -962,6 +963,7 @@ export default function Step7() {
           <Text style={[mdXls.btnText, { color: '#7C3AED' }]}>Import from URL</Text>
         </TouchableOpacity>
       </View>
+      )}
 
       <View style={styles.voiceInputRow}>
         <View style={styles.voiceHintBox}>
@@ -1063,7 +1065,23 @@ export default function Step7() {
         </>)}
       </Card>
 
-      {decision.options.map((option) => {
+      {(() => {
+        // In FinderApp mode (read-only Step 6 drill-down), show ONLY the
+        // Top-N options ranked by dynamic worth so the assessment card list
+        // stays focused on the same finalists shown in Step 7 (Case-1
+        // Results). Top-N defaults to 5 but respects the app's
+        // `finder_settings.top_n` if set. Non-FinderApp flows show all
+        // options unchanged.
+        let opts = decision.options;
+        if (isDeciderApp) {
+          const topN = Math.max(1, Number((decision as any)?.finder_settings?.top_n) || 5);
+          opts = [...decision.options]
+            .map((o) => ({ o, w: calculateDynamicWorth(o).worth }))
+            .sort((a, b) => (b.w || 0) - (a.w || 0))
+            .slice(0, topN)
+            .map((x) => x.o);
+        }
+        return opts.map((option) => {
         const dynamicWorth = calculateDynamicWorth(option);
         return (
           <Card key={option.id} style={styles.assessmentCard}>
@@ -1184,7 +1202,8 @@ export default function Step7() {
             })()}
           </Card>
         );
-      })}
+      });
+      })()}
 
       <View style={styles.navButtons}>
         <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(6)}>

@@ -11,8 +11,10 @@ import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import { DeepImportBudgetPicker } from '../DeepImportBudgetPicker';
 import { useAiTouchpoint } from '../../utils/aiEstimates';
+import { useRouter } from 'expo-router';
 
 export default function Step5() {
+  const router = useRouter();
   const { decision, saveDecision, applyRatingsAndContinue, setCurrentStep, prefillBestOptions } = useDecision();
   const aiBestOptionsEnabled = useAiTouchpoint('tp_best_options');
   const [aiLoading, setAiLoading] = useState(false);
@@ -232,12 +234,13 @@ export default function Step5() {
           title={isDeciderApp ? 'Run Finder' : 'Add Options'}
           onPress={async () => {
             if (isDeciderApp) {
-              // FinderApp flow: persist ratings, then jump directly to the
-              // Finder Results screen (new Step 7 = old Step 8). Skips
-              // Step 6 (Define Options) and old Step 7 (Assess & Calculate).
+              // FinderApp flow: persist ratings, then route to the Finder
+              // Settings screen (same as the top-of-page banner). Users
+              // configure Top N + engine there and hit Run Finder to see
+              // ranked matches — consistent with the banner path.
               const factorsWithRatings = calculateRatingsFromOrder(decision.factors, !!decision.equal_weightage);
               await saveDecision({ factors: factorsWithRatings });
-              setCurrentStep(8);
+              router.push(`/finder/${decision.id}` as any);
             } else {
               applyRatingsAndContinue();
             }

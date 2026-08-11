@@ -148,7 +148,10 @@ export default function LoginScreen() {
       const data = r.data;
       useAuthStore.getState().setSession(data.session_token, data.user);
       setShowOtpModal(false);
-      router.replace('/(tabs)');
+      // Honour pending deep links (e.g. /decider-store/{id}?use=full from
+      // "Use this Finder" click) — otherwise the OTP path always dumped the
+      // user on /(tabs) and the FinderApp entry silently died.
+      router.replace((await getPostAuthRoute()) as any);
     } catch (err: any) {
       setOtpError(err.response?.data?.detail || 'Invalid OTP');
     } finally {

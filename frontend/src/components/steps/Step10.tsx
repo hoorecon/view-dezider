@@ -59,7 +59,7 @@ export default function Step10() {
 
   return (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Step 10: Final Decision</Text>
+      <Text style={styles.stepTitle}>{(decision as any)?.decider_kind === 'app' ? 'Step 8: Final Decision' : 'Step 10: Final Decision'}</Text>
       <Text style={styles.stepDescription}>
         Select your final option based on Case-1 results and MPPS analysis.
       </Text>

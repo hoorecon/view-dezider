@@ -31,9 +31,10 @@ export default function Step8() {
   const topByAi = new Set<string>((decision as any)?.deep_import_top_n_ids || []);
   const hasAiTop = topByAi.size > 0;
 
+  const isDeciderApp = (decision as any)?.decider_kind === 'app';
   return (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Step 8: Case-1 Results</Text>
+      <Text style={styles.stepTitle}>{isDeciderApp ? 'Step 7: Case-1 Results' : 'Step 8: Case-1 Results'}</Text>
       <Text style={styles.stepDescription}>
         Options ranked by worth percentage. The highest worth option is the best as per Case-1 analysis.
       </Text>
