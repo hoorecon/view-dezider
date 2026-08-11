@@ -35,13 +35,32 @@ def _actual(option: Dict[str, Any], fid: str) -> Dict[str, Any]:
 
 
 def _actual_val(option: Dict[str, Any], fid: str) -> Any:
+    # PRR shape: option.assessments[] carries {factor_id, unit_value,
+    # actual_value, percentage} for each rated factor.
     a = _actual(option, fid)
     v = a.get("unit_value")
     if v in (None, ""):
         v = a.get("actual_value")
     if v in (None, "") and a.get("percentage") is not None:
         v = a.get("percentage")
-    return v
+    if v not in (None, ""):
+        return v
+    # DeciderApp / sheet-import shape: option.values{} maps
+    #   sub_factor_id -> {num, raw, txt}   (see core/factor_group_import.py)
+    # We fall back to this when no PRR assessment row exists, so the finder
+    # engine can score sheet-imported options identically to hand-assessed
+    # ones. Prefer `num` for arithmetic, then `raw`, then `txt`.
+    vals = option.get("values") if isinstance(option.get("values"), dict) else None
+    if vals:
+        cell = vals.get(fid)
+        if isinstance(cell, dict):
+            for key in ("num", "raw", "txt"):
+                cv = cell.get(key)
+                if cv not in (None, ""):
+                    return cv
+        elif cell not in (None, ""):
+            return cell
+    return None
 
 
 def _satisfies(actual_raw: Any, op: Any, expected_raw: Any, data_type: Any) -> bool:
@@ -113,7 +132,20 @@ def _score(actual_raw: Any, op: Any, expected_raw: Any, data_type: Any) -> Optio
 
 
 def _children(factors: List[Dict[str, Any]], parent_id: str) -> List[Dict[str, Any]]:
-    return [f for f in factors if f.get("parent_id") == parent_id]
+    # Flat form: PRR stores sub-factors as top-level entries with parent_id set.
+    kids = [f for f in factors if f.get("parent_id") == parent_id]
+    if kids:
+        return kids
+    # Nested form: sheet-imported templates (see core/factor_group_import.py)
+    # store sub-factors inside their parent's `sub_factors` list. Surface them
+    # here so factor_pct / factor_matches work identically for both shapes.
+    for f in factors:
+        if f.get("id") == parent_id:
+            subs = f.get("sub_factors") or []
+            if isinstance(subs, list) and subs:
+                return list(subs)
+            break
+    return []
 
 
 def factor_pct(option: Dict[str, Any], factor: Dict[str, Any],
