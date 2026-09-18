@@ -7,6 +7,12 @@ on:
         description: 'Deployment Environment (dev, staging, prod)'
         required: true
         default: 'dev'
+  push:
+    branches:
+      - jelcos-dev
+    paths:
+      - 'backend/deployment/infra.yaml'
+      - '.github/workflows/infra-deploy.yml'
 
 permissions:
   id-token: write
