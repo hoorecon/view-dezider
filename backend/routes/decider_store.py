@@ -38,6 +38,107 @@ router = APIRouter(prefix="/decider-store", tags=["The Decider Store"])
 CLONE_MODES = {"full", "values_only"}
 
 
+async def verify_decision_templates_access(user: dict):
+    """Ensure user is on an active Subscription plan or Admin/Tester role.
+
+    Restricts Free plan and On-Demand plan users from accessing or cloning Decision Templates.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"}:
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1}) or {}
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers and paid user_type override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester", "paid"}:
+        return True
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free"} and not cp.startswith("on_demand"):
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan and splan not in {"none", "free", ""} and not splan.startswith("on_demand"):
+        return True
+
+    # 5. Block Free and On-Demand users
+    raise HTTPException(
+        status_code=403,
+        detail="Decision Templates (The Decider Store) are not available for Free or On-Demand plans. Please upgrade to a subscription plan (Basic, Pro, Premium) to access Decision Templates."
+    )
+
+
+async def verify_decider_apps_access(user: dict):
+    """Ensure user is on Pro, Premium, Enterprise, or Admin/Tester role.
+
+    Restricts Free plan, On-Demand plan, and Basic plan users from accessing Decider Apps.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"}:
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1}) or {}
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
+        return True
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free", "basic"} and not cp.startswith("on_demand"):
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan and splan not in {"none", "free", "basic", ""} and not splan.startswith("on_demand"):
+        return True
+
+    if utype == "paid" and splan not in {"none", "free", "basic", ""}:
+        return True
+
+    # 5. Block Free, On-Demand, and Basic users
+    raise HTTPException(
+        status_code=403,
+        detail="Decider Apps @ Best Option Finders are not available for Free, On-Demand, or Basic plans. Please upgrade to a Pro, Premium, or Enterprise plan to access Decider Apps."
+    )
+
+
 def _clean_finder_settings(raw: Any) -> Dict[str, Any]:
     """Validate optional per-template Finder overrides (blanks fall back to
     the global admin defaults at run time)."""
@@ -601,6 +702,7 @@ async def seed_indusind_account_finder(user: dict = Depends(get_current_user)):
 
 @router.post("")
 async def create_template(request: Request, user: dict = Depends(get_current_user)):
+    await verify_decision_templates_access(user)
     body = await request.json()
     is_admin = _is_admin(user)
     modes = [m for m in (body.get("allowed_clone_modes") or ["full", "values_only"]) if m in CLONE_MODES]
@@ -889,13 +991,17 @@ def _build_decision_from_template(t: Dict[str, Any], mode: str, user: dict) -> D
 
 @router.post("/{template_id}/clone")
 async def clone_template(template_id: str, request: Request, user: dict = Depends(get_current_user)):
+    t = await db.decider_store_templates.find_one({"template_id": template_id}, {"_id": 0})
+    if not t or not (t.get("status") == "authorized" and t.get("is_public")):
+        raise HTTPException(404, "Template not found")
+    if t.get("kind") == "app":
+        await verify_decider_apps_access(user)
+    else:
+        await verify_decision_templates_access(user)
     body = await request.json()
     mode = (body.get("mode") or "full").lower()
     if mode not in CLONE_MODES:
         mode = "full"
-    t = await db.decider_store_templates.find_one({"template_id": template_id}, {"_id": 0})
-    if not t or not (t.get("status") == "authorized" and t.get("is_public")):
-        raise HTTPException(404, "Template not found")
     if mode not in (t.get("allowed_clone_modes") or ["full", "values_only"]):
         raise HTTPException(400, f"This template does not allow '{mode}' cloning.")
 

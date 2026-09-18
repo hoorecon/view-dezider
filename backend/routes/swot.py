@@ -117,6 +117,9 @@ class SwotUpdate(BaseModel):
 @router.post("")
 async def create_swot(data: SwotCreate, user: dict = Depends(get_current_user)):
     """Create a new SWOT analysis (also seeds the 8-step framework containers)."""
+    from routes.module_limits import check_and_reserve_usage
+    await check_and_reserve_usage(user, "swot")
+
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
@@ -141,6 +144,11 @@ async def create_swot(data: SwotCreate, user: dict = Depends(get_current_user)):
         "updated_at": _now(),
     }
     await db.swot_analyses.insert_one(doc)
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="swot", decision_id=doc["id"])
+    except Exception as _e:
+        logger.warning("entitlement consume on swot create failed: %s", _e)
     return {"id": doc["id"], "message": "SWOT analysis created"}
 
 

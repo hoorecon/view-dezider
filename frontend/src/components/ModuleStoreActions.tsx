@@ -27,7 +27,19 @@ interface Props {
   subAreaId?: string | null;
 }
 
-interface ReportInfo { unlocked: boolean; unlocked_via?: string | null; l1_balance: number; l2_balance: number; }
+interface ReportInfo {
+  unlocked: boolean;
+  unlocked_via?: string | null;
+  l1_balance: number;
+  l2_balance: number;
+  l3_balance?: number;
+  l4_balance?: number;
+  has_access?: boolean;
+  access_via?: string;
+  user_role?: string;
+  user_type?: string;
+  subscription_plan?: string;
+}
 
 export default function ModuleStoreActions({ module, decisionId, lifeAreaId, subAreaId }: Props) {
   const router = useRouter();
@@ -55,6 +67,18 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
   }, [module, decisionId]);
   useEffect(() => { loadInfo(); }, [loadInfo]);
 
+  const isPrivilegedUser = useMemo(() => {
+    if (!info) return false;
+    const role = (info.user_role || '').toLowerCase();
+    if (['super_admin', 'admin', 'co_admin'].includes(role)) return true;
+    const plan = (info.subscription_plan || '').toLowerCase();
+    if (plan && !['none', 'free', ''].includes(plan)) return true;
+    const utype = (info.user_type || '').toLowerCase();
+    if (['paid', 'on_demand_retail_buyer', 'on_demand_bulk_buyer', 'alpha', 'beta', 'unit_tester', 'integration_tester'].includes(utype)) return true;
+    if (info.has_access && (info.access_via === 'subscription' || info.access_via === 'admin_skip')) return true;
+    return false;
+  }, [info]);
+
   const downloadPdf = useCallback(async () => {
     setBusy('L1');
     try {
@@ -64,8 +88,8 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
       const token = await AsyncStorage.getItem('session_token');
       const resp = await fetch(base, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (resp.status === 402) {
-        // No entitlement — kick to store
-        const want = await confirmDialog('Unlock report', 'You need a DIY Decision Report (₹199) or any plan to download the PDF. Open the store now?', { confirmText: 'Open store' });
+        // Free plan on-demand user without entitlement — prompt based on On-Demand SKU Pricing (L1 / L2)
+        const want = await confirmDialog('Unlock DIY Decision Report', 'Downloading this PDF requires On-Demand SKU L1 (DIY Decision Report ₹199) or L2 (5-Decision Bundle ₹999). Open store to purchase?', { confirmText: 'Open store' });
         if (want) router.push({ pathname: '/store', params: { highlight: 'L1', module, decision_id: decisionId } } as any);
         return;
       }
@@ -97,27 +121,30 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
   const bookExpert = useCallback(async () => {
     setBusy('L3');
     try {
-      // Check L3 balance up front
-      const res = await api.get('/store/my-entitlements');
-      const l3 = (res.data?.entitlements || []).find((x: any) => x.sku_code === 'L3');
-      const hasL3 = (l3?.balance || 0) > 0;
-      if (!hasL3) {
-        const want = await confirmDialog('Book a Professional Session', 'A Professional Guided Session (₹1,999) lets you screen-share your decision with an expert. Buy now?', { confirmText: 'Open store' });
+      const hasL3OrL2 = ((info?.l3_balance || 0) > 0) || ((info?.l2_balance || 0) > 0);
+      if (!isPrivilegedUser && !hasL3OrL2) {
+        const want = await confirmDialog('Book Expert Session', 'A 1-on-1 session with a decision expert requires On-Demand SKU L3 (Professional Guided Session ₹1,999) or L2 Bundle. Open store to purchase?', { confirmText: 'Open store' });
         if (want) router.push({ pathname: '/store', params: { highlight: 'L3', module, decision_id: decisionId } } as any);
         return;
       }
       // Deep-link into expert-net filtered by life area
       router.push({ pathname: '/tools/expert-net' as any, params: { from_module: module, decision_id: decisionId, life_area_id: lifeAreaId || '', sub_area_id: subAreaId || '' } } as any);
     } catch (e: any) {
-      showAlert('Error', e?.response?.data?.detail || 'Could not check entitlements.');
+      showAlert('Error', e?.response?.data?.detail || 'Could not access ExpertNet.');
     } finally { setBusy(null); }
-  }, [module, decisionId, router, lifeAreaId, subAreaId]);
+  }, [info, isPrivilegedUser, module, decisionId, router, lifeAreaId, subAreaId]);
 
   const orderReview = useCallback(async () => {
-    const ok = await confirmDialog('Order Expert Review', 'A domain expert will review this decision and send written recommendations within 48 hrs (₹2,800). Continue to store?', { confirmText: 'Buy L4' });
-    if (!ok) return;
-    router.push({ pathname: '/store', params: { highlight: 'L4', module, decision_id: decisionId } } as any);
-  }, [router, module, decisionId]);
+    const hasL4OrL2 = ((info?.l4_balance || 0) > 0) || ((info?.l2_balance || 0) > 0);
+    if (!isPrivilegedUser && !hasL4OrL2) {
+      const ok = await confirmDialog('Order Expert Review', 'An Expert Review with written recommendations within 48 hrs requires On-Demand SKU L4 (Expert Review ₹2,800) or L2 Bundle. Open store to purchase?', { confirmText: 'Open store' });
+      if (!ok) return;
+      router.push({ pathname: '/store', params: { highlight: 'L4', module, decision_id: decisionId } } as any);
+      return;
+    }
+    // Deep-link into expert review discover portal
+    router.push({ pathname: '/tools/expert-net' as any, params: { tab: 'discover', review_mode: 'true', from_module: module, decision_id: decisionId, life_area_id: lifeAreaId || '' } } as any);
+  }, [info, isPrivilegedUser, router, module, decisionId, lifeAreaId]);
 
   const submitShare = useCallback(async () => {
     if (shareChannel === 'email' && !shareEmail.trim()) { showAlert('Email needed', 'Enter the recipient email.'); return; }
@@ -179,9 +206,9 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
 
   return (
     <View style={s.row}>
-      <Pill icon="download" label={info?.unlocked ? 'Download PDF' : 'Unlock PDF'} tone="#3B82F6" busy={busy === 'L1'} onPress={downloadPdf} hint={info?.unlocked ? null : info?.l1_balance ? `${info.l1_balance} L1 left` : null} />
-      <Pill icon="videocam" label="Book Expert" tone="#059669" busy={busy === 'L3'} onPress={bookExpert} />
-      <Pill icon="ribbon" label="Expert Review" tone="#DC2626" busy={busy === 'L4'} onPress={orderReview} />
+      <Pill icon="download" label={info?.unlocked || isPrivilegedUser ? 'Download PDF' : 'Unlock PDF'} tone="#3B82F6" busy={busy === 'L1'} onPress={downloadPdf} hint={info?.unlocked || isPrivilegedUser ? null : info?.l1_balance ? `${info.l1_balance} L1 left` : 'SKU L1'} />
+      <Pill icon="videocam" label="Book Expert" tone="#059669" busy={busy === 'L3'} onPress={bookExpert} hint={isPrivilegedUser ? null : (info?.l3_balance || info?.l2_balance) ? `${(info?.l3_balance || 0) + (info?.l2_balance || 0)} left` : 'SKU L3'} />
+      <Pill icon="ribbon" label="Expert Review" tone="#DC2626" busy={busy === 'L4'} onPress={orderReview} hint={isPrivilegedUser ? null : (info?.l4_balance || info?.l2_balance) ? `${(info?.l4_balance || 0) + (info?.l2_balance || 0)} left` : 'SKU L4'} />
       <Pill icon="share-social" label="Share" tone="#7C3AED" onPress={() => setShareOpen(true)} />
 
       <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>

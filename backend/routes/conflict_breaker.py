@@ -79,6 +79,9 @@ async def get_meta():
 
 @router.post("/sessions")
 async def create_session(request: Request, user: dict = Depends(get_current_user)):
+    from routes.module_limits import check_and_reserve_usage
+    await check_and_reserve_usage(user, "conflict_breaker")
+
     body = await request.json()
     session_id = f"CB-{uuid.uuid4().hex[:10].upper()}"
     now = datetime.now(timezone.utc).isoformat()
@@ -896,7 +899,7 @@ async def cb_dashboard(user: dict = Depends(get_current_user)):
 #       and metered against the user's wallet using the configured
 #       audio_storage_*  knobs in the AI Wallet admin config.
 
-AUDIO_ROOT = Path("/app/backend/uploads/conflict_audio")
+AUDIO_ROOT = Path(os.getenv("CONFLICT_AUDIO_DIR", str(Path(__file__).resolve().parents[1] / "uploads" / "conflict_audio")))
 ALLOWED_AUDIO_EXTS = {"webm", "wav", "mp3", "ogg", "m4a", "mp4", "aac"}
 _EXT_FROM_CT = {
     "audio/webm": "webm", "audio/wav": "wav", "audio/x-wav": "wav",

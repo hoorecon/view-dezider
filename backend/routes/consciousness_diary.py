@@ -57,6 +57,79 @@ METRICS_SCHEMA = [
 
 
 # ========================
+# ACCESS CONTROL
+# ========================
+
+async def verify_consciousness_access(user: dict):
+    """Ensure user is on Premium or Enterprise Subscription plan (or Admin/Tester role).
+
+    Restricts Free, On-Demand, Basic, AND Pro plan users from accessing Consciousness Diary.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user.get("is_admin"):
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1, "is_admin": 1}) or {}
+    role = str(user_doc.get("role") or user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user_doc.get("is_admin"):
+        return True
+
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
+        return True
+
+    # 3. Explicit check for on_demand, basic, pro, free
+    if utype.startswith("on_demand") or splan.startswith("on_demand") or utype == "free" or splan in {"free", "none", ""}:
+        raise HTTPException(
+            status_code=403,
+            detail="Consciousness Diary is not available for Free or On-Demand plans. Please upgrade to a Premium or Enterprise plan to access Consciousness Diary."
+        )
+
+    if utype in {"basic", "pro"} or splan in {"basic", "pro"} or splan.startswith("basic") or splan.startswith("pro"):
+        raise HTTPException(
+            status_code=403,
+            detail="Consciousness Diary is not available for Basic or Pro plan users. Please upgrade to a Premium or Enterprise plan to access Consciousness Diary."
+        )
+
+    # 4. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp in {"premium", "enterprise"}:
+            return True
+
+    # 5. Check active subscription plan on user doc
+    if splan in {"premium", "enterprise"}:
+        return True
+
+    if utype == "paid" and splan in {"premium", "enterprise"}:
+        return True
+
+    # 6. Block Free, On-Demand, Basic, and Pro users
+    raise HTTPException(
+        status_code=403,
+        detail="Consciousness Diary is available exclusively for Premium and Enterprise plan members. Free, On-Demand, Basic, and Pro plan users cannot access Consciousness Diary."
+    )
+
+
+# ========================
 # CONFIGURATION
 # ========================
 
@@ -76,6 +149,7 @@ async def get_diary_config():
 @router.post("/entries")
 async def create_diary_entry(request: Request, user: dict = Depends(get_current_user)):
     """Create or update a daily consciousness diary entry with 8 metrics"""
+    await verify_consciousness_access(user)
     body = await request.json()
     uid = user["user_id"]
     entry_date = body.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
@@ -132,6 +206,7 @@ async def get_diary_entry(
     date: Optional[str] = None,
 ):
     """Get diary entry for a specific date (defaults to today)"""
+    await verify_consciousness_access(user)
     uid = user["user_id"]
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -153,6 +228,7 @@ async def get_diary_entry(
 @router.put("/entries/{entry_id}")
 async def update_diary_entry(entry_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Update an existing diary entry"""
+    await verify_consciousness_access(user)
     body = await request.json()
     return await _update_entry(entry_id, body, user["user_id"])
 
@@ -188,6 +264,7 @@ async def get_diary_history(
     days: int = 30,
 ):
     """Get diary entry history for trend analysis"""
+    await verify_consciousness_access(user)
     uid = user["user_id"]
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
@@ -201,6 +278,7 @@ async def get_diary_history(
 
 @router.delete("/entries/{entry_id}")
 async def delete_diary_entry(entry_id: str, user: dict = Depends(get_current_user)):
+    await verify_consciousness_access(user)
     result = await db.consciousness_diary.delete_one(
         {"entry_id": entry_id, "user_id": user["user_id"]}
     )
@@ -216,6 +294,7 @@ async def delete_diary_entry(entry_id: str, user: dict = Depends(get_current_use
 @router.get("/self-awareness")
 async def get_self_awareness(user: dict = Depends(get_current_user)):
     """Get self-awareness levels (6 levels). Level 4 is auto-calculated."""
+    await verify_consciousness_access(user)
     uid = user["user_id"]
 
     sa = await db.self_awareness.find_one({"user_id": uid}, {"_id": 0})
@@ -248,6 +327,7 @@ async def get_self_awareness(user: dict = Depends(get_current_user)):
 @router.put("/self-awareness")
 async def update_self_awareness(request: Request, user: dict = Depends(get_current_user)):
     """Update self-rated awareness levels (1,2,3,5,6). Level 4 is auto-calculated."""
+    await verify_consciousness_access(user)
     body = await request.json()
     uid = user["user_id"]
     levels_input = body.get("levels", {})
@@ -304,6 +384,7 @@ async def get_emotional_wellness(
     Aggregate emotional wellness score from recent diary entries.
     Computes trends for all 8 metrics.
     """
+    await verify_consciousness_access(user)
     uid = user["user_id"]
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
@@ -467,6 +548,7 @@ async def get_daily_context(
     date: Optional[str] = None,
 ):
     """Get CTT tasks, Lifestyle routines & unplanned events for a specific date"""
+    await verify_consciousness_access(user)
     uid = user["user_id"]
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")

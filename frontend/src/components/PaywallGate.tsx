@@ -18,7 +18,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../utils/api';
 
-export type DecisionModule = 'dezider' | 'pros_cons' | 'swot';
+import { showAlert } from '../utils/alert';
+
+export type DecisionModule = 'dezider' | 'pros_cons' | 'swot' | 'solution_finder' | 'conflict_breaker' | 'conflict-breaker';
 
 interface Props {
   module: DecisionModule;
@@ -26,12 +28,24 @@ interface Props {
   onAllowed?: () => void;
 }
 
-interface AccessState { has_access: boolean; via?: string | null; balance?: number; loading: boolean; }
+interface AccessState {
+  has_access: boolean;
+  access_level?: 'full' | 'read' | 'locked' | 'hidden' | 'quota_exceeded';
+  acm_restricted?: boolean;
+  message?: string;
+  via?: string | null;
+  tier?: string;
+  balance?: number;
+  loading: boolean;
+}
 
-const MODULE_LABEL: Record<DecisionModule, string> = {
+const MODULE_LABEL: Record<string, string> = {
   dezider: 'My Dezider',
   pros_cons: 'Pros & Cons',
   swot: 'SWOT Analysis',
+  solution_finder: 'Solution Finder',
+  conflict_breaker: 'The Conflict Breaker',
+  'conflict-breaker': 'The Conflict Breaker',
 };
 
 export default function PaywallGate({ module, children, onAllowed }: Props) {
@@ -51,7 +65,16 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
   const refresh = useCallback(async () => {
     try {
       const res = await api.get('/store/access-check', { params: { module } });
-      setState({ has_access: !!res.data?.has_access, via: res.data?.via, balance: res.data?.balance, loading: false });
+      setState({
+        has_access: !!res.data?.has_access,
+        access_level: res.data?.access_level || (res.data?.has_access ? 'full' : 'locked'),
+        acm_restricted: !!res.data?.acm_restricted,
+        message: res.data?.message,
+        via: res.data?.via,
+        tier: res.data?.tier,
+        balance: res.data?.balance,
+        loading: false,
+      });
     } catch (e: any) {
       // SECURITY: on 401/403 we must NOT bail to has_access=true — that would
       // silently bypass the paywall for any auth blip. Only treat 5xx / network
@@ -59,7 +82,7 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
       // creators when the backend is down").
       const status = e?.response?.status;
       const failOpen = !status || status >= 500;
-      setState({ has_access: failOpen, loading: false });
+      setState({ has_access: failOpen, access_level: failOpen ? 'full' : 'locked', loading: false });
     }
   }, [module]);
 
@@ -70,28 +93,25 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
   // here too. Loaded lazily the first time the sheet opens; falls back to the
   // default copy if the request fails.
   const money = (paise?: number) => '₹' + Math.round((paise || 0) / 100).toLocaleString('en-IN');
-  const [pricing, setPricing] = useState<{ l1?: string; l2?: string; sub?: string }>({});
+  const [pricing, setPricing] = useState<{ l1?: string; l2?: string; l3?: string; l4?: string }>({});
   useEffect(() => {
     if (!showSheet || pricing.l1) return;
     let cancelled = false;
     (async () => {
       try {
-        const [skuRes, planRes] = await Promise.all([
-          api.get('/store/skus'),
-          api.get('/payments/plans').catch(() => null),
-        ]);
+        const skuRes = await api.get('/store/skus');
         const byCode: Record<string, any> = {};
         (skuRes.data?.skus || []).forEach((s: any) => { byCode[s.code] = s; });
         const l1 = byCode['L1'];
         const l2 = byCode['L2'];
-        const paid = (planRes?.data?.plans || [])
-          .map((p: any) => p.price_paise)
-          .filter((x: number) => x > 0);
+        const l3 = byCode['L3'];
+        const l4 = byCode['L4'];
         if (cancelled) return;
         setPricing({
-          l1: l1 ? `${money(l1.price_paise)} · 1 decision + PDF` : undefined,
-          l2: l2 ? `${money(l2.price_paise)} · 10 decisions across modules` : undefined,
-          sub: paid.length ? `From ${money(Math.min(...paid))}/mo · unlimited` : undefined,
+          l1: l1 ? `${money(l1.price_paise)} · 1 decision + PDF report` : undefined,
+          l2: l2 ? `${money(l2.price_paise)} · 5 decisions across modules` : undefined,
+          l3: l3 ? `${money(l3.price_paise)} · 1-on-1 expert session` : undefined,
+          l4: l4 ? `${money(l4.price_paise)} · written expert analysis` : undefined,
         });
       } catch {
         /* keep fallback copy */
@@ -108,8 +128,60 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
       if (typeof cb === 'function') cb();
       return;
     }
+
+    // Conflict Breaker is plan-restricted (Pro and Premium plans only).
+    // Do NOT show On-Demand purchase popup modal! Display "Plan Upgrade Required" alert instead.
+    const isConflictBreaker = module === 'conflict_breaker' || module === 'conflict-breaker';
+    if (isConflictBreaker) {
+      showAlert(
+        'Plan Upgrade Required',
+        state.message || 'The Conflict Breaker is available on Pro and Premium plans. Upgrade your plan to access this feature.'
+      );
+      return;
+    }
+
+    // If ACM explicitly restricts access (admin set level to 'locked', 'read', or 'hidden' in ACM):
+    // DO NOT ASK FOR PAYMENT MODEL! Display status alert instead.
+    if (state.acm_restricted) {
+      const label = MODULE_LABEL[module] || 'This module';
+      const level = state.access_level || 'locked';
+
+      let title = `${label} is Locked`;
+      let body = state.message;
+
+      if (level === 'read') {
+        title = `${label} is Read-Only`;
+        body = body || `${label} is in read-only mode under Access Control Matrix rules.`;
+      } else if (level === 'hidden') {
+        title = `${label} is Hidden`;
+        body = body || `${label} is hidden under Access Control Matrix rules.`;
+      } else {
+        body = body || `${label} is locked under Access Control Matrix rules.`;
+      }
+
+      showAlert(title, body);
+      return;
+    }
+
+    // Subscription plan users (basic, pro, premium, enterprise):
+    // Do NOT show On-Demand purchase popup modal! Display "Limit Reached" alert instead.
+    const tierLc = (state.tier || '').toLowerCase();
+    const isSubscriptionUser = ['basic', 'pro', 'premium', 'enterprise', 'paid'].includes(tierLc);
+    if (isSubscriptionUser) {
+      showAlert(
+        'Limit Reached',
+        state.message || `Your limit has been reached on the ${state.tier || 'current'} plan. Upgrade your plan for higher limits.`
+      );
+      return;
+    }
+
+    // Standard paywall quota check for free / guest / on-demand users: show On-Demand SKU unlock modal
     setShowSheet(true);
-  }, [state, onAllowed, children]);
+  }, [state, onAllowed, children, module]);
+
+  if (!state.loading && state.access_level === 'hidden' && state.acm_restricted) {
+    return null;
+  }
 
   // Clone child so we own the onPress (still passing the original via fallthrough)
   const wrapped = React.cloneElement(children, { onPress: handlePress });
@@ -126,19 +198,20 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
             </View>
             <Text style={styles.title}>Unlock {MODULE_LABEL[module]}</Text>
             <Text style={styles.body}>
-              Pick a plan or on-demand pack to create a new {MODULE_LABEL[module]} decision.
+              Choose an On-Demand SKU pack to unlock {MODULE_LABEL[module]}.
             </Text>
             <View style={styles.options}>
-              <OptionRow icon="document-text" tone="#3B82F6" title="DIY Decision Report" desc={pricing.l1 ?? '₹199 · 1 decision + PDF'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L1', module } } as any); }} />
-              <OptionRow icon="people" tone="#7C3AED" title="10-Decision Family Bundle" desc={pricing.l2 ?? '₹999 · 10 decisions across modules'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L2', module } } as any); }} />
-              <OptionRow icon="infinite" tone="#059669" title="Monthly Subscription" desc={pricing.sub ?? 'From ₹149/mo · unlimited'} onPress={() => { setShowSheet(false); router.push('/pricing' as any); }} />
+              <OptionRow icon="document-text" tone="#3B82F6" title="DIY Decision Report (L1)" desc={pricing.l1 ?? '₹199 · 1 decision + PDF'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L1', module } } as any); }} />
+              <OptionRow icon="people" tone="#7C3AED" title="5-Decision Bundle (L2)" desc={pricing.l2 ?? '₹999 · 5 decisions across modules'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L2', module } } as any); }} />
+              <OptionRow icon="videocam" tone="#059669" title="Professional Guided Session (L3)" desc={pricing.l3 ?? '₹1,999 · 1-on-1 Expert Session'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L3', module } } as any); }} />
+              <OptionRow icon="ribbon" tone="#DC2626" title="Expert Review (L4)" desc={pricing.l4 ?? '₹2,800 · Written Expert Analysis'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L4', module } } as any); }} />
             </View>
             <View style={styles.footerRow}>
               <TouchableOpacity style={styles.dismissBtn} onPress={() => setShowSheet(false)}>
                 <Text style={styles.dismissText}>Not now</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.viewAll} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { module } } as any); }}>
-                <Text style={styles.viewAllText}>See all plans →</Text>
+                <Text style={styles.viewAllText}>See On-Demand Store →</Text>
               </TouchableOpacity>
             </View>
             {state.loading && <ActivityIndicator size="small" style={{ marginTop: 8 }} />}

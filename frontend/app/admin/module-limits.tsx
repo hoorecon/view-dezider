@@ -22,9 +22,13 @@ import { safeBack } from '../../src/utils/navigation';
 type Row = { tier: string; module: string; limit: number };
 
 const MODULE_LABEL: Record<string, string> = {
-  solution_finder: 'Solution Finder',
-  pros_cons: 'Pros & Cons',
   my_dezider: 'MyDezider',
+  pros_cons: 'Pros & Cons',
+  solution_finder: 'Solution Finder',
+  group_decision: 'Group Decision (Share)',
+  book_expert: 'Book ASSISTANT',
+  expert_review: 'Expert Review',
+  expire_days: 'Expiry Days',
 };
 
 export default function AdminModuleLimitsScreen() {
@@ -123,26 +127,38 @@ export default function AdminModuleLimitsScreen() {
                     <View key={m} style={[styles.cell, styles.hCell]}><Text style={styles.hText}>{MODULE_LABEL[m] || m}</Text></View>
                   ))}
                 </View>
-                {tiers.map((tier) => (
-                  <View key={tier} style={styles.row}>
-                    <View style={[styles.cell, styles.cellTier]}><Text style={styles.tierText}>{tier}</Text></View>
-                    {modules.map((m) => {
-                      const v = cellValue(tier, m);
-                      const isDirty = `${tier}::${m}` in dirty;
-                      return (
-                        <View key={m} style={styles.cell}>
-                          <TextInput
-                            style={[styles.input, isDirty && styles.inputDirty, v < 0 && styles.inputUnlimited]}
-                            keyboardType="numeric"
-                            value={String(v)}
-                            onChangeText={(t) => setCell(tier, m, parseInt(t || '0', 10))}
-                          />
-                          <Text style={styles.cellHint}>{v < 0 ? 'Unlimited' : `${v} / lifetime`}</Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ))}
+                {tiers.map((tier) => {
+                  const isReadOnly = ['on_demand_l1', 'on_demand_l2', 'on_demand_l3', 'on_demand_l4'].includes(tier.toLowerCase());
+                  return (
+                    <View key={tier} style={[styles.row, isReadOnly && { backgroundColor: '#F9FAFB' }]}>
+                      <View style={[styles.cell, styles.cellTier]}>
+                        <Text style={[styles.tierText, isReadOnly && { color: COLORS.textMuted }]}>{tier}</Text>
+                        {isReadOnly && <Text style={{ fontSize: 9, color: COLORS.primary, fontWeight: '600', marginTop: 2 }}>Read-only (Tier Rule)</Text>}
+                      </View>
+                      {modules.map((m) => {
+                        const v = cellValue(tier, m);
+                        const isDirty = `${tier}::${m}` in dirty;
+                        return (
+                          <View key={m} style={styles.cell}>
+                            <TextInput
+                              style={[
+                                styles.input,
+                                isDirty && styles.inputDirty,
+                                v < 0 && styles.inputUnlimited,
+                                isReadOnly && styles.inputReadOnly,
+                              ]}
+                              keyboardType="numeric"
+                              value={String(v)}
+                              editable={!isReadOnly}
+                              onChangeText={(t) => setCell(tier, m, parseInt(t || '0', 10))}
+                            />
+                            <Text style={styles.cellHint}>{v < 0 ? 'Unlimited' : `${v} / lifetime`}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
               </View>
             </ScrollView>
           </ScrollView>
@@ -176,5 +192,6 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, width: 70, textAlign: 'center', fontSize: 13, color: COLORS.textPrimary, backgroundColor: COLORS.white },
   inputDirty: { borderColor: '#EAB308', backgroundColor: '#FEFCE8' },
   inputUnlimited: { color: '#059669', fontWeight: '700' },
+  inputReadOnly: { backgroundColor: '#F3F4F6', color: '#6B7280', borderColor: '#E5E7EB' },
   cellHint: { fontSize: 9, color: COLORS.textMuted, marginTop: 3 },
 });

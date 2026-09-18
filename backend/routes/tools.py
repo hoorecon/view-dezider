@@ -108,6 +108,11 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
             "linked_role_ids": body.get("linked_role_ids", []),
         }},
     )
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="solution_finder", decision_id=entry_id)
+    except Exception as _e:
+        logger.warning("entitlement consume on solution_finder create failed: %s", _e)
     doc.update({
         "deadline_date": body.get("deadline_date"),
         "impact_horizon_value": body.get("impact_horizon_value", 7),
@@ -256,6 +261,84 @@ def _lim(v, d=2):
         return max(1, min(10, int(v)))
     except Exception:
         return d
+
+
+@router.post("/solution-finders/ai/suggest-root-causes")
+async def ai_suggest_root_causes(request: Request, user: dict = Depends(get_current_user)):
+    """Q2 — AI-suggest root causes for each primary concern.
+
+    Body: {
+      area_of_life, smart_goal, max_per_concern?,
+      primary_concerns: [{concern_id, text, existing?: [str]}]
+    }
+    Returns: { suggestions: { <concern_id>: [str, ...] } }
+    Metered against the AI-credits wallet. Raises HTTP 402 when out of credits.
+    """
+    import json as _json
+    from core import ai_metering, ai_wallet
+
+    body = await request.json()
+    area = (body.get("area_of_life") or "").strip()
+    goal = (body.get("smart_goal") or "").strip()
+    max_per_concern = _lim(body.get("max_per_concern"), 2)
+    concerns = [c for c in (body.get("primary_concerns") or []) if c.get("concern_id") and (c.get("text") or "").strip()]
+    if not concerns:
+        return {"suggestions": {}}
+
+    if not ai_metering.has_any_llm():
+        raise HTTPException(status_code=503, detail="AI is not configured.")
+
+    concern_lines = []
+    for c in concerns:
+        existing = [e for e in (c.get("existing") or []) if (e or "").strip()]
+        ex = f" Already listed (do NOT repeat): {existing}." if existing else ""
+        concern_lines.append(f'- id "{c["concern_id"]}": primary concern = "{c["text"]}".{ex}')
+    concern_block = "\n".join(concern_lines)
+
+    sysmsg = (
+        "You are a root cause analysis expert (5-Whys / Ishikawa methodology). "
+        "For each primary concern, identify the underlying root causes "
+        "that drive or create this concern. Be specific, realistic, and concise. "
+        "Return ONLY valid JSON, no prose, no markdown."
+    )
+    prompt = (
+        f"Life area: {area or 'general'}. SMART goal: {goal or '(not specified)'}.\n"
+        f"Primary concerns:\n{concern_block}\n\n"
+        f"Propose up to {max_per_concern} NEW, distinct root cause(s) per primary concern. "
+        "Do not repeat any 'already listed' items. Each root cause is a short descriptive phrase (max ~14 words).\n"
+        'Return JSON exactly as: {"suggestions": {"<concern_id>": ["root cause 1", "root cause 2"]}}'
+    )
+
+    try:
+        txt = await ai_metering.metered_chat(
+            user["user_id"], system_message=sysmsg, prompt=prompt,
+            feature="solution_finder_rcas", session_prefix="sfrca",
+        )
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"You're out of AI credits (balance {round(e.balance, 2)}). "
+                f"Top up your AI wallet to use AI auto-fill."
+            ),
+        )
+
+    data = _parse_ai_json(txt)
+    if data is None:
+        raise HTTPException(status_code=502, detail="AI returned an unreadable response — please try again.")
+    raw = data.get("suggestions") if isinstance(data, dict) else None
+    if raw is None:
+        raw = data
+
+    valid_ids = {c["concern_id"] for c in concerns}
+    out: Dict = {}
+    for k, v in (raw.items() if isinstance(raw, dict) else []):
+        if k not in valid_ids:
+            continue
+        items = [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
+        if items:
+            out[k] = items[:max_per_concern]
+    return {"suggestions": out}
 
 
 @router.post("/solution-finders/ai/suggest-solutions")
@@ -811,7 +894,7 @@ async def get_solution_matrix(entry_id: str, user: dict = Depends(get_current_us
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     # Back-fill defaults so older records render cleanly in the new UI
-    entry.setdefault("matrix_mode", "accurate")
+    entry.setdefault("matrix_mode", "standard")
     for layer in MATRIX_PARENT_LAYERS:
         entry[layer] = normalise_layer_set(entry.get(layer))
     return entry

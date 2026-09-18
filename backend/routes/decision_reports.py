@@ -44,49 +44,45 @@ router = APIRouter(prefix="/reports", tags=["Decision Reports"])
 # ────────────────────────────────────────────────────────────────────────────
 # Module → MongoDB adapter
 # ────────────────────────────────────────────────────────────────────────────
-async def _load_decision(module: str, decision_id: str, user_id: str) -> Dict[str, Any]:
+async def _load_decision(module: str, decision_id: str, user_id: str, role: Optional[str] = None) -> Dict[str, Any]:
     module = module.lower()
+    is_admin = (role or "").lower() in ("super_admin", "admin", "co_admin")
     if module == "dezider":
-        doc = await db.decisions.find_one(
-            {"id": decision_id, "user_id": user_id}, {"_id": 0}
-        )
+        q = {"id": decision_id} if is_admin else {"id": decision_id, "user_id": user_id}
+        doc = await db.decisions.find_one(q, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="Decision not found")
         doc["_action_items"] = await db.action_items.find(
-            {"user_id": user_id, "source_module": "MYDEZIDER_MPPS", "source_id": decision_id},
+            {"user_id": doc.get("user_id", user_id), "source_module": "MYDEZIDER_MPPS", "source_id": decision_id},
             {"_id": 0},
         ).sort("by_when", 1).to_list(200)
         return {"module": "dezider", "raw": doc, "title": doc.get("title", "Untitled Decision")}
     if module == "pros_cons":
-        doc = await db.pros_cons.find_one(
-            {"id": decision_id, "user_id": user_id}, {"_id": 0}
-        )
+        q = {"id": decision_id} if is_admin else {"id": decision_id, "user_id": user_id}
+        doc = await db.pros_cons.find_one(q, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="Pros & Cons analysis not found")
         doc["_action_items"] = await db.action_items.find(
-            {"user_id": user_id, "source_module": "PROS_CONS", "source_id": decision_id},
+            {"user_id": doc.get("user_id", user_id), "source_module": "PROS_CONS", "source_id": decision_id},
             {"_id": 0},
         ).sort("by_when", 1).to_list(200)
         return {"module": "pros_cons", "raw": doc, "title": doc.get("title", "Untitled Pros & Cons")}
     if module == "swot":
-        doc = await db.swot_analyses.find_one(
-            {"id": decision_id, "user_id": user_id}, {"_id": 0}
-        )
+        q = {"id": decision_id} if is_admin else {"id": decision_id, "user_id": user_id}
+        doc = await db.swot_analyses.find_one(q, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="SWOT analysis not found")
         return {"module": "swot", "raw": doc, "title": doc.get("title", "Untitled SWOT")}
     if module == "solution_finder":
-        doc = await db.solution_finders.find_one(
-            {"entry_id": decision_id, "user_id": user_id}, {"_id": 0}
-        )
+        q = {"entry_id": decision_id} if is_admin else {"entry_id": decision_id, "user_id": user_id}
+        doc = await db.solution_finders.find_one(q, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="Solution Finder entry not found")
         return {"module": "solution_finder", "raw": doc,
                 "title": doc.get("smart_goal") or "Solution Finder"}
     if module == "assessment":
-        doc = await db.assessments.find_one(
-            {"id": decision_id, "user_id": user_id}, {"_id": 0}
-        )
+        q = {"id": decision_id} if is_admin else {"id": decision_id, "user_id": user_id}
+        doc = await db.assessments.find_one(q, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="Assessment not found")
         owner = "My" if doc.get("subject_type") != "other" else (doc.get("subject_name") or "Someone")
@@ -183,18 +179,21 @@ async def report_info(
     user: dict = Depends(get_current_user),
 ):
     """Lightweight check — returns whether the report is unlocked for this user
-    + decision combo, and the user's current L1/L2 balances. Used by the
-    final-summary screen to decide which button to show.
+    + decision combo, and the user's current L1/L2/L3/L4 balances and access status.
     """
-    await _load_decision(module, decision_id, user["user_id"])  # validates ownership
+    user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "subscription_plan": 1, "user_type": 1, "role": 1}) or {}
+    user_role = (user_doc.get("role") or user.get("role") or "user").lower()
+    user_type = user_doc.get("user_type") or user.get("user_type") or "free"
+    sub_plan = user_doc.get("subscription_plan") or user.get("subscription_plan") or "none"
+
+    await _load_decision(module, decision_id, user["user_id"], role=user_role)
     unlock_key = f"{module}:{decision_id}"
     prior = await db.decision_report_unlocks.find_one(
         {"user_id": user["user_id"], "key": unlock_key}, {"_id": 0}
     )
-    # Free access (global admin skip-payment, active subscription, or L2 bundle)
-    # should present as already-unlocked so the FE shows "Download PDF" — not a paywall.
     access = await has_any_paid_access(user["user_id"])
     free = bool(access.get("has_access")) and access.get("via") in ("subscription", "L2", "admin_skip")
+    eff_plan = access.get("plan") or sub_plan
     return {
         "module": module,
         "decision_id": decision_id,
@@ -202,6 +201,13 @@ async def report_info(
         "unlocked_via": (prior or {}).get("via") or (access.get("via") if free else None),
         "l1_balance": await get_active_balance(user["user_id"], "L1"),
         "l2_balance": await get_active_balance(user["user_id"], "L2"),
+        "l3_balance": await get_active_balance(user["user_id"], "L3"),
+        "l4_balance": await get_active_balance(user["user_id"], "L4"),
+        "has_access": bool(access.get("has_access")),
+        "access_via": access.get("via"),
+        "user_role": user_role,
+        "user_type": user_type,
+        "subscription_plan": eff_plan,
     }
 
 

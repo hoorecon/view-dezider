@@ -42,6 +42,7 @@ import { styles, pcAssess } from '../../src/features/pros-cons/styles';
 import { CollabBar } from '../../src/components/CollabBar';
 import LiveSessionPill from '../../src/components/LiveSessionPill';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
+import { useACM } from '../../src/hooks/useACM';
 import {
   DebouncedInput, NextBack, FactorGroupRow, DataSourceModal, FactorTreeNode,
   FactorAssessmentCard, MainFactorWithSubs, SubFactorEditableList, LmhAiButtons,
@@ -81,15 +82,31 @@ export default function ProsConsWizard() {
   const [pcActionKey, setPcActionKey] = useState(0);
   // One-shot guard for the partner-embed option pre-seed.
   const embedSeededRef = useRef(false);
+  const { checkFeature } = useACM();
+  const featureId = module === 'swot' ? 'swot_analysis' : 'pros_cons';
+  const acmAccess = checkFeature(featureId);
+  const isReadOnly = acmAccess.access_level === 'read';
+  const isRestricted = !acmAccess.allowed || isReadOnly || acmAccess.access_level === 'locked' || acmAccess.access_level === 'hidden';
 
   const load = useCallback(async () => {
     // -------------------------------------------------------------
     // No `id` in URL  ⇒  user landed here from "Pros & Cons (8-Step)"
     // / "SWOT (8-Step)" Quick-Action card on the home screen.
     // Auto-create a draft analysis, then bounce to the same wizard
-    // URL with the new id so the rest of the flow works unchanged.
+    // with `?id=...`. Leaves `new-decision.tsx` uncluttered (that's
+    // for My Dezider 10-step intake only).
     // -------------------------------------------------------------
     if (!id) {
+      if (isRestricted) {
+        showAlert(
+          'Creation Disabled',
+          acmAccess.access_level === 'read'
+            ? `${module === 'swot' ? 'SWOT Analysis' : 'Pros & Cons Analysis'} is set to Read-Only for your plan under Access Control Matrix configuration.`
+            : (acmAccess.upgrade_message || `Creation is disabled for your plan under Access Control Matrix configuration.`)
+        );
+        router.back();
+        return;
+      }
       try {
         const titlePrefix = module === 'swot' ? 'SWOT' : 'Pros & Cons';
         const now = new Date();

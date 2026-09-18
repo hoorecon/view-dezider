@@ -6,6 +6,7 @@ Each slot can be: default URL, custom URL, or uploaded MP3 file.
 import os
 import uuid
 import shutil
+from pathlib import Path
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form
 from fastapi.responses import FileResponse
@@ -15,7 +16,7 @@ from core.auth import get_current_user
 router = APIRouter(prefix="/meditation-settings", tags=["Meditation Settings"])
 
 # Persistent upload directory
-UPLOAD_DIR = "/app/backend/uploads/meditations"
+UPLOAD_DIR = os.getenv("MEDITATION_UPLOAD_DIR", str(Path(__file__).resolve().parents[1] / "uploads" / "meditations"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ═══════════════════════════════════════════════════════════════

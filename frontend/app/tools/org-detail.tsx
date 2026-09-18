@@ -1,7 +1,3 @@
-/**
- * Org Detail - 7×7 Assessment Matrix + 6 LeGs Goal Tree
- * Fortnightly cadence assessment + tree-like drill-down for goals.
- */
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +6,9 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isOrgsAccessAllowed, promptOrgsUpgrade } from '../../src/utils/cttAccess';
 
 const LEVEL_ORDER = ['L1','L2','L3','L4','L5','L6'] as const;
 const LEVEL_INFO: Record<string, { label: string; hint: string; color: string }> = {
@@ -23,6 +22,10 @@ const LEVEL_INFO: Record<string, { label: string; hint: string; color: string }>
 
 export default function OrgDetail() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isOrgsAccessAllowed(user, acm?.access);
+
   const params = useLocalSearchParams();
   const orgId = params.id as string;
   const [org, setOrg] = useState<any>(null);
@@ -38,6 +41,7 @@ export default function OrgDetail() {
   const [scoreRemarks, setScoreRemarks] = useState('');
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<{ level: string; parent_goal_id: string | null } | null>(null);
+
   const [newGoal, setNewGoal] = useState<any>({});
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [smartGoals, setSmartGoals] = useState<any[]>([]);
@@ -67,6 +71,10 @@ export default function OrgDetail() {
   }, [adding]);
 
   const reload = async () => {
+    if (!allowed) {
+      setBusy(false);
+      return;
+    }
     setBusy(true);
     try {
       const [o, d1, d2, sc, m, dd, t] = await Promise.all([
@@ -87,9 +95,27 @@ export default function OrgDetail() {
       setMatrix(m2);
       setDue(dd.data);
       setTree(t.data?.tree || []);
+    } catch (e: any) {
+      console.warn('Orgs detail load error:', e);
     } finally { setBusy(false); }
   };
-  useFocusEffect(useCallback(() => { if (orgId) reload(); }, [orgId]));
+  useFocusEffect(useCallback(() => { if (orgId && allowed) reload(); }, [orgId, allowed]));
+
+  const renderLockedState = () => (
+    <View style={s.lockedWrap}>
+      <View style={s.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.lockedTitle}>Subscription Required</Text>
+      <Text style={s.lockedSub}>
+        My Organizations (7x7 Matrix & 6 LeGs Goal Tree) is available exclusively for Premium and Enterprise plan members. Free, On-Demand, Basic, and Pro plan users cannot access Orgs.
+      </Text>
+      <TouchableOpacity style={s.upgradeBtn} onPress={() => promptOrgsUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={s.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const submitScore = async (scaleCode: string) => {
     if (!scoring) return;
@@ -183,16 +209,20 @@ export default function OrgDetail() {
     );
   };
 
-  if (busy && !org) return <SafeAreaView style={s.wrap}><ActivityIndicator style={{ marginTop: 80 }} /></SafeAreaView>;
-  if (!org) return <SafeAreaView style={s.wrap}><Text style={{ padding: 20 }}>Org not found</Text></SafeAreaView>;
+  if (busy && !org && allowed) return <SafeAreaView style={s.wrap}><ActivityIndicator style={{ marginTop: 80 }} /></SafeAreaView>;
+  if (!org && allowed) return <SafeAreaView style={s.wrap}><Text style={{ padding: 20 }}>Org not found</Text></SafeAreaView>;
 
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
-      <View style={[s.header, { backgroundColor: org.color || '#003087' }]}>
-        <TouchableOpacity onPress={() => { try { safeBack(router); } catch {} router.replace('/(tabs)' as any); }} style={s.backBtn} accessibilityLabel="Back to dashboard" {...({ title: 'Back to dashboard' } as any)}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
-        <Text style={s.title}>{org.name}</Text>
-        <Text style={s.subtitle}>{org.org_type} · {org.life_area}{org.sub_area ? ` / ${org.sub_area}` : ''}</Text>
-      </View>
+      {!allowed ? (
+        renderLockedState()
+      ) : (
+        <>
+          <View style={[s.header, { backgroundColor: org?.color || '#003087' }]}>
+            <TouchableOpacity onPress={() => { try { safeBack(router); } catch {} router.replace('/(tabs)' as any); }} style={s.backBtn} accessibilityLabel="Back to dashboard" {...({ title: 'Back to dashboard' } as any)}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+            <Text style={s.title}>{org?.name}</Text>
+            <Text style={s.subtitle}>{org?.org_type} · {org?.life_area}{org?.sub_area ? ` / ${org?.sub_area}` : ''}</Text>
+          </View>
       <View style={s.tabs}>
         <TouchableOpacity style={[s.tab, tab==='matrix' && s.tabActive]} onPress={() => setTab('matrix')}><Text style={[s.tabText, tab==='matrix' && s.tabTextActive]}>7×7 MATRIX</Text></TouchableOpacity>
         <TouchableOpacity style={[s.tab, tab==='goals' && s.tabActive]} onPress={() => setTab('goals')}><Text style={[s.tabText, tab==='goals' && s.tabTextActive]}>6 LeGs GOALS</Text></TouchableOpacity>
@@ -338,6 +368,8 @@ export default function OrgDetail() {
           </View>
         </View>
       )}
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -404,4 +436,11 @@ const s = StyleSheet.create({
   cancelText: { color: '#475569', fontWeight: '700' },
   saveBtn: { flex: 2, padding: 12, borderRadius: 8, backgroundColor: '#003087', alignItems: 'center' },
   saveText: { color: '#FFF', fontWeight: '700' },
+  lockedWrap: { alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#FFF', borderRadius: 16, marginTop: 24, borderWidth: 1, borderColor: '#E2E8F0' },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  lockedSub: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#003087', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 },
+  upgradeBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });
+

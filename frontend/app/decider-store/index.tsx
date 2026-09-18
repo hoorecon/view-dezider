@@ -14,6 +14,11 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import {
+  isDecisionTemplatesAccessAllowed, promptDecisionTemplatesUpgrade,
+  isDeciderAppsAccessAllowed, promptDeciderAppsUpgrade,
+} from '../../src/utils/cttAccess';
 
 type Card = {
   template_id: string; title: string; subtitle?: string; description?: string;
@@ -42,12 +47,19 @@ export default function DeciderStoreHome() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const user = useAuthStore((s) => s.user);
+  const acm = useACM();
+  const isTemplatesAllowed = isDecisionTemplatesAccessAllowed(user, acm?.access);
+  const isAppsAllowed = isDeciderAppsAccessAllowed(user, acm?.access);
+
   const [cards, setCards] = useState<Card[]>([]);
   const [cats, setCats] = useState<{ key: string; count: number }[]>([]);
   const [cat, setCat] = useState<string>('all');
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<'app' | 'template'>('template');
   const [facets, setFacets] = useState<Facets>({ life_areas: [], org_types: [], publisher_types: [] });
+
+  const currentTabAllowed = tab === 'app' ? isAppsAllowed : isTemplatesAllowed;
   // L0 canonical life-area list from Central Catalog. Used as the LIFE AREA
   // filter chip set (instead of the observed values on templates).
   const [l0LifeAreas, setL0LifeAreas] = useState<Array<{ id: string; name: string; icon?: string; color?: string }>>([]);
@@ -123,12 +135,23 @@ export default function DeciderStoreHome() {
 
   const renderCard = (c: Card) => {
     const isApp = c.kind === 'app';
+    const cardAllowed = isApp ? isAppsAllowed : isTemplatesAllowed;
     return (
       <TouchableOpacity
         key={c.template_id}
         style={[s.card, { width: numCols === 1 ? '100%' : `${100 / numCols - 2}%` }]}
         activeOpacity={0.85}
-        onPress={() => router.push(`/decider-store/${c.template_id}`)}
+        onPress={() => {
+          if (isAuthenticated && !cardAllowed) {
+            if (isApp) {
+              promptDeciderAppsUpgrade(router);
+            } else {
+              promptDecisionTemplatesUpgrade(router);
+            }
+            return;
+          }
+          router.push(`/decider-store/${c.template_id}`);
+        }}
       >
         <View style={[s.cardCover, { backgroundColor: (c.cover_color || '#4F46E5') + '18' }]}>
           <Ionicons name={(c.cover_icon || 'grid') as any} size={26} color={c.cover_color || '#4F46E5'} />
@@ -218,6 +241,25 @@ export default function DeciderStoreHome() {
           )}
         </View>
       </View>
+
+      {isAuthenticated && !currentTabAllowed && (
+        <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1, borderRadius: 14, padding: 14, marginHorizontal: 12, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}>
+            <Ionicons name="lock-closed" size={18} color="#DC2626" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#991B1B' }}>Subscription Required</Text>
+            <Text style={{ fontSize: 11.5, color: '#B91C1C', marginTop: 2 }}>
+              {tab === 'app'
+                ? 'Decider Apps @ Best Option Finders are available exclusively for Pro, Premium, and Enterprise plan members. Free, On-Demand, and Basic plan users cannot access Decider Apps.'
+                : 'Decision Templates are available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand users cannot access or clone templates.'}
+            </Text>
+          </View>
+          <TouchableOpacity style={{ backgroundColor: '#DC2626', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }} onPress={() => tab === 'app' ? promptDeciderAppsUpgrade(router) : promptDecisionTemplatesUpgrade(router)}>
+            <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }}>Upgrade Plan</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* 2-tab bar — Templates FIRST (manual assessment), then Decider Apps
           (fully automated). Subtitles clarify the modal difference. */}

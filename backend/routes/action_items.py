@@ -347,6 +347,8 @@ def _routine_doc_from_action(ai: Dict[str, Any], user: dict) -> Dict[str, Any]:
 
 @router.post("/action-items/{action_id}/port-to-ctt")
 async def port_to_ctt(action_id: str, user: dict = Depends(get_current_user)):
+    from routes.ctt_gem import verify_ctt_access
+    await verify_ctt_access(user)
     ai = await db.action_items.find_one(
         {"action_id": action_id, "user_id": user.get("user_id")}, {"_id": 0}
     )
@@ -373,6 +375,8 @@ async def port_to_ctt(action_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/action-items/{action_id}/port-to-lifestyle")
 async def port_to_lifestyle(action_id: str, user: dict = Depends(get_current_user)):
+    from routes.lifestyle import verify_lifestyle_access
+    await verify_lifestyle_access(user)
     ai = await db.action_items.find_one(
         {"action_id": action_id, "user_id": user.get("user_id")}, {"_id": 0}
     )

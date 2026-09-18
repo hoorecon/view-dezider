@@ -15,6 +15,9 @@ import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
 import { safeBack } from '../../src/utils/navigation';
 import { ACTION_STATUS_OPTS, statusLabel, statusColor, normStatus } from '../../src/constants/actionStatus';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isCTTAccessAllowed, promptCTTUpgrade } from '../../src/utils/cttAccess';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -75,6 +78,10 @@ function formatShortDate(dateStr: string): { day: string; weekday: string; isTod
 
 export default function CTTScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isCTTAccessAllowed(user, acm?.access);
+
   const [tasks, setTasks] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -88,6 +95,10 @@ export default function CTTScreen() {
   const weekDates = getWeekDates();
 
   const fetchData = async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
@@ -109,11 +120,23 @@ export default function CTTScreen() {
   useFocusEffect(useCallback(() => {
     setLoading(true);
     fetchData();
-  }, [statusFilter, isRoutine, lifeAreaFilter, decisionTypeFilter]));
+  }, [statusFilter, isRoutine, lifeAreaFilter, decisionTypeFilter, allowed]));
 
   const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
 
+  const handleCreateTask = () => {
+    if (!allowed) {
+      promptCTTUpgrade(router);
+      return;
+    }
+    router.push('/tools/ctt-task');
+  };
+
   const handleAggregate = async () => {
+    if (!allowed) {
+      promptCTTUpgrade(router);
+      return;
+    }
     setAggregating(true);
     try {
       const res = await api.post('/ctt/aggregate');
@@ -487,6 +510,27 @@ export default function CTTScreen() {
     </ScrollView>
   );
 
+  const renderLockedState = () => (
+    <View style={s.empty}>
+      <View style={[s.emptyIconWrap, { backgroundColor: '#FEE2E2' }]}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.emptyTitle}>Subscription Required</Text>
+      <Text style={s.emptySub}>
+        Task Tracker (CTT) is available exclusively for Subscription Plan members (Basic, Pro, Premium, Enterprise). Free and On-Demand plan users cannot access or create tasks in CTT.
+      </Text>
+      <View style={s.emptyActions}>
+        <TouchableOpacity
+          style={[s.emptyBtn, { backgroundColor: COLORS.primary }]}
+          onPress={() => promptCTTUpgrade(router)}
+        >
+          <Ionicons name="diamond" size={18} color="#FFF" />
+          <Text style={s.emptyBtnText}>Upgrade Plan</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   const renderEmptyState = () => (
     <View style={s.empty}>
       <View style={s.emptyIconWrap}>
@@ -499,7 +543,7 @@ export default function CTTScreen() {
       <View style={s.emptyActions}>
         <TouchableOpacity
           style={s.emptyBtn}
-          onPress={() => router.push('/tools/ctt-task')}
+          onPress={handleCreateTask}
         >
           <Ionicons name="add-circle" size={18} color="#FFF" />
           <Text style={s.emptyBtnText}>Create Task</Text>
@@ -544,7 +588,7 @@ export default function CTTScreen() {
             )}
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => router.push('/tools/ctt-task')}
+            onPress={handleCreateTask}
             style={s.addBtn}
           >
             <Ionicons name="add" size={22} color="#FFF" />
@@ -552,53 +596,59 @@ export default function CTTScreen() {
         </View>
       </LinearGradient>
 
-      {/* Stats */}
-      {renderStats()}
-
-      {/* View mode toggle */}
-      <View style={s.viewToggleRow}>
-        {([
-          { key: 'list', icon: 'list', label: 'List' },
-          { key: 'board', icon: 'albums', label: 'Board' },
-          { key: 'calendar', icon: 'calendar', label: 'Day Grid' },
-        ] as const).map(v => (
-          <TouchableOpacity
-            key={v.key}
-            style={[s.viewToggle, viewMode === v.key && s.viewToggleActive]}
-            onPress={() => setViewMode(v.key)}
-          >
-            <Ionicons name={v.icon as any} size={14} color={viewMode === v.key ? '#FFF' : COLORS.textMuted} />
-            <Text style={[s.viewToggleText, viewMode === v.key && { color: '#FFF' }]}>{v.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Filters */}
-      {renderFilters()}
-
-      {/* Content */}
-      {loading ? (
-        <View style={s.loadingWrap}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={s.loadingText}>Loading tasks...</Text>
-        </View>
-      ) : tasks.length === 0 ? (
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {renderEmptyState()}
-        </ScrollView>
-      ) : viewMode === 'board' ? (
-        renderBoardView()
+      {!allowed ? (
+        renderLockedState()
       ) : (
-        <ScrollView
-          style={s.scroll}
-          contentContainerStyle={s.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {tasks.map(renderTaskCard)}
-        </ScrollView>
+        <>
+          {/* Stats */}
+          {renderStats()}
+
+          {/* View mode toggle */}
+          <View style={s.viewToggleRow}>
+            {([
+              { key: 'list', icon: 'list', label: 'List' },
+              { key: 'board', icon: 'albums', label: 'Board' },
+              { key: 'calendar', icon: 'calendar', label: 'Day Grid' },
+            ] as const).map(v => (
+              <TouchableOpacity
+                key={v.key}
+                style={[s.viewToggle, viewMode === v.key && s.viewToggleActive]}
+                onPress={() => setViewMode(v.key)}
+              >
+                <Ionicons name={v.icon as any} size={14} color={viewMode === v.key ? '#FFF' : COLORS.textMuted} />
+                <Text style={[s.viewToggleText, viewMode === v.key && { color: '#FFF' }]}>{v.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Filters */}
+          {renderFilters()}
+
+          {/* Content */}
+          {loading ? (
+            <View style={s.loadingWrap}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={s.loadingText}>Loading tasks...</Text>
+            </View>
+          ) : tasks.length === 0 ? (
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1 }}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
+              {renderEmptyState()}
+            </ScrollView>
+          ) : viewMode === 'board' ? (
+            renderBoardView()
+          ) : (
+            <ScrollView
+              style={s.scroll}
+              contentContainerStyle={s.scrollContent}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
+              {tasks.map(renderTaskCard)}
+            </ScrollView>
+          )}
+        </>
       )}
     </SafeAreaView>
   );

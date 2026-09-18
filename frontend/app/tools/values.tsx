@@ -1,12 +1,3 @@
-/**
- * Values Tracker — user-facing module screen.
- *
- * v3.25 SCOPE NOTE: This screen ships the **My Values** and **AI Advisor** tabs.
- * The 5-question Daily Reflection moves under the existing
- * `Consciousness Diary → Wellness` tab (separate follow-up) so reflections
- * can be captured against ANY of: org-values, eg-trap, eg-loop, eg-limitation,
- * solution-finder — backed by the same `/api/values/reflect` endpoint.
- */
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isValuesAccessAllowed, promptValuesUpgrade } from '../../src/utils/cttAccess';
 
 interface Principle {
   id: string; code: string; name: string; short?: string; body: string; bullets?: string[]; order: number;
@@ -23,6 +17,10 @@ interface AdvisorPick { code: string; alignment_score: number; why: string; do?:
 
 export default function ValuesScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isValuesAccessAllowed(user, acm?.access);
+
   const [tab, setTab] = useState<'principles' | 'advisor'>('principles');
   const [principles, setPrinciples] = useState<Principle[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -31,14 +29,23 @@ export default function ValuesScreen() {
   const [advising, setAdvising] = useState(false);
   const [advisorResult, setAdvisorResult] = useState<AdvisorPick[] | null>(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [allowed]);
   const load = async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try { const { data } = await api.get('/values/principles'); setPrinciples(data?.principles || []); }
+    catch (e: any) { setPrinciples([]); }
     finally { setLoading(false); }
   };
 
   const askAdvisor = async () => {
+    if (!allowed) {
+      promptValuesUpgrade(router);
+      return;
+    }
     if (!situation.trim()) return;
     setAdvising(true); setAdvisorResult(null);
     try {
@@ -50,6 +57,22 @@ export default function ValuesScreen() {
   };
 
   const principleByCode = (c: string) => principles.find(p => p.code === c);
+
+  const renderLockedState = () => (
+    <View style={s.lockedWrap}>
+      <View style={s.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.lockedTitle}>Subscription Required</Text>
+      <Text style={s.lockedSub}>
+        Values Tracker is available exclusively for Subscription Plan members (Basic, Pro, Premium, Enterprise). Free and On-Demand plan users cannot access or view Values Tracker.
+      </Text>
+      <TouchableOpacity style={s.upgradeBtn} onPress={() => promptValuesUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={s.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
@@ -69,64 +92,70 @@ export default function ValuesScreen() {
         </TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        {tab === 'principles' && (
-          loading ? <ActivityIndicator /> : (
-            principles.map((p, idx) => (
-              <View key={p.id} style={s.card}>
-                <TouchableOpacity style={s.cardHeader} onPress={() => setExpanded(e => ({ ...e, [p.id]: !e[p.id] }))}>
-                  <View style={s.idxBubble}><Text style={s.idxText}>{p.order || idx + 1}</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.pName}>{p.name}</Text>
-                    {p.short ? <Text style={s.pShort}>{p.short}</Text> : null}
-                  </View>
-                  <Ionicons name={expanded[p.id] ? 'chevron-up' : 'chevron-down'} size={18} color="#475569" />
-                </TouchableOpacity>
-                {expanded[p.id] && (
-                  <View style={s.cardBody}>
-                    <Text style={s.pBody}>{p.body}</Text>
-                    {p.bullets?.map((b, i) => (
-                      <View key={i} style={s.bulletRow}>
-                        <Text style={s.bulletDot}>•</Text>
-                        <Text style={s.bulletText}>{b}</Text>
+        {!allowed ? (
+          renderLockedState()
+        ) : (
+          <>
+            {tab === 'principles' && (
+              loading ? <ActivityIndicator /> : (
+                principles.map((p, idx) => (
+                  <View key={p.id} style={s.card}>
+                    <TouchableOpacity style={s.cardHeader} onPress={() => setExpanded(e => ({ ...e, [p.id]: !e[p.id] }))}>
+                      <View style={s.idxBubble}><Text style={s.idxText}>{p.order || idx + 1}</Text></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.pName}>{p.name}</Text>
+                        {p.short ? <Text style={s.pShort}>{p.short}</Text> : null}
                       </View>
-                    ))}
+                      <Ionicons name={expanded[p.id] ? 'chevron-up' : 'chevron-down'} size={18} color="#475569" />
+                    </TouchableOpacity>
+                    {expanded[p.id] && (
+                      <View style={s.cardBody}>
+                        <Text style={s.pBody}>{p.body}</Text>
+                        {p.bullets?.map((b, i) => (
+                          <View key={i} style={s.bulletRow}>
+                            <Text style={s.bulletDot}>•</Text>
+                            <Text style={s.bulletText}>{b}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
-            ))
-          )
-        )}
-        {tab === 'advisor' && (
-          <View>
-            <Text style={s.advLabel}>Describe a challenging situation</Text>
-            <TextInput
-              style={s.advInput}
-              value={situation}
-              onChangeText={setSituation}
-              multiline
-              placeholder="e.g. My peer didn't show up to the planned 10am call and went silent..."
-              placeholderTextColor="#94A3B8"
-            />
-            <TouchableOpacity style={s.advBtn} onPress={askAdvisor} disabled={advising || !situation.trim()}>
-              {advising ? <ActivityIndicator color="#FFF" /> : (<><Ionicons name="sparkles" size={16} color="#FFF" /><Text style={s.advBtnText}>Get top-3 alignment guidance</Text></>)}
-            </TouchableOpacity>
-            {advisorResult && advisorResult.map((r, i) => {
-              const p = principleByCode(r.code);
-              return (
-                <View key={i} style={s.advResultCard}>
-                  <View style={s.advResultHead}>
-                    <Text style={s.advResultName}>{p?.name || r.code}</Text>
-                    <View style={[s.scoreBadge, { backgroundColor: r.alignment_score >= 7 ? '#10B981' : r.alignment_score >= 4 ? '#F59E0B' : '#EF4444' }]}>
-                      <Text style={s.scoreText}>{r.alignment_score}/10</Text>
+                ))
+              )
+            )}
+            {tab === 'advisor' && (
+              <View>
+                <Text style={s.advLabel}>Describe a challenging situation</Text>
+                <TextInput
+                  style={s.advInput}
+                  value={situation}
+                  onChangeText={setSituation}
+                  multiline
+                  placeholder="e.g. My peer didn't show up to the planned 10am call and went silent..."
+                  placeholderTextColor="#94A3B8"
+                />
+                <TouchableOpacity style={s.advBtn} onPress={askAdvisor} disabled={advising || !situation.trim()}>
+                  {advising ? <ActivityIndicator color="#FFF" /> : (<><Ionicons name="sparkles" size={16} color="#FFF" /><Text style={s.advBtnText}>Get top-3 alignment guidance</Text></>)}
+                </TouchableOpacity>
+                {advisorResult && advisorResult.map((r, i) => {
+                  const p = principleByCode(r.code);
+                  return (
+                    <View key={i} style={s.advResultCard}>
+                      <View style={s.advResultHead}>
+                        <Text style={s.advResultName}>{p?.name || r.code}</Text>
+                        <View style={[s.scoreBadge, { backgroundColor: r.alignment_score >= 7 ? '#10B981' : r.alignment_score >= 4 ? '#F59E0B' : '#EF4444' }]}>
+                          <Text style={s.scoreText}>{r.alignment_score}/10</Text>
+                        </View>
+                      </View>
+                      <Text style={s.advWhy}>{r.why}</Text>
+                      {r.do && <View style={s.doRow}><Ionicons name="checkmark-circle" size={14} color="#10B981" /><Text style={s.doText}>{r.do}</Text></View>}
+                      {r.dont && <View style={s.doRow}><Ionicons name="close-circle" size={14} color="#EF4444" /><Text style={s.dontText}>{r.dont}</Text></View>}
                     </View>
-                  </View>
-                  <Text style={s.advWhy}>{r.why}</Text>
-                  {r.do && <View style={s.doRow}><Ionicons name="checkmark-circle" size={14} color="#10B981" /><Text style={s.doText}>{r.do}</Text></View>}
-                  {r.dont && <View style={s.doRow}><Ionicons name="close-circle" size={14} color="#EF4444" /><Text style={s.dontText}>{r.dont}</Text></View>}
-                </View>
-              );
-            })}
-          </View>
+                  );
+                })}
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -168,4 +197,11 @@ const s = StyleSheet.create({
   doRow: { flexDirection: 'row', gap: 6, marginTop: 6, alignItems: 'flex-start' },
   doText: { flex: 1, fontSize: 12, color: '#065F46', lineHeight: 17 },
   dontText: { flex: 1, fontSize: 12, color: '#7F1D1D', lineHeight: 17 },
+  lockedWrap: { alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#FFF', borderRadius: 16, marginTop: 24, borderWidth: 1, borderColor: '#E2E8F0' },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  lockedSub: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#003087', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 },
+  upgradeBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });
+

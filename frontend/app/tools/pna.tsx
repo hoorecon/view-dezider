@@ -41,7 +41,7 @@ export default function PNAScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [dashboard, setDashboard] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'overview' | 'area'>('overview');
-  const [topTab, setTopTab] = useState<'lifemap' | 'lifegoals'>('lifemap');
+  const [topTab, setTopTab] = useState<'lifemap' | 'lifegoals'>('lifegoals');
   const [selectedArea, setSelectedArea] = useState<string>('');
   const [areaDetail, setAreaDetail] = useState<any>(null);
   const [areaLoading, setAreaLoading] = useState(false);
@@ -812,14 +812,6 @@ export default function PNAScreen() {
 
         {viewMode === 'overview' && (
           <View style={s.mainTabs}>
-            <TouchableOpacity
-              style={[s.mainTab, topTab === 'lifemap' && s.mainTabActive]}
-              onPress={() => setTopTab('lifemap')}
-              testID="life-map-tab"
-            >
-              <Ionicons name="grid" size={15} color={topTab === 'lifemap' ? '#4338CA' : '#64748B'} />
-              <Text style={[s.mainTabTxt, topTab === 'lifemap' && s.mainTabTxtActive]}>Life Map</Text>
-            </TouchableOpacity>
             <TouchableOpacity
               style={[s.mainTab, topTab === 'lifegoals' && s.mainTabActive]}
               onPress={() => setTopTab('lifegoals')}

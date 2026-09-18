@@ -202,7 +202,7 @@ export default function SolutionMatrixScreen() {
   const [currentStep, setCurrentStep] = useState(0);
 
   // Matrix mode
-  const [matrixMode, setMatrixMode] = useState<MatrixMode>('accurate');
+  const [matrixMode, setMatrixMode] = useState<MatrixMode>('standard');
 
   // Form
   const [areaOfLife, setAreaOfLife] = useState('');
@@ -299,7 +299,7 @@ export default function SolutionMatrixScreen() {
       setSimplerHelpAspect(d.simpler_help_aspect || '');
       setSimplerHelpLevel(d.simpler_help_level || '');
       setSimplerHelpFrom(d.simpler_help_from || '');
-      setMatrixMode((d.matrix_mode === 'standard' ? 'standard' : 'accurate'));
+      setMatrixMode(d.matrix_mode === 'accurate' ? 'accurate' : 'standard');
       setMatrixSelf(normaliseSet(d.matrix_self));
       setMatrixMicro(normaliseSet(d.matrix_micro));
       setMatrixMacro(normaliseSet(d.matrix_macro));
@@ -403,7 +403,7 @@ export default function SolutionMatrixScreen() {
       setSimplerHelpAspect(pl.simpler_help_aspect || '');
       setSimplerHelpLevel(pl.simpler_help_level || '');
       setSimplerHelpFrom(pl.simpler_help_from || '');
-      setMatrixMode(pl.matrix_mode === 'standard' ? 'standard' : 'accurate');
+      setMatrixMode(pl.matrix_mode === 'accurate' ? 'accurate' : 'standard');
       setMatrixSelf(normaliseSet(pl.matrix_self));
       setMatrixMicro(normaliseSet(pl.matrix_micro));
       setMatrixMacro(normaliseSet(pl.matrix_macro));

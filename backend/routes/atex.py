@@ -151,8 +151,71 @@ def _calc(payload: ATEXIn) -> Dict[str, Any]:
     }
 
 
+async def verify_atex_access(user: dict):
+    """Ensure user is on an active Pro, Premium, or Enterprise Subscription plan (or Admin/Tester role).
+
+    Restricts Free, On-Demand, AND Basic plan users from accessing ATEX.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"}:
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1}) or {}
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
+        return True
+
+    # Explicit check for basic / on_demand / free
+    if utype.startswith("on_demand") or splan.startswith("on_demand") or utype == "free" or splan in {"free", "none", ""}:
+        raise HTTPException(
+            status_code=403,
+            detail="ATEX Effort Estimation is not available for Free or On-Demand plans. Please upgrade to a Pro or Premium plan to access ATEX."
+        )
+
+    if utype == "basic" or splan == "basic" or splan.startswith("basic"):
+        raise HTTPException(
+            status_code=403,
+            detail="ATEX Effort Estimation is not available for Basic plan users. Please upgrade to a Pro or Premium plan to access ATEX."
+        )
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free", "basic"} and not cp.startswith("on_demand") and not cp.startswith("basic"):
+            return True
+
+    # 4. Check active subscription plan on user doc (excluding basic)
+    if splan and splan not in {"none", "free", "basic", ""} and not splan.startswith("on_demand") and not splan.startswith("basic"):
+        return True
+
+    # 5. Block Free, On-Demand, and Basic users
+    raise HTTPException(
+        status_code=403,
+        detail="ATEX Effort Estimation is not available for Free, On-Demand, or Basic plans. Please upgrade to Pro or Premium plan to access ATEX."
+    )
+
+
 @router.post("/estimate")
 async def estimate(payload: ATEXIn, user: dict = Depends(get_current_user)):
+    await verify_atex_access(user)
     if not payload.synchronized_completion_criteria or not payload.synchronized_completion_criteria.strip():
         raise HTTPException(400, "Synchronized Completion Criteria (SCC) is required for ATEX")
     if not payload.sub_tasks:
@@ -188,12 +251,14 @@ async def estimate(payload: ATEXIn, user: dict = Depends(get_current_user)):
 
 @router.get("/estimations")
 async def list_estimations(limit: int = 50, user: dict = Depends(get_current_user)):
+    await verify_atex_access(user)
     rows = await db.atex_estimations.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return {"estimations": rows}
 
 
 @router.get("/estimations/{est_id}")
 async def get_estimation(est_id: str, user: dict = Depends(get_current_user)):
+    await verify_atex_access(user)
     row = await db.atex_estimations.find_one({"id": est_id, "user_id": user["user_id"]}, {"_id": 0})
     if not row:
         raise HTTPException(404, "Not found")
@@ -202,12 +267,14 @@ async def get_estimation(est_id: str, user: dict = Depends(get_current_user)):
 
 @router.get("/templates")
 async def list_templates(user: dict = Depends(get_current_user)):
+    await verify_atex_access(user)
     rows = await db.atex_templates.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"templates": rows}
 
 
 @router.delete("/templates/{tpl_id}")
 async def delete_template(tpl_id: str, user: dict = Depends(get_current_user)):
+    await verify_atex_access(user)
     res = await db.atex_templates.delete_one({"id": tpl_id, "user_id": user["user_id"]})
     if res.deleted_count == 0:
         raise HTTPException(404, "Not found")
@@ -217,6 +284,7 @@ async def delete_template(tpl_id: str, user: dict = Depends(get_current_user)):
 # AI-assisted: suggest sub-tasks given a task title
 @router.post("/ai-suggest")
 async def ai_suggest(body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    await verify_atex_access(user)
     task_title = (body.get("task_title") or "").strip()
     if not task_title:
         raise HTTPException(400, "task_title required")
@@ -254,3 +322,4 @@ async def ai_suggest(body: Dict[str, Any], user: dict = Depends(get_current_user
                 {"category": "RC1", "description": "Hidden complexity in sub-step", "mitigation_minutes": 15, "contingency_minutes": 0},
             ],
         }
+

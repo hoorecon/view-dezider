@@ -40,9 +40,12 @@ const DEFAULT_ACCESS: FeatureAccess = {
   quota_unit: 'toggle',
 };
 
+let _acmMemoryCache: ACMState | null = null;
+let _acmInflight: Promise<ACMState | null> | null = null;
+
 export function useACM() {
-  const [state, setState] = useState<ACMState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [state, setState] = useState<ACMState | null>(_acmMemoryCache);
+  const [isLoading, setIsLoading] = useState(!_acmMemoryCache);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAccess = useCallback(async () => {
@@ -53,20 +56,37 @@ export function useACM() {
         return;
       }
 
-      const resp = await fetch(`${API}/api/acm/my-access`, {
+      if (_acmInflight) {
+        const data = await _acmInflight;
+        if (data) {
+          setState(data);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      _acmInflight = fetch(`${API}/api/acm/my-access`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+      }).then(async (resp) => {
+        _acmInflight = null;
+        if (resp.ok) {
+          const data = await resp.json();
+          _acmMemoryCache = data;
+          return data;
+        }
+        return null;
+      }).catch(() => {
+        _acmInflight = null;
+        return null;
       });
 
-      if (resp.ok) {
-        const data = await resp.json();
+      const data = await _acmInflight;
+      if (data) {
         setState(data);
         setError(null);
-      } else {
-        // If ACM not seeded yet, default to full access
-        setError('ACM not available');
       }
     } catch (e: any) {
       setError(e.message);
@@ -91,11 +111,10 @@ export function useACM() {
         return { ...DEFAULT_ACCESS, allowed: true };
       }
 
-      const allowed =
-        feature.access_level === 'full' ||
-        feature.access_level === 'read';
+      const allowed = feature.access_level === 'full';
+      const canRead = feature.access_level === 'full' || feature.access_level === 'read';
 
-      return { ...feature, allowed };
+      return { ...feature, allowed, canRead };
     },
     [state]
   );
@@ -133,4 +152,29 @@ export function useACM() {
     userType: state?.user_type || 'free',
     subscriptionPlan: state?.subscription_plan || 'none',
   };
+}
+
+export function isSubscriptionUserOrAdmin(state: ACMState | null): boolean {
+  if (!state) return false;
+  const plan = (state.subscription_plan || '').toLowerCase().trim();
+  const utype = (state.user_type || '').toLowerCase().trim();
+
+  // Active subscription plan (basic, pro, premium, enterprise, starter)
+  const isSubscribedPlan = plan !== '' && plan !== 'none' && plan !== 'free';
+
+  // Admin or test tier bypass
+  const adminOrTesterTypes = [
+    'admin', 'super_admin', 'co_admin',
+    'alpha', 'beta', 'unit_tester', 'integration_tester'
+  ];
+  const isAdminOrTester = adminOrTesterTypes.includes(utype);
+
+  return isSubscribedPlan || isAdminOrTester;
+}
+
+export function useIsSubscriptionUserOrAdmin(): boolean {
+  const { access, isLoading } = useACM();
+  const targetState = access || _acmMemoryCache;
+  if (!targetState && isLoading) return false;
+  return isSubscriptionUserOrAdmin(targetState);
 }

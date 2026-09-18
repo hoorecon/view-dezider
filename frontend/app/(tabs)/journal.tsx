@@ -20,6 +20,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isJournalAccessAllowed, promptJournalUpgrade } from '../../src/utils/cttAccess';
 
 interface JournalEntry {
   id: string;
@@ -78,6 +81,11 @@ const FAILURE_REASONS = [
 ];
 
 export default function JournalScreen() {
+  const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isJournalAccessAllowed(user, acm?.access);
+
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,6 +117,10 @@ export default function JournalScreen() {
   const [updatingEntry, setUpdatingEntry] = useState(false);
 
   const fetchEntries = async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     try {
       const query = activeFilter !== 'all' ? `?linked_module=${activeFilter}` : '';
       const response = await api.get(`/journal${query}`);
@@ -121,6 +133,7 @@ export default function JournalScreen() {
   };
 
   const fetchReminders = async () => {
+    if (!allowed) return;
     try {
       const response = await api.get('/journal/reminders');
       setReminders(response.data || []);
@@ -130,6 +143,7 @@ export default function JournalScreen() {
   };
 
   const fetchLinkableItems = async () => {
+    if (!allowed) return;
     setLoadingItems(true);
     try {
       const response = await api.get('/journal/linkable-items');
@@ -145,7 +159,7 @@ export default function JournalScreen() {
     useCallback(() => {
       fetchEntries();
       fetchReminders();
-    }, [activeFilter])
+    }, [activeFilter, allowed])
   );
 
   const onRefresh = async () => {
@@ -164,6 +178,10 @@ export default function JournalScreen() {
   };
 
   const openCreateModal = (presetModule?: string, presetId?: string, presetTitle?: string) => {
+    if (!allowed) {
+      promptJournalUpgrade(router);
+      return;
+    }
     resetForm();
     if (presetModule) setFormLinkedModule(presetModule);
     if (presetId) setFormLinkedId(presetId);
@@ -179,7 +197,6 @@ export default function JournalScreen() {
   // Solution Finder) the source screen passes linkModule/linkId/linkTitle so we
   // open the create modal pre-filled — no need for the user to pick Module/Item.
   const params = useLocalSearchParams<{ linkModule?: string; linkId?: string; linkTitle?: string }>();
-  const router = useRouter();
   const prefillHandled = useRef(false);
   useEffect(() => {
     if (prefillHandled.current) return;
@@ -194,6 +211,10 @@ export default function JournalScreen() {
   }, [params.linkModule]);
 
   const handleCreate = async () => {
+    if (!allowed) {
+      promptJournalUpgrade(router);
+      return;
+    }
     if (!formTitle.trim()) {
       showAlert('Error', 'Please enter a title');
       return;
@@ -229,6 +250,10 @@ export default function JournalScreen() {
   };
 
   const openDetailModal = (entry: JournalEntry) => {
+    if (!allowed) {
+      promptJournalUpgrade(router);
+      return;
+    }
     setSelectedEntry(entry);
     setEditOutcome(entry.outcome || '');
     setEditLessons(entry.lessons_learned || '');
@@ -239,6 +264,10 @@ export default function JournalScreen() {
   };
 
   const handleUpdateEntry = async () => {
+    if (!allowed) {
+      promptJournalUpgrade(router);
+      return;
+    }
     if (!selectedEntry) return;
     setUpdatingEntry(true);
     try {
@@ -259,6 +288,10 @@ export default function JournalScreen() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!allowed) {
+      promptJournalUpgrade(router);
+      return;
+    }
     showAlert('Delete Entry', 'Are you sure you want to delete this journal entry?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -420,6 +453,22 @@ export default function JournalScreen() {
     { key: 'lifestyle', label: 'Lifestyle', icon: 'leaf' },
   ];
 
+  const renderLockedState = () => (
+    <View style={styles.lockedWrap}>
+      <View style={styles.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={styles.lockedTitle}>Subscription Required</Text>
+      <Text style={styles.lockedSub}>
+        Learning Journal is available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand plans cannot access Learning Journal.
+      </Text>
+      <TouchableOpacity style={styles.upgradeBtn} onPress={() => promptJournalUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={styles.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -433,50 +482,56 @@ export default function JournalScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filter chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={styles.filterContent}>
-        {filterOptions.map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
-            onPress={() => setActiveFilter(f.key)}
-          >
-            <Ionicons name={f.icon as any} size={14} color={activeFilter === f.key ? COLORS.white : COLORS.textSecondary} />
-            <Text style={[styles.filterChipText, activeFilter === f.key && styles.filterChipTextActive]}>{f.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {!allowed ? (
+        renderLockedState()
+      ) : (
+        <>
+          {/* Filter chips */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={styles.filterContent}>
+            {filterOptions.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
+                onPress={() => setActiveFilter(f.key)}
+              >
+                <Ionicons name={f.icon as any} size={14} color={activeFilter === f.key ? COLORS.white : COLORS.textSecondary} />
+                <Text style={[styles.filterChipText, activeFilter === f.key && styles.filterChipTextActive]}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
-      <FlatList
-        data={entries}
-        renderItem={renderEntry}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListHeaderComponent={
-          reminders.length > 0 ? (
-            <View style={styles.remindersSection}>
-              <View style={styles.remindersSectionHeader}>
-                <Ionicons name="notifications" size={16} color="#EF4444" />
-                <Text style={styles.remindersSectionTitle}>Review Reminders</Text>
-                <View style={styles.reminderCountBadge}>
-                  <Text style={styles.reminderCountText}>{reminders.length}</Text>
+          <FlatList
+            data={entries}
+            renderItem={renderEntry}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListHeaderComponent={
+              reminders.length > 0 ? (
+                <View style={styles.remindersSection}>
+                  <View style={styles.remindersSectionHeader}>
+                    <Ionicons name="notifications" size={16} color="#EF4444" />
+                    <Text style={styles.remindersSectionTitle}>Review Reminders</Text>
+                    <View style={styles.reminderCountBadge}>
+                      <Text style={styles.reminderCountText}>{reminders.length}</Text>
+                    </View>
+                  </View>
+                  <FlatList
+                    data={reminders}
+                    renderItem={renderReminderCard}
+                    keyExtractor={(item) => item.decision_id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.remindersScroll}
+                  />
                 </View>
-              </View>
-              <FlatList
-                data={reminders}
-                renderItem={renderReminderCard}
-                keyExtractor={(item) => item.decision_id}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.remindersScroll}
-              />
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={renderEmpty}
-      />
+              ) : null
+            }
+            ListEmptyComponent={renderEmpty}
+          />
+        </>
+      )}
 
       {/* ====== CREATE MODAL ====== */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
@@ -973,4 +1028,12 @@ const styles = StyleSheet.create({
   statusTogglePending: { borderColor: COLORS.warning, backgroundColor: COLORS.warning + '10' },
   statusToggleCompleted: { borderColor: COLORS.success, backgroundColor: COLORS.success + '10' },
   statusToggleText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
+
+  // Locked state
+  lockedWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
+  lockedSub: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 24, maxWidth: 320 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.purple, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  upgradeBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.white },
 });

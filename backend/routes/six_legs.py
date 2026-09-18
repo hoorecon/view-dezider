@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from core.database import db
 from core.auth import get_current_user
+from routes.seven_seven import verify_orgs_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/six-legs", tags=["6 LeGs"])
@@ -62,6 +63,7 @@ class LegGoalIn(BaseModel):
 
 
 async def _own_org(user, user_org_id: str) -> dict:
+    await verify_orgs_access(user)
     org = await db.user_orgs.find_one({"id": user_org_id, "owner_user_id": user["user_id"]})
     if not org:
         raise HTTPException(404, "User-Org not found or not yours")
@@ -70,9 +72,11 @@ async def _own_org(user, user_org_id: str) -> dict:
 
 @router.post("/goals")
 async def create_goal(p: LegGoalIn, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     if p.level not in VALID_LEVELS:
         raise HTTPException(400, f"level must be one of {VALID_LEVELS}")
     await _own_org(user, p.user_org_id)
+
     if p.level == "L3" and not p.division_code:
         raise HTTPException(400, "division_code is required for L3 goals")
     doc = {
@@ -130,6 +134,7 @@ async def goal_tree(user_org_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/goals/{goal_id}")
 async def update_goal(goal_id: str, p: LegGoalIn, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     existing = await db.six_legs_goals.find_one({"id": goal_id, "user_id": user["user_id"]})
     if not existing:
         raise HTTPException(404, "Not found")
@@ -161,6 +166,7 @@ async def update_goal(goal_id: str, p: LegGoalIn, user: dict = Depends(get_curre
 
 @router.delete("/goals/{goal_id}")
 async def delete_goal(goal_id: str, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     # Soft cascade: also remove children
     async def _delete_recursive(gid: str):
         children = await db.six_legs_goals.find({"parent_goal_id": gid, "user_id": user["user_id"]}).to_list(500)
@@ -177,7 +183,9 @@ async def delete_goal(goal_id: str, user: dict = Depends(get_current_user)):
 @router.post("/goals/{goal_id}/convert-to-action")
 async def convert_goal_to_action(goal_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
     """Convert a leaf goal into a universal Action Item (which can then port to CTT or Lifestyle)."""
+    await verify_orgs_access(user)
     g = await db.six_legs_goals.find_one({"id": goal_id, "user_id": user["user_id"]}, {"_id": 0})
+
     if not g:
         raise HTTPException(404, "Not found")
     from routes.action_items import SIXLEGS_TO_CANON

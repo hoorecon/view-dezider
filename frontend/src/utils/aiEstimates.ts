@@ -13,13 +13,16 @@ export type Estimates = {
 
 let _cache: Estimates | null = null;
 let _inflight: Promise<Estimates | null> | null = null;
+let _lastFetchTime = 0;
+const CACHE_TTL_MS = 5000;
 
 /** Fetch + cache the per-feature AI cost estimates (one network call, app-wide). */
 export async function getEstimates(force = false): Promise<Estimates | null> {
-  if (_cache && !force) return _cache;
+  const now = Date.now();
+  if (_cache && !force && now - _lastFetchTime < CACHE_TTL_MS) return _cache;
   if (_inflight) return _inflight;
   _inflight = api.get('/ai-wallet/estimates')
-    .then((r) => { _cache = r.data; _inflight = null; return _cache; })
+    .then((r) => { _cache = r.data; _lastFetchTime = Date.now(); _inflight = null; return _cache; })
     .catch(() => { _inflight = null; return null; });
   return _inflight;
 }

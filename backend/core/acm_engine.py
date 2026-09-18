@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # we roll out the new keys gradually.
 LEGACY_ACCESS_KEY_FALLBACK = {
     "platform_admin":          ["paid_enterprise", "paid_pro"],
+    "paid_basic":              ["paid_starter", "free"],
     "paid_premium":            ["paid_enterprise"],
     "starter_trial":           ["trial", "paid_starter", "free"],
     "pro_trial":               ["trial", "paid_pro", "paid_starter", "free"],
@@ -408,12 +409,13 @@ async def check_feature_access(
             "upgrade_message": f"Upgrade your plan to access {feature['feature_name']}",
         }
 
-    # Read = view only
+    # Read = view only (creation and edit actions are blocked)
     if level == "read":
         return {
-            "allowed": True, "access_level": "read",
-            "quota_limit": -1, "quota_used": 0, "quota_remaining": -1,
-            "quota_unit": quota_unit, "upgrade_message": "",
+            "allowed": False, "access_level": "read",
+            "quota_limit": 0, "quota_used": 0, "quota_remaining": 0,
+            "quota_unit": quota_unit,
+            "upgrade_message": f"{feature['feature_name']} is currently read-only for your tier.",
         }
 
     # Full access — check quota

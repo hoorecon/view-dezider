@@ -9,6 +9,7 @@ from core.database import db
 from core.auth import get_current_user
 from models.decisions_models import SaveTemplateRequest, UseTemplateRequest, TemplateContentUpdate
 from .services import consume_entitlement
+from routes.decider_store import verify_decision_templates_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Decisions"])
@@ -16,6 +17,7 @@ router = APIRouter(tags=["Decisions"])
 
 @router.post("/decisions/{decision_id}/save-as-template")
 async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: dict = Depends(get_current_user)):
+    await verify_decision_templates_access(user)
     original = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not original:
         raise HTTPException(status_code=404, detail="Decision not found")
@@ -216,6 +218,7 @@ async def get_templates(user: dict = Depends(get_current_user)):
 
 @router.post("/templates/{template_id}/use")
 async def use_template(template_id: str, data: UseTemplateRequest, user: dict = Depends(get_current_user)):
+    await verify_decision_templates_access(user)
     template = await db.templates.find_one({"id": template_id}, {"_id": 0})
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")

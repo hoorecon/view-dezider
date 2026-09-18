@@ -8,6 +8,7 @@ from core.auth import get_current_user
 from core.helpers import create_notification
 from core.email import send_email, PUBLIC_APP_URL
 from models.decisions_models import ShareStepRequest, ContributeStepRequest, MergeStepRequest, ReshareStepRequest
+from routes.module_limits import check_and_reserve_usage
 
 router = APIRouter(tags=["Decisions"])
 
@@ -149,6 +150,7 @@ async def _load_owner_doc(module: str, module_id: str, owner_id: str):
 async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_current_user)):
     """Module-aware step share (decision | pros_cons | solution_finder). Used by
     Pros&Cons / SolutionFinder flows and the Collab Hub."""
+    await check_and_reserve_usage(user, "group_decision")
     module = data.get("module", "decision")
     module_id = data.get("module_id") or data.get("decision_id")
     if not module_id:

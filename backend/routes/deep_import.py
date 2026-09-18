@@ -643,8 +643,19 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
 @router.post("/decision/{decision_id}/start")
-async def start_deep_import(decision_id: str, req: DeepImportStart, request: Request,
-                            user: dict = Depends(get_current_user)):
+async def start_deep_import(
+    decision_id: str, req: DeepImportStart, request: Request,
+    user: dict = Depends(get_current_user),
+):
+    # ── ACM Feature Check ──
+    from core.acm_engine import check_feature_access
+    acm_check = await check_feature_access(user, "my_dezider_sl_import")
+    if user.get("role") not in ("super_admin", "admin", "co_admin") and not acm_check.get("allowed", True):
+        lvl = acm_check.get("access_level")
+        status_code = 402 if lvl == "locked" else 403
+        msg = acm_check.get("upgrade_message") or f"Importing factors & options is {lvl} under Access Control Matrix rules."
+        raise HTTPException(status_code, msg)
+
     if not req.accepted:
         raise HTTPException(400, "You must accept the data-access disclaimer to continue.")
     elig = (req.eligibility_type or "").strip().lower()

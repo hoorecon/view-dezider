@@ -22,7 +22,7 @@ AVAILABLE_TILES: List[Dict[str, Any]] = [
      "href": "/decider-store"},
     {"key": "eft_tapping", "label": "EFT Tapping",
      "subtitle": "Stress relief", "icon": "hand-right", "color": "#F97316",
-     "href": "/tools/eft"},
+     "href": "/tools/eg-eft"},
     {"key": "todays_plan", "label": "Today's Plan",
      "subtitle": "Actions + routines", "icon": "calendar", "color": "#0EA5E9",
      "href": "/(tabs)/index"},

@@ -24,6 +24,9 @@ import api from '../utils/api';
 import { showAlert } from '../utils/alert';
 import { formatDMY } from '../utils/datetime';
 import { ACTION_STATUS_OPTS, normStatus } from '../constants/actionStatus';
+import { useAuthStore } from '../store/authStore';
+import { useACM } from '../hooks/useACM';
+import { isCTTAccessAllowed, promptCTTUpgrade, isLifestyleAccessAllowed, promptLifestyleUpgrade } from '../utils/cttAccess';
 
 /** Mask free text into a DD-MM-YYYY shape as the user types. */
 function maskDMY(text: string): string {
@@ -178,9 +181,20 @@ export default function ActionItemEditor(props: Props) {
     setAddOpen(true);
   };
 
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+
   const portTo = async (it: ActionItem, target: 'CTT'|'LIFESTYLE') => {
     if (it.ported_to) {
       return showAlert('Already ported', `This item is already in ${it.ported_to}.`);
+    }
+    if (target === 'CTT' && !isCTTAccessAllowed(user, acm?.access)) {
+      promptCTTUpgrade(router, 'Porting action items to Task Tracker (CTT) requires a Subscription Plan (Basic, Pro, Premium). Free and On-Demand plans are not allowed.');
+      return;
+    }
+    if (target === 'LIFESTYLE' && !isLifestyleAccessAllowed(user, acm?.access)) {
+      promptLifestyleUpgrade(router, 'Porting action items to Lifestyle Dezider requires a Subscription Plan (Basic, Pro, Premium). Free and On-Demand plans are not allowed.');
+      return;
     }
     setSavingId(it.action_id);
     try {

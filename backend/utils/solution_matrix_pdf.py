@@ -202,7 +202,7 @@ def render_matrix_pdf(entry: Dict) -> bytes:
         topMargin=12 * mm, bottomMargin=12 * mm,
     )
     s = _styles()
-    mode = str(entry.get("matrix_mode") or "accurate").lower()
+    mode = str(entry.get("matrix_mode") or "standard").lower()
     story: List = []
 
     # ── Header

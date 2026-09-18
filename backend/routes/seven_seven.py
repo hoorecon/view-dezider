@@ -177,8 +177,75 @@ class CellScoreIn(BaseModel):
     sub_team_code: Optional[str] = None  # if scoring a sub-team rather than whole division
 
 
+async def verify_orgs_access(user: dict):
+    """Ensure user is on a Premium or Enterprise Subscription plan (or Admin/Tester role).
+
+    Restricts Free, On-Demand, Basic, AND Pro plan users from accessing My Organizations.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user.get("is_admin"):
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1, "is_admin": 1}) or {}
+    role = str(user_doc.get("role") or user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user_doc.get("is_admin"):
+        return True
+
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
+        return True
+
+    # Explicit check for basic / pro / on_demand / free
+    if utype.startswith("on_demand") or splan.startswith("on_demand") or utype == "free" or splan in {"free", "none", ""}:
+        raise HTTPException(
+            status_code=403,
+            detail="My Organizations is not available for Free or On-Demand plans. Please upgrade to a Premium or Enterprise plan to access My Organizations."
+        )
+
+    if utype in {"basic", "pro"} or splan in {"basic", "pro"} or splan.startswith("basic") or splan.startswith("pro"):
+        raise HTTPException(
+            status_code=403,
+            detail="My Organizations is not available for Basic or Pro plan users. Please upgrade to a Premium or Enterprise plan to access My Organizations."
+        )
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp in {"premium", "enterprise"}:
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan in {"premium", "enterprise"}:
+        return True
+
+    # 5. Block Free, On-Demand, Basic, and Pro users
+    raise HTTPException(
+        status_code=403,
+        detail="My Organizations is not available for Free, On-Demand, Basic, or Pro plans. Please upgrade to Premium or Enterprise plan to access My Organizations."
+    )
+
+
 @router.post("/assess")
 async def submit_cell_score(p: CellScoreIn, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     # Ensure user owns the org or is admin
     org = await db.user_orgs.find_one({"id": p.user_org_id})
     if not org:
@@ -226,6 +293,7 @@ async def submit_cell_score(p: CellScoreIn, user: dict = Depends(get_current_use
 @router.get("/assess/{user_org_id}")
 async def get_latest_assessment_matrix(user_org_id: str, user: dict = Depends(get_current_user)):
     """Return latest score per (division, driver) cell for the org."""
+    await verify_orgs_access(user)
     org = await db.user_orgs.find_one({"id": user_org_id})
     if not org:
         raise HTTPException(404, "User-Org not found")
@@ -243,6 +311,7 @@ async def get_latest_assessment_matrix(user_org_id: str, user: dict = Depends(ge
 
 @router.get("/assess/{user_org_id}/history")
 async def get_assessment_history(user_org_id: str, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     rows = await db.ss_assessments.find({"user_org_id": user_org_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return {"history": rows}
 
@@ -250,6 +319,7 @@ async def get_assessment_history(user_org_id: str, user: dict = Depends(get_curr
 @router.get("/assess/{user_org_id}/due")
 async def assessment_due_status(user_org_id: str, user: dict = Depends(get_current_user)):
     """Fortnightly cadence: returns due_now=True if last assessment > 14 days ago."""
+    await verify_orgs_access(user)
     latest = await db.ss_assessments.find_one({"user_org_id": user_org_id}, sort=[("created_at", -1)])
     if not latest:
         return {"due_now": True, "last_assessed_at": None, "cadence_days": 14}
@@ -276,6 +346,7 @@ class UserOrgIn(BaseModel):
 
 @router.post("/orgs")
 async def create_user_org(p: UserOrgIn, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     doc = {
         "id": str(uuid.uuid4()),
         "owner_user_id": user["user_id"],
@@ -291,6 +362,7 @@ async def create_user_org(p: UserOrgIn, user: dict = Depends(get_current_user)):
 
 @router.get("/orgs")
 async def list_user_orgs(life_area: Optional[str] = None, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     q: Dict[str, Any] = {"owner_user_id": user["user_id"], "active": True}
     if life_area:
         q["life_area"] = life_area
@@ -300,6 +372,7 @@ async def list_user_orgs(life_area: Optional[str] = None, user: dict = Depends(g
 
 @router.get("/orgs/{org_id}")
 async def get_user_org(org_id: str, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     doc = await db.user_orgs.find_one({"id": org_id, "owner_user_id": user["user_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Not found")
@@ -308,6 +381,7 @@ async def get_user_org(org_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/orgs/{org_id}")
 async def update_user_org(org_id: str, p: UserOrgIn, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     existing = await db.user_orgs.find_one({"id": org_id, "owner_user_id": user["user_id"]})
     if not existing:
         raise HTTPException(404, "Not found")
@@ -317,6 +391,7 @@ async def update_user_org(org_id: str, p: UserOrgIn, user: dict = Depends(get_cu
 
 @router.delete("/orgs/{org_id}")
 async def delete_user_org(org_id: str, user: dict = Depends(get_current_user)):
+    await verify_orgs_access(user)
     res = await db.user_orgs.update_one(
         {"id": org_id, "owner_user_id": user["user_id"]},
         {"$set": {"active": False}},
@@ -324,3 +399,4 @@ async def delete_user_org(org_id: str, user: dict = Depends(get_current_user)):
     if res.matched_count == 0:
         raise HTTPException(404, "Not found")
     return {"ok": True}
+

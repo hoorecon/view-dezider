@@ -14,6 +14,9 @@ import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
 import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isLifestyleAccessAllowed, promptLifestyleUpgrade } from '../../src/utils/cttAccess';
 
 const FREQ_LABELS: Record<string, string> = {
   hourly: 'Hourly', daily: 'Daily', weekly: 'Weekly',
@@ -45,6 +48,10 @@ function getEffectivenessLabel(pct: number): string {
 
 export default function LifestyleScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isLifestyleAccessAllowed(user, acm?.access);
+
   const [routines, setRoutines] = useState<any[]>([]);
   const [dashboard, setDashboard] = useState<any>(null);
   const [assessments, setAssessments] = useState<any[]>([]);
@@ -56,6 +63,10 @@ export default function LifestyleScreen() {
   const [freqFilter, setFreqFilter] = useState('');
 
   const fetchData = async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     try {
       const params = freqFilter ? `?frequency=${freqFilter}` : '';
       const [routinesRes, dashRes, assessRes] = await Promise.all([
@@ -70,10 +81,22 @@ export default function LifestyleScreen() {
     finally { setLoading(false); }
   };
 
-  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, [freqFilter]));
+  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, [freqFilter, allowed]));
   const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
 
+  const handleAddRoutine = () => {
+    if (!allowed) {
+      promptLifestyleUpgrade(router);
+      return;
+    }
+    router.push('/tools/lifestyle-routine');
+  };
+
   const handleImport = async () => {
+    if (!allowed) {
+      promptLifestyleUpgrade(router);
+      return;
+    }
     setImporting(true);
     try {
       const res = await api.post('/lifestyle/import-from-ctt');
@@ -90,6 +113,10 @@ export default function LifestyleScreen() {
   };
 
   const handleStartAssessment = async (period: string) => {
+    if (!allowed) {
+      promptLifestyleUpgrade(router);
+      return;
+    }
     setStarting(true);
     try {
       const res = await api.post('/lifestyle/start-assessment', { period });
@@ -390,6 +417,27 @@ export default function LifestyleScreen() {
     );
   };
 
+  const renderLockedState = () => (
+    <View style={s.empty}>
+      <View style={[s.emptyIcon, { backgroundColor: '#FEE2E2' }]}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.emptyTitle}>Subscription Required</Text>
+      <Text style={s.emptySub}>
+        Lifestyle Dezider is available exclusively for Subscription Plan members (Basic, Pro, Premium, Enterprise). Free and On-Demand plan users cannot access or create routines in Lifestyle Dezider.
+      </Text>
+      <View style={s.emptyActions}>
+        <TouchableOpacity
+          style={[s.emptyBtn, { backgroundColor: '#059669' }]}
+          onPress={() => promptLifestyleUpgrade(router)}
+        >
+          <Ionicons name="diamond" size={18} color="#FFF" />
+          <Text style={s.emptyBtnText}>Upgrade Plan</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#065F46', '#059669']} style={s.header}>
@@ -412,7 +460,7 @@ export default function LifestyleScreen() {
               <><Ionicons name="download" size={14} color="#FFF" /><Text style={s.importText}>Import</Text></>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/tools/lifestyle-routine')} style={s.addBtn}>
+          <TouchableOpacity onPress={handleAddRoutine} style={s.addBtn}>
             <Ionicons name="add" size={22} color="#FFF" />
           </TouchableOpacity>
           {/* Iter 129 — ATEX shortcut */}
@@ -420,89 +468,95 @@ export default function LifestyleScreen() {
         </View>
       </LinearGradient>
 
-      {/* Effectiveness card */}
-      {renderEffectivenessCard()}
-
-      {/* Stats */}
-      {renderStats()}
-
-      {/* Tab toggle */}
-      <View style={s.tabRow}>
-        <TouchableOpacity style={[s.tab, activeTab === 'routines' && s.tabActive]} onPress={() => setActiveTab('routines')}>
-          <Ionicons name="repeat" size={14} color={activeTab === 'routines' ? '#FFF' : COLORS.textMuted} />
-          <Text style={[s.tabText, activeTab === 'routines' && { color: '#FFF' }]}>Routines ({routines.length})</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.tab, activeTab === 'assessments' && s.tabActive]} onPress={() => setActiveTab('assessments')}>
-          <Ionicons name="analytics" size={14} color={activeTab === 'assessments' ? '#FFF' : COLORS.textMuted} />
-          <Text style={[s.tabText, activeTab === 'assessments' && { color: '#FFF' }]}>Assessments ({assessments.length})</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.analyticsBtn} onPress={() => router.push('/tools/lifestyle-analytics')}>
-          <Ionicons name="bar-chart" size={16} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Frequency filter (for routines tab) */}
-      {activeTab === 'routines' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 40, minHeight: 40 }}>
-          <View style={s.filterRow}>
-            <TouchableOpacity style={[s.filterChip, !freqFilter && s.filterActive]} onPress={() => setFreqFilter('')}>
-              <Text style={[s.filterText, !freqFilter && { color: '#FFF' }]}>All</Text>
-            </TouchableOpacity>
-            {Object.entries(FREQ_LABELS).map(([key, label]) => (
-              <TouchableOpacity key={key} style={[s.filterChip, freqFilter === key && s.filterActive]} onPress={() => setFreqFilter(freqFilter === key ? '' : key)}>
-                <Text style={[s.filterText, freqFilter === key && { color: '#FFF' }]}>{label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-      )}
-
-      {/* Content */}
-      {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#059669" />
-        </View>
+      {!allowed ? (
+        renderLockedState()
       ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {activeTab === 'routines' ? (
-            <>
-              {renderTodayStatus()}
-              {routines.length === 0 ? (
-              <View style={s.empty}>
-                <View style={s.emptyIcon}><Ionicons name="repeat" size={48} color={COLORS.textMuted} /></View>
-                <Text style={s.emptyTitle}>No Routines Yet</Text>
-                <Text style={s.emptySub}>Add routine tasks or import them from CTT</Text>
-                <View style={s.emptyActions}>
-                  <TouchableOpacity style={s.emptyBtn} onPress={() => router.push('/tools/lifestyle-routine')}>
-                    <Ionicons name="add-circle" size={18} color="#FFF" />
-                    <Text style={s.emptyBtnText}>Add Routine</Text>
+        <>
+          {/* Effectiveness card */}
+          {renderEffectivenessCard()}
+
+          {/* Stats */}
+          {renderStats()}
+
+          {/* Tab toggle */}
+          <View style={s.tabRow}>
+            <TouchableOpacity style={[s.tab, activeTab === 'routines' && s.tabActive]} onPress={() => setActiveTab('routines')}>
+              <Ionicons name="repeat" size={14} color={activeTab === 'routines' ? '#FFF' : COLORS.textMuted} />
+              <Text style={[s.tabText, activeTab === 'routines' && { color: '#FFF' }]}>Routines ({routines.length})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.tab, activeTab === 'assessments' && s.tabActive]} onPress={() => setActiveTab('assessments')}>
+              <Ionicons name="analytics" size={14} color={activeTab === 'assessments' ? '#FFF' : COLORS.textMuted} />
+              <Text style={[s.tabText, activeTab === 'assessments' && { color: '#FFF' }]}>Assessments ({assessments.length})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.analyticsBtn} onPress={() => router.push('/tools/lifestyle-analytics')}>
+              <Ionicons name="bar-chart" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Frequency filter (for routines tab) */}
+          {activeTab === 'routines' && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 40, minHeight: 40 }}>
+              <View style={s.filterRow}>
+                <TouchableOpacity style={[s.filterChip, !freqFilter && s.filterActive]} onPress={() => setFreqFilter('')}>
+                  <Text style={[s.filterText, !freqFilter && { color: '#FFF' }]}>All</Text>
+                </TouchableOpacity>
+                {Object.entries(FREQ_LABELS).map(([key, label]) => (
+                  <TouchableOpacity key={key} style={[s.filterChip, freqFilter === key && s.filterActive]} onPress={() => setFreqFilter(freqFilter === key ? '' : key)}>
+                    <Text style={[s.filterText, freqFilter === key && { color: '#FFF' }]}>{label}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[s.emptyBtn, { backgroundColor: '#3B82F6' }]} onPress={handleImport}>
-                    <Ionicons name="download" size={18} color="#FFF" />
-                    <Text style={s.emptyBtnText}>Import from CTT</Text>
-                  </TouchableOpacity>
-                </View>
+                ))}
               </View>
-            ) : (
-              routines.map(renderRoutineCard)
-            )}
-            </>
-          ) : (
-            assessments.length === 0 ? (
-              <View style={s.empty}>
-                <View style={s.emptyIcon}><Ionicons name="analytics-outline" size={48} color={COLORS.textMuted} /></View>
-                <Text style={s.emptyTitle}>No Assessments Yet</Text>
-                <Text style={s.emptySub}>Start a self-assessment to evaluate your lifestyle effectiveness</Text>
-              </View>
-            ) : (
-              assessments.map(renderAssessmentCard)
-            )
+            </ScrollView>
           )}
-        </ScrollView>
+
+          {/* Content */}
+          {loading ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#059669" />
+            </View>
+          ) : (
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
+              {activeTab === 'routines' ? (
+                <>
+                  {renderTodayStatus()}
+                  {routines.length === 0 ? (
+                  <View style={s.empty}>
+                    <View style={s.emptyIcon}><Ionicons name="repeat" size={48} color={COLORS.textMuted} /></View>
+                    <Text style={s.emptyTitle}>No Routines Yet</Text>
+                    <Text style={s.emptySub}>Add routine tasks or import them from CTT</Text>
+                    <View style={s.emptyActions}>
+                      <TouchableOpacity style={s.emptyBtn} onPress={handleAddRoutine}>
+                        <Ionicons name="add-circle" size={18} color="#FFF" />
+                        <Text style={s.emptyBtnText}>Add Routine</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[s.emptyBtn, { backgroundColor: '#3B82F6' }]} onPress={handleImport}>
+                        <Ionicons name="download" size={18} color="#FFF" />
+                        <Text style={s.emptyBtnText}>Import from CTT</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  routines.map(renderRoutineCard)
+                )}
+                </>
+              ) : (
+                assessments.length === 0 ? (
+                  <View style={s.empty}>
+                    <View style={s.emptyIcon}><Ionicons name="analytics-outline" size={48} color={COLORS.textMuted} /></View>
+                    <Text style={s.emptyTitle}>No Assessments Yet</Text>
+                    <Text style={s.emptySub}>Start a self-assessment to evaluate your lifestyle effectiveness</Text>
+                  </View>
+                ) : (
+                  assessments.map(renderAssessmentCard)
+                )
+              )}
+            </ScrollView>
+          )}
+        </>
       )}
     </SafeAreaView>
   );

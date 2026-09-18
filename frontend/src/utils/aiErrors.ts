@@ -26,6 +26,18 @@ export async function handleAiError(
     ? detail.message
     : (typeof detail === 'string' ? detail : '');
 
+  if (error?.response?.status === 403) {
+    Alert.alert(
+      'Subscription Required',
+      message || 'This feature requires an active subscription plan. Please upgrade your plan to access it.',
+      [
+        { text: 'Upgrade Plan', onPress: () => router.push('/subscription-plans') },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+    return;
+  }
+
   if (code === 'insufficient_credits') {
     Alert.alert(
       'Out of AI credits',

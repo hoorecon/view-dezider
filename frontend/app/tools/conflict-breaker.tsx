@@ -22,6 +22,7 @@ import { CollabBar } from '../../src/components/CollabBar';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import { PartyTabs, defaultPartyColor, type Party } from '../../src/components/PartyTabs';
 import { safeBack } from '../../src/utils/navigation';
+import PaywallGate from '../../src/components/PaywallGate';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -695,14 +696,15 @@ export default function ConflictBreakerScreen() {
           was visual-only; all paths went through the same 9-step wizard.
           Conversation type is now selected inside the create modal. */}
       <View style={s.actBtnRow}>
-        <TouchableOpacity
-          style={[s.actCard, { borderLeftColor: '#6366F1' }]}
-          onPress={() => { setCreateForm({ ...createForm, conversation_type: 'prepare' }); setShowCreate(true); }}
-        >
-          <Ionicons name="chatbubbles" size={22} color="#6366F1" />
-          <Text style={s.actCardText}>Start a Crucial Conversation</Text>
-          <Ionicons name="chevron-forward" size={16} color="#6B7280" />
-        </TouchableOpacity>
+        <PaywallGate module="conflict_breaker" onAllowed={() => { setCreateForm({ ...createForm, conversation_type: 'prepare' }); setShowCreate(true); }}>
+          <TouchableOpacity
+            style={[s.actCard, { borderLeftColor: '#6366F1' }]}
+          >
+            <Ionicons name="chatbubbles" size={22} color="#6366F1" />
+            <Text style={s.actCardText}>Start a Crucial Conversation</Text>
+            <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+          </TouchableOpacity>
+        </PaywallGate>
       </View>
 
       {/* Sessions */}

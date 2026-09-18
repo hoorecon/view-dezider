@@ -10,13 +10,13 @@ import { GAP_PRESETS, STANDARD_GAP, calculateRatingsFromOrder } from '../../util
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import { DeepImportBudgetPicker } from '../DeepImportBudgetPicker';
-import { useAiTouchpoint } from '../../utils/aiEstimates';
+import { useIsSubscriptionUserOrAdmin } from '../../hooks/useACM';
 import { useRouter } from 'expo-router';
 
 export default function Step5() {
   const router = useRouter();
   const { decision, saveDecision, applyRatingsAndContinue, setCurrentStep, prefillBestOptions } = useDecision();
-  const aiBestOptionsEnabled = useAiTouchpoint('tp_best_options');
+  const isSubscriptionOrAdmin = useIsSubscriptionUserOrAdmin();
   const [aiLoading, setAiLoading] = useState(false);
 
   // In FinderApp mode, the ranking is auto-computed against the pre-authored
@@ -205,24 +205,26 @@ export default function Step5() {
         </View>
       </Card>
 
-      <TouchableOpacity
-        style={[localS.aiBtn, aiLoading && { opacity: 0.7 }, (!aiBestOptionsEnabled || isDeciderApp) && { display: 'none' }]}
-        onPress={handleFindBestOptions}
-        disabled={aiLoading || !aiBestOptionsEnabled || isDeciderApp}
-        activeOpacity={0.85}
-        accessibilityLabel="Find My Best Options with AI"
-      >
-        {aiLoading
-          ? <ActivityIndicator size="small" color="#FFF" />
-          : <Ionicons name="sparkles" size={18} color="#FFF" />}
-        <Text style={localS.aiBtnText}>
-          {aiLoading ? 'Finding your best options…' : 'Find My Best Options'}
-        </Text>
-      </TouchableOpacity>
-      {aiBestOptionsEnabled && !isDeciderApp && (
-        <Text style={localS.aiHint}>
-          AI picks the top options for this Life Area & your prioritized factors (incl. matching Solution Store items). Review &amp; remove any in the next step.
-        </Text>
+      {isSubscriptionOrAdmin && !isDeciderApp && (
+        <>
+          <TouchableOpacity
+            style={[localS.aiBtn, aiLoading && { opacity: 0.7 }]}
+            onPress={handleFindBestOptions}
+            disabled={aiLoading}
+            activeOpacity={0.85}
+            accessibilityLabel="Find My Best Options with AI"
+          >
+            {aiLoading
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Ionicons name="sparkles" size={18} color="#FFF" />}
+            <Text style={localS.aiBtnText}>
+              {aiLoading ? 'Finding your best options…' : 'Find My Best Options'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={localS.aiHint}>
+            AI picks the top options for this Life Area &amp; your prioritized factors (incl. matching Solution Store items). Review &amp; remove any in the next step.
+          </Text>
+        </>
       )}
 
       <View style={styles.navButtons}>

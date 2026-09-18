@@ -12,10 +12,15 @@ import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import { calculateRatingsFromOrder } from '../../utils/decisionHelpers';
 import { useAiTouchpoint, useAiEstimate } from '../../utils/aiEstimates';
+import { useAuthStore } from '../../store/authStore';
+import { useACM } from '../../hooks/useACM';
+import { isDeciderAppsAccessAllowed, promptAIPrioritizeUpgrade } from '../../utils/cttAccess';
 
 export default function Step4() {
   const { decision, moveFactorUp, moveFactorDown, setCurrentStep, saveDecision } = useDecision();
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
   const aiEnabled = useAiTouchpoint('tp_prioritize_factors');
   const aiEstimate = useAiEstimate('factor_prioritize');
   const [aiBusy, setAiBusy] = useState(false);
@@ -36,6 +41,10 @@ export default function Step4() {
   // We apply the suggested order (preserving each factor's category) and
   // recalc ratings; the user can still tweak with the up/down arrows after.
   const handlePrioritizeWithAI = async () => {
+    if (!isDeciderAppsAccessAllowed(user, acm?.access)) {
+      promptAIPrioritizeUpgrade(router);
+      return;
+    }
     if (aiBusy) return;
     setAiBusy(true);
     try {

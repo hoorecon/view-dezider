@@ -20,6 +20,7 @@ import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import { CollabBar } from '../../src/components/CollabBar';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import ActionItemEditor from '../../src/components/ActionItemEditor';
+import { useACM } from '../../src/hooks/useACM';
 
 interface SwotItem {
   id: string;
@@ -102,7 +103,20 @@ export default function SwotScreen() {
     setRefreshing(false);
   };
 
+  const { checkFeature } = useACM();
+  const swotAccess = checkFeature('swot_create');
+  const isSwotRestricted = !swotAccess.allowed || swotAccess.access_level === 'read' || swotAccess.access_level === 'locked' || swotAccess.access_level === 'hidden';
+
   const handleCreate = async () => {
+    if (isSwotRestricted) {
+      showAlert(
+        'Creation Disabled',
+        swotAccess.access_level === 'read'
+          ? 'SWOT Analysis creation is set to Read-Only for your plan under Access Control Matrix configuration.'
+          : (swotAccess.upgrade_message || 'Creation is disabled for your plan under Access Control Matrix configuration.')
+      );
+      return;
+    }
     if (!newTitle.trim()) {
       showAlert('Required', 'Please enter a title for your SWOT analysis');
       return;

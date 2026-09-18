@@ -34,9 +34,13 @@ def test_me_usage_requires_auth():
     assert r.status_code in (401, 403)
 
 
-def test_defaults_include_three_gated_modules():
+def test_defaults_include_gated_modules():
     from routes.module_limits import GATED_MODULES
-    assert set(GATED_MODULES) == {"solution_finder", "pros_cons", "my_dezider"}
+    assert set(GATED_MODULES) == {
+        "my_dezider", "pros_cons", "solution_finder",
+        "group_decision", "book_expert", "expert_review",
+        "expire_days"
+    }
 
 
 def test_admin_role_is_exempt_from_cap():

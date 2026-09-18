@@ -25,11 +25,61 @@ EFFORT_SUB_DIMENSIONS = [
 ]
 
 # ========================
-# CTT TASKS
+# CTT TASKS & ACCESS CONTROL
 # ========================
+
+async def verify_ctt_access(user: dict):
+    """Ensure user is on an active Subscription plan or Admin/Tester role.
+
+    Restricts Free plan and On-Demand plan users from accessing or creating CTT tasks.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"}:
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1}) or {}
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers and paid user_type override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester", "paid"}:
+        return True
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free"} and not cp.startswith("on_demand"):
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan and splan not in {"none", "free", ""} and not splan.startswith("on_demand"):
+        return True
+
+    # 5. Block Free and On-Demand users
+    raise HTTPException(
+        status_code=403,
+        detail="CTT (Task Tracker) is not available for Free or On-Demand plans. Please upgrade to a subscription plan (Basic, Pro, Premium) to access CTT."
+    )
+
 
 @router.post("/ctt/tasks")
 async def create_ctt_task(request: Request, user: dict = Depends(get_current_user)):
+    await verify_ctt_access(user)
     body = await request.json()
     task_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -89,6 +139,7 @@ async def create_ctt_task(request: Request, user: dict = Depends(get_current_use
 
 @router.get("/ctt/tasks")
 async def list_ctt_tasks(request: Request, user: dict = Depends(get_current_user)):
+    await verify_ctt_access(user)
     query: dict = {"user_id": user["user_id"]}
     params = request.query_params
     if params.get("life_area"):
@@ -112,6 +163,7 @@ async def list_ctt_tasks(request: Request, user: dict = Depends(get_current_user
 
 @router.get("/ctt/tasks/{task_id}")
 async def get_ctt_task(task_id: str, user: dict = Depends(get_current_user)):
+    await verify_ctt_access(user)
     task = await db.ctt_tasks.find_one(
         {"task_id": task_id, "user_id": user["user_id"]}, {"_id": 0}
     )
@@ -122,6 +174,7 @@ async def get_ctt_task(task_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/ctt/tasks/{task_id}")
 async def update_ctt_task(task_id: str, request: Request, user: dict = Depends(get_current_user)):
+    await verify_ctt_access(user)
     body = await request.json()
     task = await db.ctt_tasks.find_one({"task_id": task_id, "user_id": user["user_id"]})
     if not task:
@@ -161,6 +214,7 @@ async def update_ctt_task(task_id: str, request: Request, user: dict = Depends(g
 @router.put("/ctt/tasks/{task_id}/day-status")
 async def update_day_status(task_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Update day-wise status for a task. Body: {date: status} — empty status removes the date."""
+    await verify_ctt_access(user)
     body = await request.json()
     task = await db.ctt_tasks.find_one({"task_id": task_id, "user_id": user["user_id"]})
     if not task:
@@ -182,6 +236,7 @@ async def update_day_status(task_id: str, request: Request, user: dict = Depends
 
 @router.delete("/ctt/tasks/{task_id}")
 async def delete_ctt_task(task_id: str, user: dict = Depends(get_current_user)):
+    await verify_ctt_access(user)
     result = await db.ctt_tasks.delete_one({"task_id": task_id, "user_id": user["user_id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -191,6 +246,7 @@ async def delete_ctt_task(task_id: str, user: dict = Depends(get_current_user)):
 @router.post("/ctt/aggregate")
 async def aggregate_action_items(request: Request, user: dict = Depends(get_current_user)):
     """Pull action items from Decisions, Solution Finders, and Solution Matrices into CTT."""
+    await verify_ctt_access(user)
     imported = 0
     now = datetime.now(timezone.utc).isoformat()
 
@@ -337,6 +393,7 @@ async def aggregate_action_items(request: Request, user: dict = Depends(get_curr
 @router.get("/ctt/tasks/{task_id}/calendar-url")
 async def get_calendar_url(task_id: str, user: dict = Depends(get_current_user)):
     """Generate a Google Calendar add-event URL for a task."""
+    await verify_ctt_access(user)
     task = await db.ctt_tasks.find_one(
         {"task_id": task_id, "user_id": user["user_id"]}, {"_id": 0}
     )
@@ -368,6 +425,7 @@ async def get_calendar_url(task_id: str, user: dict = Depends(get_current_user))
 @router.get("/ctt/stats")
 async def get_ctt_stats(user: dict = Depends(get_current_user)):
     """Get CTT dashboard stats."""
+    await verify_ctt_access(user)
     tasks = await db.ctt_tasks.find(
         {"user_id": user["user_id"]}, {"_id": 0}
     ).to_list(1000)
@@ -667,9 +725,79 @@ async def gem_dashboard(user: dict = Depends(get_current_user)):
 # TEPFI RESOURCE MATRIX
 # ========================
 
+async def verify_tepfi_access(user: dict):
+    """Ensure user is on Pro, Premium, or Enterprise Subscription plan (or Admin/Tester role).
+
+    Restricts Free, On-Demand, AND Basic plan users from accessing TEPFI.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user.get("is_admin"):
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1, "is_admin": 1}) or {}
+    role = str(user_doc.get("role") or user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user_doc.get("is_admin"):
+        return True
+
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
+        return True
+
+    # 3. Explicit check for basic / on_demand / free
+    if utype.startswith("on_demand") or splan.startswith("on_demand") or utype == "free" or splan in {"free", "none", ""}:
+        raise HTTPException(
+            status_code=403,
+            detail="TEPFI (Capabilities & Resources Index) is not available for Free or On-Demand plans. Please upgrade to a Pro or Premium plan to access TEPFI."
+        )
+
+    if utype == "basic" or splan in {"basic", "none", ""} or splan.startswith("basic"):
+        raise HTTPException(
+            status_code=403,
+            detail="TEPFI (Capabilities & Resources Index) is not available for Basic plan users. Please upgrade to a Pro or Premium plan to access TEPFI."
+        )
+
+    # 4. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free", "basic"} and not cp.startswith("on_demand"):
+            return True
+
+    # 5. Check active subscription plan on user doc
+    if splan and splan not in {"none", "free", "basic", ""} and not splan.startswith("on_demand"):
+        return True
+
+    if utype == "paid" and splan != "basic":
+        return True
+
+    # 6. Block Free, On-Demand, and Basic users
+    raise HTTPException(
+        status_code=403,
+        detail="TEPFI (Capabilities & Resources Index) is not available for Free, On-Demand, or Basic plans. Please upgrade to a Pro, Premium, or Enterprise plan to access TEPFI."
+    )
+
+
 @router.post("/tepfi/entries")
 async def create_tepfi_entry(request: Request, user: dict = Depends(get_current_user)):
     """Create a TEPFI resource entry. Tracks Time, Effort, People, Finance, Infrastructure across Self/Micro/Macro."""
+    await verify_tepfi_access(user)
     body = await request.json()
     entry_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -713,6 +841,7 @@ async def create_tepfi_entry(request: Request, user: dict = Depends(get_current_
 
 @router.get("/tepfi/entries")
 async def list_tepfi_entries(request: Request, user: dict = Depends(get_current_user)):
+    await verify_tepfi_access(user)
     query: dict = {"user_id": user["user_id"]}
     params = request.query_params
     if params.get("life_area"):
@@ -728,6 +857,7 @@ async def list_tepfi_entries(request: Request, user: dict = Depends(get_current_
 
 @router.get("/tepfi/entries/{entry_id}")
 async def get_tepfi_entry(entry_id: str, user: dict = Depends(get_current_user)):
+    await verify_tepfi_access(user)
     entry = await db.tepfi_entries.find_one(
         {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0}
     )
@@ -738,6 +868,7 @@ async def get_tepfi_entry(entry_id: str, user: dict = Depends(get_current_user))
 
 @router.put("/tepfi/entries/{entry_id}")
 async def update_tepfi_entry(entry_id: str, request: Request, user: dict = Depends(get_current_user)):
+    await verify_tepfi_access(user)
     body = await request.json()
     entry = await db.tepfi_entries.find_one({"entry_id": entry_id, "user_id": user["user_id"]})
     if not entry:
@@ -758,6 +889,7 @@ async def update_tepfi_entry(entry_id: str, request: Request, user: dict = Depen
 
 @router.delete("/tepfi/entries/{entry_id}")
 async def delete_tepfi_entry(entry_id: str, user: dict = Depends(get_current_user)):
+    await verify_tepfi_access(user)
     result = await db.tepfi_entries.delete_one({"entry_id": entry_id, "user_id": user["user_id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="TEPFI entry not found")
@@ -778,6 +910,7 @@ async def tepfi_dashboard(request: Request, user: dict = Depends(get_current_use
         - 'all' (no filter) → applies overrides where scope=='all'
         - '<life_area_id>'   → applies overrides where scope==<id>
     """
+    await verify_tepfi_access(user)
     life_area = request.query_params.get("life_area")
     q: Dict[str, Any] = {"user_id": user["user_id"]}
     if life_area:
@@ -847,6 +980,7 @@ async def tepfi_dashboard(request: Request, user: dict = Depends(get_current_use
 
 @router.get("/tepfi/overrides")
 async def list_tepfi_overrides(request: Request, user: dict = Depends(get_current_user)):
+    await verify_tepfi_access(user)
     scope = request.query_params.get("scope") or "all"
     rows = await db.tepfi_overrides.find(
         {"user_id": user["user_id"], "scope": scope}, {"_id": 0}
@@ -861,6 +995,7 @@ async def upsert_tepfi_override(scope: str, request: Request, user: dict = Depen
     life_area id). Body: { cell_key, score, note? }.  cell_key is the
     concatenation '<dim>_<layer>' (e.g. 'effort_self').
     """
+    await verify_tepfi_access(user)
     body = await request.json()
     cell_key = (body.get("cell_key") or "").strip()
     if not cell_key:
@@ -885,6 +1020,7 @@ async def upsert_tepfi_override(scope: str, request: Request, user: dict = Depen
 
 @router.delete("/tepfi/overrides/{scope}/{cell_key}")
 async def delete_tepfi_override(scope: str, cell_key: str, user: dict = Depends(get_current_user)):
+    await verify_tepfi_access(user)
     res = await db.tepfi_overrides.delete_one(
         {"user_id": user["user_id"], "scope": scope, "cell_key": cell_key}
     )
@@ -914,6 +1050,7 @@ async def tepfi_metadata():
 @router.post("/tepfi/import-from-matrix/{matrix_id}")
 async def import_tepfi_from_solution_matrix(matrix_id: str, user: dict = Depends(get_current_user)):
     """Import TEPFI data from an existing Solution Matrix entry."""
+    await verify_tepfi_access(user)
     sm = await db.solution_matrices.find_one(
         {"entry_id": matrix_id, "user_id": user["user_id"]}, {"_id": 0}
     )

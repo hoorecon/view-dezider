@@ -15,7 +15,15 @@ import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
 import { safeBack } from '../src/utils/navigation';
 
-interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; gst_percent?: number; quota: number; kind: string; badge_color: string; icon: string; active: boolean; display_order: number; }
+interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; gst_percent?: number; quota: number; kind: string; badge_color: string; icon: string; active: boolean; display_order: number; applies_to_modules?: string[]; }
+
+const MODULE_LABELS: Record<string, string> = {
+  dezider: 'My Dezider',
+  pros_cons: 'Pros & Cons',
+  solution_finder: 'Solution Finder',
+  book_expert: 'Book Expert',
+  expert_review: 'Expert Review',
+};
 interface Entitlement { sku_code: string; balance: number; granted_qty: number; consumed_qty: number; last_used_at?: string | null }
 
 declare const Razorpay: any; // injected by /razorpay-checkout.html or RN SDK
@@ -185,6 +193,15 @@ export default function StoreScreen() {
                   <Text style={s.cardName}>{sku.name}</Text>
                   <Text style={s.cardTagline}>{sku.tagline}</Text>
                   <Text style={s.cardDesc}>{sku.description}</Text>
+                  {(sku.applies_to_modules || []).length > 0 && (
+                    <View style={s.modBadgesRow}>
+                      {sku.applies_to_modules!.map(m => (
+                        <View key={m} style={s.modBadge}>
+                          <Text style={s.modBadgeText}>{MODULE_LABELS[m] || m}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                   <View style={s.cardFootRow}>
                     <Text style={s.cardPrice}>{formatINR(sku.price_paise)} <Text style={s.cardPriceMuted}>excl. GST</Text></Text>
                     {sku.quota > 1 && <Text style={s.cardQuota}>{sku.quota} uses</Text>}
@@ -329,6 +346,9 @@ const s = StyleSheet.create({
   cardName: { color: '#0F172A', fontSize: 16, fontWeight: '700', marginTop: 2 },
   cardTagline: { color: '#7C3AED', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
   cardDesc: { color: '#475569', fontSize: 13, marginTop: 4, lineHeight: 18 },
+  modBadgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  modBadge: { backgroundColor: '#F1F5F9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#E2E8F0' },
+  modBadgeText: { fontSize: 11, fontWeight: '600', color: '#475569' },
   cardFootRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 8 },
   cardPrice: { color: '#0F172A', fontSize: 20, fontWeight: '800' },
   cardPriceMuted: { color: '#94A3B8', fontSize: 11, fontWeight: '500' },

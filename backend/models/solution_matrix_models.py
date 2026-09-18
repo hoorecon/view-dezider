@@ -177,7 +177,7 @@ def normalise_layer_set(raw: Optional[Dict]) -> Dict[str, Dict]:
 
 
 def normalise_matrix_mode(raw: Optional[str]) -> str:
-    """Clamp incoming mode to one of MATRIX_MODES; defaults to 'accurate'."""
+    """Clamp incoming mode to one of MATRIX_MODES; defaults to 'standard'."""
     if isinstance(raw, str) and raw.strip().lower() in MATRIX_MODES:
         return raw.strip().lower()
-    return "accurate"
+    return "standard"

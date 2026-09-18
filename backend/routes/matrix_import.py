@@ -21,6 +21,7 @@ from core.decision_builder import merge_into_mydezider
 from routes.url_analyze import (
     _measure_num, _is_lower_better, _now, ELIGIBILITY_TYPES, DISCLAIMER_VERSION,
 )
+from routes.decider_store import verify_decision_templates_access, verify_decider_apps_access
 
 router = APIRouter(tags=["Decisions"])
 
@@ -94,6 +95,7 @@ async def _apply_matrix(decision_id: str, user_id: str, rows: List[List[Any]]) -
 # ── 1) downloadable template ─────────────────────────────────────────────────
 @router.get("/decisions/{decision_id}/factor-matrix-template.xlsx")
 async def download_matrix_template(decision_id: str, user: dict = Depends(get_current_user)):
+    await verify_decision_templates_access(user)
     d = await _get_decision(decision_id, user["user_id"])
     leaf_ids = {f.get("parent_id") for f in d.get("factors", []) if f.get("parent_id")}
     factor_names = [f.get("name") for f in d.get("factors", [])
@@ -111,6 +113,7 @@ async def download_matrix_template(decision_id: str, user: dict = Depends(get_cu
 @router.post("/decisions/{decision_id}/import-matrix-file")
 async def import_matrix_file(decision_id: str, file: UploadFile = File(...),
                              user: dict = Depends(get_current_user)):
+    await verify_decision_templates_access(user)
     await _get_decision(decision_id, user["user_id"])
     raw = await file.read()
     if not raw:
@@ -134,6 +137,7 @@ class SheetImportRequest(BaseModel):
 @router.post("/decisions/{decision_id}/import-matrix-sheet")
 async def import_matrix_sheet(decision_id: str, req: SheetImportRequest,
                               user: dict = Depends(get_current_user)):
+    await verify_decider_apps_access(user)
     await _get_decision(decision_id, user["user_id"])
     url = (req.sheet_url or "").strip()
     sid, _ = mx.gsheet_id_and_gid(url)
@@ -187,6 +191,7 @@ async def import_actuals_from_url(decision_id: str, req: ActualsFromUrlRequest, 
     """Crawl a comparison page and fill ONLY the Actual Values for the decision's
     EXISTING factors (matched by fuzzy name to crawled columns; options matched
     to crawled items). Does not add/remove factors or options. Same consent gate."""
+    await verify_decider_apps_access(user)
     if not req.accepted:
         raise HTTPException(400, "You must accept the data-access disclaimer to continue.")
     elig = (req.eligibility_type or "").strip().lower()

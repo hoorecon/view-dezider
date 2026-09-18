@@ -17,6 +17,11 @@ import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { safeBack } from '../../src/utils/navigation';
 import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import {
+  isDecisionTemplatesAccessAllowed, promptDecisionTemplatesUpgrade,
+  isDeciderAppsAccessAllowed, promptDeciderAppsUpgrade,
+} from '../../src/utils/cttAccess';
 import StoreRating from '../../src/components/StoreRating';
 import PolicyConsentModal from '../../src/components/PolicyConsentModal';
 
@@ -32,6 +37,8 @@ export default function DeciderStoreDetail() {
   const { id, use, ref } = useLocalSearchParams<{ id: string; use?: string; ref?: string }>();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const authLoading = useAuthStore((s) => s.isLoading);
+  const user = useAuthStore((s) => s.user);
+  const acm = useACM();
 
   const [t, setT] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +46,9 @@ export default function DeciderStoreDetail() {
   const [cloning, setCloning] = useState(false);
   const [consentModalMode, setConsentModalMode] = useState<string | null>(null);
   const resumed = useRef(false);
+
+  const isApp = t?.kind === 'app';
+  const allowed = isApp ? isDeciderAppsAccessAllowed(user, acm?.access) : isDecisionTemplatesAccessAllowed(user, acm?.access);
 
   const load = useCallback(async () => {
     try {
@@ -71,28 +81,29 @@ export default function DeciderStoreDetail() {
 
   const onUse = useCallback(async (m: string) => {
     if (!isAuthenticated) {
-      // Two intents preserved:
-      //  1. pending_decider_clone → auto-resume the clone in the mode chosen
-      //  2. post_auth_next → universal return-to-page (handled by
-      //     getPostAuthRoute after any auth path — email/OTP/Google/register)
       await AsyncStorage.setItem('pending_decider_clone', `${id}::${m}`);
       const backTo = `/decider-store/${id}?use=${m}`;
       await AsyncStorage.setItem('post_auth_next', backTo);
       router.push(`/auth/login?next=${encodeURIComponent(backTo)}` as any);
       return;
     }
+    if (!allowed) {
+      if (isApp) {
+        promptDeciderAppsUpgrade(router);
+      } else {
+        promptDecisionTemplatesUpgrade(router);
+      }
+      return;
+    }
     // Authenticated → gate on policy consent BEFORE cloning.
     setConsentModalMode(m);
-  }, [isAuthenticated, id, router]);
+  }, [isAuthenticated, allowed, isApp, id, router]);
 
   // Post-login auto-resume: arrived back with ?use=<mode> and now authenticated.
   useEffect(() => {
     if (authLoading || resumed.current) return;
     if (use && isAuthenticated && t) {
       resumed.current = true;
-      // Even the post-auth auto-resume passes through the consent modal
-      // so no user ever proceeds without agreeing to the publisher's
-      // policies — including when the "Use" click happened pre-login.
       setConsentModalMode(String(use));
     }
   }, [use, isAuthenticated, authLoading, t]);
@@ -112,7 +123,6 @@ export default function DeciderStoreDetail() {
   const modes: string[] = t.allowed_clone_modes || ['full'];
   const factors: any[] = t.factors || [];
   const options: any[] = t.options || [];
-  const isApp = t.kind === 'app';
   const paid = t.pricing_type === 'paid' && (t.price_paise || 0) > 0;
   const priceStr = paid ? `${t.currency === 'INR' ? '₹' : '$'}${((t.price_paise || 0) / 100).toFixed(0)}` : 'Free';
 
@@ -126,6 +136,24 @@ export default function DeciderStoreDetail() {
       </View>
 
       <ScrollView contentContainerStyle={s.body}>
+        {isAuthenticated && !allowed && (
+          <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="lock-closed" size={18} color="#DC2626" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#991B1B' }}>Subscription Required</Text>
+              <Text style={{ fontSize: 11.5, color: '#B91C1C', marginTop: 2 }}>
+                {isApp
+                  ? 'Decider Apps @ Best Option Finders are available exclusively for Pro, Premium, and Enterprise plan members. Free, On-Demand, and Basic plan users cannot access Decider Apps.'
+                  : 'Decision Templates are available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand users cannot access or clone templates.'}
+              </Text>
+            </View>
+            <TouchableOpacity style={{ backgroundColor: '#DC2626', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }} onPress={() => isApp ? promptDeciderAppsUpgrade(router) : promptDecisionTemplatesUpgrade(router)}>
+              <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }}>Upgrade Plan</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <View style={[s.cover, { backgroundColor: (t.cover_color || '#4F46E5') + '18' }]}>
           <Ionicons name={(t.cover_icon || 'grid') as any} size={40} color={t.cover_color || '#4F46E5'} />
         </View>

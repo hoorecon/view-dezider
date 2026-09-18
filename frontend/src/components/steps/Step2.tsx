@@ -35,6 +35,7 @@ import DecisionLinkPicker from '../DecisionLinkPicker';
 import { useRouter } from 'expo-router';
 import { pickAndReadFile, PickedFile } from '../../utils/filePick';
 import { uploadFileChunked, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from '../../utils/chunkUpload';
+import { useACM, useIsSubscriptionUserOrAdmin } from '../../hooks/useACM';
 
 const DATA_SOURCE_TYPES = [
   { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
@@ -67,7 +68,7 @@ export default function Step2() {
   } = useDecision();
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
-  const aiBestFactorsEnabled = useAiTouchpoint('tp_best_factors');
+  const isSubscriptionOrAdmin = useIsSubscriptionUserOrAdmin();
   const [linkPickerOpen, setLinkPickerOpen] = useState(false);
   const router = useRouter();
 
@@ -809,6 +810,35 @@ export default function Step2() {
     );
   };
 
+  const { checkFeature } = useACM();
+  const slImportAccess = checkFeature('my_dezider_sl_import');
+  const storeImportAccess = checkFeature('my_dezider_store_import');
+
+  const isSlFull = slImportAccess.allowed && slImportAccess.access_level === 'full';
+  const isStoreFull = storeImportAccess.allowed && storeImportAccess.access_level === 'full';
+
+  const isImportHidden = slImportAccess.access_level === 'hidden' && storeImportAccess.access_level === 'hidden';
+  const isImportLocked = !isSlFull && !isStoreFull;
+
+  const handleImportClick = (action: () => void) => {
+    if (isImportLocked) {
+      const lvl = slImportAccess.access_level || storeImportAccess.access_level || 'disabled';
+      if (lvl === 'read') {
+        showAlert(
+          'Read-Only Mode',
+          'Importing factors & options is currently read-only for your plan under Access Control Matrix configuration.'
+        );
+        return;
+      }
+      showAlert(
+        'Upgrade Required',
+        slImportAccess.upgrade_message || storeImportAccess.upgrade_message || 'Importing factors & options is locked under current plan settings. Upgrade your plan to unlock.'
+      );
+      return;
+    }
+    action();
+  };
+
   return (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Step 2: Define Factors & Criteria</Text>
@@ -816,14 +846,7 @@ export default function Step2() {
         List factors, group them with sub-factors (splitting 100%), then assign expected values, operators, and units.
       </Text>
 
-      {/* ── FinderApp mode: hide Formulas · Fetch My Best Factors ·
-              Link a Decision · Import factors & options · Deep Import.
-              The Decider App already ships with the factors & option-values
-              needed; showing these tools only confuses the end-user and
-              risks corrupting the pre-authored template. ── */}
       {!isDeciderApp && (<>
-      {/* Formulas button — opens a dedicated modal to declare dependency
-          formulas over `fN` variable ids (e.g. f7 = f1*f2/100). */}
       <TouchableOpacity
         onPress={() => setFormulasModalOpen(true)}
         activeOpacity={0.85}
@@ -841,31 +864,32 @@ export default function Step2() {
         </Text>
       </TouchableOpacity>
 
-      {/* One-tap: AI-score every un-scored cell (e.g. a freshly imported comparison). */}
-      {aiBestFactorsEnabled && (<>
-      <TouchableOpacity
-        onPress={handleFetchBestFactors}
-        disabled={aiFactorsLoading}
-        activeOpacity={0.85}
-        accessibilityLabel="Fetch My Best Factors with AI"
-        style={{
-          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-          backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
-          marginBottom: 6, opacity: aiFactorsLoading ? 0.7 : 1,
-          shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
-        }}
-      >
-        {aiFactorsLoading
-          ? <ActivityIndicator size="small" color="#FFF" />
-          : <Ionicons name="sparkles" size={18} color="#FFF" />}
-        <Text style={{ color: '#FFF', fontSize: 15, fontWeight: '800' }}>
-          {aiFactorsLoading ? 'Fetching your best factors…' : 'Fetch My Best Factors'}
-        </Text>
-      </TouchableOpacity>
-      <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginBottom: 14, lineHeight: 16, paddingHorizontal: 8 }}>
-        AI suggests factors from your Life Area, decision type &amp; description. Review, reorder or remove any, then continue to Step 3.
-      </Text>
-      </>)}
+      {isSubscriptionOrAdmin && (
+        <>
+          <TouchableOpacity
+            onPress={handleFetchBestFactors}
+            disabled={aiFactorsLoading}
+            activeOpacity={0.85}
+            accessibilityLabel="Fetch My Best Factors with AI"
+            style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+              backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
+              marginBottom: 6, opacity: aiFactorsLoading ? 0.7 : 1,
+              shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
+            }}
+          >
+            {aiFactorsLoading
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Ionicons name="sparkles" size={18} color="#FFF" />}
+            <Text style={{ color: '#FFF', fontSize: 15, fontWeight: '800' }}>
+              {aiFactorsLoading ? 'Fetching your best factors…' : 'Fetch My Best Factors'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginBottom: 14, lineHeight: 16, paddingHorizontal: 8 }}>
+            AI suggests factors from your Life Area, decision type &amp; description. Review, reorder or remove any, then continue to Step 3.
+          </Text>
+        </>
+      )}
 
       <TouchableOpacity
         testID="link-decision-btn"
@@ -884,41 +908,47 @@ export default function Step2() {
         Pull another scored decision&apos;s option result in as a factor (and optionally an option).
       </Text>
 
-      <View style={iurl.box}>
+      {!isImportHidden && (
+      <View style={[iurl.box, isImportLocked && { opacity: 0.85, borderColor: '#F59E0B' }]}>
         <View style={iurl.head}>
-          <Ionicons name="cloud-upload-outline" size={15} color="#2563EB" />
-          <Text style={iurl.title}>Import factors & options</Text>
+          <Ionicons name={isImportLocked ? "lock-closed" : "cloud-upload-outline"} size={15} color={isImportLocked ? "#D97706" : "#2563EB"} />
+          <Text style={iurl.title}>Import factors & options {isImportLocked ? ' (Locked)' : ''}</Text>
         </View>
         <Text style={iurl.sub}>
-          Bring in a comparison matrix from a spreadsheet or a web page — we&apos;ll add the factors
-          (with suggested Expected values) and options, and pre-fill the assessment matrix.
+          {isImportLocked
+            ? (slImportAccess.upgrade_message || 'Importing factors & options is locked under current plan settings. Upgrade your plan to unlock.')
+            : "Bring in a comparison matrix from a spreadsheet or a web page — we'll add the factors (with suggested Expected values) and options, and pre-fill the assessment matrix."}
         </Text>
         <View style={iurl.iconRow}>
-          <TouchableOpacity testID="step2-import-xls" style={iurl.iconBtn} onPress={handleUploadXls} disabled={!!importBusy} activeOpacity={0.85}>
+          <TouchableOpacity testID="step2-import-xls" style={iurl.iconBtn} onPress={() => handleImportClick(handleUploadXls)} disabled={!!importBusy} activeOpacity={0.85}>
             {importBusy === 'xls' ? <ActivityIndicator size="small" color="#16A34A" /> : <Ionicons name="document-text-outline" size={22} color="#16A34A" />}
             <Text style={iurl.iconLabel}>XLS / CSV</Text>
           </TouchableOpacity>
-          <TouchableOpacity testID="step2-import-sheet" style={iurl.iconBtn} onPress={() => setSheetDialogOpen(true)} disabled={!!importBusy} activeOpacity={0.85}>
+          <TouchableOpacity testID="step2-import-sheet" style={iurl.iconBtn} onPress={() => handleImportClick(() => setSheetDialogOpen(true))} disabled={!!importBusy} activeOpacity={0.85}>
             <Ionicons name="grid-outline" size={22} color="#0F9D58" />
             <Text style={iurl.iconLabel}>Google Sheet</Text>
           </TouchableOpacity>
-          <TouchableOpacity testID="step2-import-url" style={iurl.iconBtn} onPress={() => setUrlDialogOpen(true)} disabled={!!importBusy || importing} activeOpacity={0.85}>
+          <TouchableOpacity testID="step2-import-url" style={iurl.iconBtn} onPress={() => handleImportClick(() => setUrlDialogOpen(true))} disabled={!!importBusy || importing} activeOpacity={0.85}>
             <Ionicons name="link" size={22} color="#2563EB" />
             <Text style={iurl.iconLabel}>URL</Text>
           </TouchableOpacity>
-          <TouchableOpacity testID="step2-import-file" style={iurl.iconBtn} onPress={() => setFileDialogOpen(true)} disabled={!!importBusy || fileBusy} activeOpacity={0.85}>
+          <TouchableOpacity testID="step2-import-file" style={iurl.iconBtn} onPress={() => handleImportClick(() => setFileDialogOpen(true))} disabled={!!importBusy || fileBusy} activeOpacity={0.85}>
             {fileBusy ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="document-attach-outline" size={22} color="#7C3AED" />}
             <Text style={iurl.iconLabel}>File</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity testID="step2-download-template" onPress={handleDownloadTemplate} disabled={!!importBusy} style={iurl.tmplLink}>
-          <Ionicons name="download-outline" size={13} color="#2563EB" />
-          <Text style={iurl.tmplText}>{importBusy === 'tmpl' ? 'Preparing…' : 'Download a fillable template (XLS)'}</Text>
-        </TouchableOpacity>
+        {!isImportLocked && (
+          <>
+            <TouchableOpacity testID="step2-download-template" onPress={handleDownloadTemplate} disabled={!!importBusy} style={iurl.tmplLink}>
+              <Ionicons name="download-outline" size={13} color="#2563EB" />
+              <Text style={iurl.tmplText}>{importBusy === 'tmpl' ? 'Preparing…' : 'Download a fillable template (XLS)'}</Text>
+            </TouchableOpacity>
 
-        {/* Deep Import — opt-in multi-page crawl with factor-first review */}
-        <DeepImport decisionId={decision.id} onMerged={fetchDecision} />
+            <DeepImport decisionId={decision.id} onMerged={fetchDecision} />
+          </>
+        )}
       </View>
+      )}
       </>)}
 
       {/* 1-tap import accuracy verdict — appears after a URL import completes */}
@@ -1806,7 +1836,7 @@ export default function Step2() {
       {/* Social Learning Factors Import */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F3FF', borderRadius: 12, padding: 12, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: '#DDD6FE', gap: 10 }}
-        onPress={() => { setShowSLFactorModal(true); fetchSLFactorTemplates(); }}
+        onPress={() => handleImportClick(() => { setShowSLFactorModal(true); fetchSLFactorTemplates(); })}
       >
         <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' }}>
           <Ionicons name="newspaper" size={16} color="#FFF" />

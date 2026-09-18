@@ -12,6 +12,7 @@ from core.auth import get_current_user, require_admin
 from core.notify import send_email, send_whatsapp, basic_email
 from routes.audit_trail import log_audit_event, get_client_ip
 from models.collaboration_data import DEFAULT_MODES
+from routes.module_limits import check_and_reserve_usage
 
 router = APIRouter(prefix="/collaboration", tags=["Multi-User Collaboration"])
 
@@ -55,6 +56,7 @@ async def update_decision_mode(mode_id: str, request: Request, user: dict = Depe
 @router.post("/sessions")
 async def create_collaboration_session(request: Request, user: dict = Depends(get_current_user)):
     """Create a new multi-user collaboration session for a Decision or Solution Finder."""
+    await check_and_reserve_usage(user, "group_decision")
     body = await request.json()
 
     module_type = body.get("module_type")  # "decision" or "solution_finder"

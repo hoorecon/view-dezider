@@ -116,8 +116,8 @@ export default function ProsConsListScreen() {
       if (newId) {
         router.push(`/tools/pros-cons-wizard?id=${newId}&module=pros-cons` as any);
       }
-    } catch (e) {
-      showAlert('Create Failed', 'Could not create the analysis. Please try again.');
+    } catch (e: any) {
+      showAlert('Create Failed', e?.response?.data?.detail || 'Could not create the analysis. Please try again.');
     } finally {
       setCreating(false);
     }

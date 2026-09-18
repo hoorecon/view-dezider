@@ -83,8 +83,12 @@ class TestCatalog:
         ordered = [s for s in skus if s["code"] in ("L1", "L2", "L3", "L4")]
         ordered.sort(key=lambda x: x["display_order"])
         assert [s["code"] for s in ordered] == ["L1", "L2", "L3", "L4"]
+        by_code = {s["code"]: s for s in ordered}
+        assert by_code["L1"]["applies_to_modules"] == ["dezider", "pros_cons", "solution_finder"]
+        assert by_code["L2"]["applies_to_modules"] == ["dezider", "pros_cons", "solution_finder", "book_expert", "expert_review"]
+        assert by_code["L3"]["applies_to_modules"] == ["book_expert"]
+        assert by_code["L4"]["applies_to_modules"] == ["expert_review", "book_expert"]
         for s in ordered:
-            assert s["applies_to_modules"] == ["dezider", "pros_cons", "swot"]
             assert s["quota"] >= 1
 
     def test_default_prices(self, admin_token):

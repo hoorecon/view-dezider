@@ -1,15 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import LoaderMusicChip from '../LoaderMusicChip';
+import { useAuthStore } from '../../store/authStore';
+import { useACM } from '../../hooks/useACM';
+import { isDecisionTemplatesAccessAllowed, promptMPPSUpgrade } from '../../utils/cttAccess';
 
 export default function Step8() {
+  const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
   const { decision, calculateDynamicWorth, setCurrentStep } = useDecision();
+
+  const handleMPPSClick = () => {
+    if (!isDecisionTemplatesAccessAllowed(user, acm?.access)) {
+      promptMPPSUpgrade(router);
+      return;
+    }
+    setCurrentStep(9);
+  };
+
   // Reveal soundtrack — play for the first ~25 s the user lands on Step 8,
   // then auto-stop. The chip stays interactive (mute / un-mute) for the
   // entire visit.
@@ -115,7 +131,7 @@ export default function Step8() {
         </TouchableOpacity>
         <GradientButton
           title="MPPS Analysis"
-          onPress={() => setCurrentStep(9)}
+          onPress={handleMPPSClick}
           icon={<Ionicons name="rocket-outline" size={18} color={COLORS.white} />}
           style={styles.nextButton}
         />
@@ -123,3 +139,4 @@ export default function Step8() {
     </View>
   );
 }
+

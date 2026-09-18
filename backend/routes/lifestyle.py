@@ -16,12 +16,62 @@ LIFE_AREAS = [
 
 
 # ========================
-# LIFESTYLE ROUTINES CRUD
+# LIFESTYLE ROUTINES & ACCESS CONTROL
 # ========================
+
+async def verify_lifestyle_access(user: dict):
+    """Ensure user is on an active Subscription plan or Admin/Tester role.
+
+    Restricts Free plan and On-Demand plan users from accessing or creating Lifestyle routines and assessments.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"}:
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1}) or {}
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers and paid user_type override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester", "paid"}:
+        return True
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free"} and not cp.startswith("on_demand"):
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan and splan not in {"none", "free", ""} and not splan.startswith("on_demand"):
+        return True
+
+    # 5. Block Free and On-Demand users
+    raise HTTPException(
+        status_code=403,
+        detail="Lifestyle Dezider is not available for Free or On-Demand plans. Please upgrade to a subscription plan (Basic, Pro, Premium) to access Lifestyle Dezider."
+    )
+
 
 @router.post("/lifestyle/routines")
 async def create_routine(request: Request, user: dict = Depends(get_current_user)):
     """Create a lifestyle routine."""
+    await verify_lifestyle_access(user)
     body = await request.json()
     routine_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -54,6 +104,7 @@ async def create_routine(request: Request, user: dict = Depends(get_current_user
 @router.get("/lifestyle/routines")
 async def list_routines(request: Request, user: dict = Depends(get_current_user)):
     """List all lifestyle routines."""
+    await verify_lifestyle_access(user)
     query: dict = {"user_id": user["user_id"]}
     params = request.query_params
 
@@ -70,6 +121,7 @@ async def list_routines(request: Request, user: dict = Depends(get_current_user)
 
 @router.get("/lifestyle/routines/{routine_id}")
 async def get_routine(routine_id: str, user: dict = Depends(get_current_user)):
+    await verify_lifestyle_access(user)
     routine = await db.lifestyle_routines.find_one(
         {"routine_id": routine_id, "user_id": user["user_id"]}, {"_id": 0}
     )
@@ -80,6 +132,7 @@ async def get_routine(routine_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/lifestyle/routines/{routine_id}")
 async def update_routine(routine_id: str, request: Request, user: dict = Depends(get_current_user)):
+    await verify_lifestyle_access(user)
     body = await request.json()
     routine = await db.lifestyle_routines.find_one(
         {"routine_id": routine_id, "user_id": user["user_id"]}
@@ -114,6 +167,7 @@ async def update_routine(routine_id: str, request: Request, user: dict = Depends
 
 @router.delete("/lifestyle/routines/{routine_id}")
 async def delete_routine(routine_id: str, user: dict = Depends(get_current_user)):
+    await verify_lifestyle_access(user)
     result = await db.lifestyle_routines.delete_one(
         {"routine_id": routine_id, "user_id": user["user_id"]}
     )
@@ -129,6 +183,7 @@ async def delete_routine(routine_id: str, user: dict = Depends(get_current_user)
 @router.post("/lifestyle/import-from-ctt")
 async def import_routines_from_ctt(user: dict = Depends(get_current_user)):
     """Import routine tasks from CTT into Lifestyle Routines. Deduplicates by source_ctt_task_id."""
+    await verify_lifestyle_access(user)
     ctt_routines = await db.ctt_tasks.find(
         {"user_id": user["user_id"], "is_routine": True},
         {"_id": 0}
@@ -185,6 +240,7 @@ async def start_lifestyle_assessment(request: Request, user: dict = Depends(get_
     - Single option = 'My Lifestyle' being assessed
     - Returns decision_id to navigate to the PRR flow.
     """
+    await verify_lifestyle_access(user)
     body = await request.json()
     period = body.get("period", "daily")  # daily, weekly, monthly
     assessment_title = body.get("title", "")
@@ -304,6 +360,7 @@ async def start_lifestyle_assessment(request: Request, user: dict = Depends(get_
 @router.get("/lifestyle/assessments")
 async def list_lifestyle_assessments(request: Request, user: dict = Depends(get_current_user)):
     """List completed lifestyle analyzer assessments (PRR decisions with folder=lifestyle_analyzer)."""
+    await verify_lifestyle_access(user)
     params = request.query_params
     query: dict = {
         "user_id": user["user_id"],
@@ -347,6 +404,7 @@ async def list_lifestyle_assessments(request: Request, user: dict = Depends(get_
 @router.get("/lifestyle/analytics")
 async def lifestyle_analytics(request: Request, user: dict = Depends(get_current_user)):
     """Get lifestyle effectiveness trends over time."""
+    await verify_lifestyle_access(user)
     params = request.query_params
     period = params.get("period", "daily")
     limit = int(params.get("limit", "30"))
@@ -437,6 +495,7 @@ async def lifestyle_analytics(request: Request, user: dict = Depends(get_current
 @router.get("/lifestyle/dashboard")
 async def lifestyle_dashboard(user: dict = Depends(get_current_user)):
     """Overview stats for the Lifestyle Dezider."""
+    await verify_lifestyle_access(user)
     routines = await db.lifestyle_routines.find(
         {"user_id": user["user_id"]}, {"_id": 0}
     ).to_list(200)
@@ -498,6 +557,7 @@ async def lifestyle_dashboard(user: dict = Depends(get_current_user)):
 @router.post("/lifestyle/routines/{routine_id}/complete")
 async def mark_routine_complete(routine_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Mark a routine as completed for today. Tracks streaks."""
+    await verify_lifestyle_access(user)
     routine = await db.lifestyle_routines.find_one(
         {"routine_id": routine_id, "user_id": user["user_id"]}, {"_id": 0}
     )
@@ -551,6 +611,7 @@ async def mark_routine_complete(routine_id: str, request: Request, user: dict = 
 @router.delete("/lifestyle/routines/{routine_id}/uncomplete")
 async def undo_routine_completion(routine_id: str, user: dict = Depends(get_current_user)):
     """Undo today's completion for a routine."""
+    await verify_lifestyle_access(user)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     result = await db.routine_completions.delete_one({
         "routine_id": routine_id, "user_id": user["user_id"], "date": today,
@@ -574,6 +635,7 @@ async def undo_routine_completion(routine_id: str, user: dict = Depends(get_curr
 @router.get("/lifestyle/routines/{routine_id}/completions")
 async def get_routine_completions(routine_id: str, user: dict = Depends(get_current_user), days: int = 30):
     """Get completion history for a routine (default last 30 days)."""
+    await verify_lifestyle_access(user)
     from datetime import timedelta
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     completions = await db.routine_completions.find(
@@ -586,6 +648,7 @@ async def get_routine_completions(routine_id: str, user: dict = Depends(get_curr
 @router.get("/lifestyle/today-status")
 async def get_today_status(user: dict = Depends(get_current_user)):
     """Get today's completion status for all active routines."""
+    await verify_lifestyle_access(user)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     routines = await db.lifestyle_routines.find(

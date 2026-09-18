@@ -8,6 +8,9 @@ import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAuthStore } from '../store/authStore';
+import { useACM } from '../hooks/useACM';
+import { isATEXAccessAllowed, promptATEXUpgrade } from '../utils/cttAccess';
 
 interface Props {
   source: 'ctt' | 'lifestyle_dezider' | 'lifestyle_designer' | 'six_legs' | 'goal_setter';
@@ -18,7 +21,14 @@ interface Props {
 
 export default function ATEXEstimateButton({ source, ref_id, title, compact = false }: Props) {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+
   const onPress = () => {
+    if (!isATEXAccessAllowed(user, acm?.access)) {
+      promptATEXUpgrade(router);
+      return;
+    }
     router.push({
       pathname: '/tools/atex',
       params: { source, ref_id: ref_id || '', title: title || '' },
@@ -37,3 +47,4 @@ const s = StyleSheet.create({
   btnCompact: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
   txt: { color: '#FFF', fontWeight: '700', fontSize: 12 },
 });
+

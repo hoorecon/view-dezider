@@ -25,7 +25,7 @@ ADMIN_ROLES = {"super_admin", "admin", "co_admin"}
 
 # Razorpay slug → ACM plan name (post-rename: Enterprise→Premium, api removed)
 RAZORPAY_TO_ACM_PLAN = {
-    "basic":      "starter",
+    "basic":      "basic",
     "starter":    "starter",
     "pro":        "pro",
     "premium":    "premium",
@@ -62,15 +62,37 @@ def _is_trial_active(user: Dict[str, Any]) -> Optional[str]:
 
 
 async def _razorpay_active_plan(user_id: str) -> Optional[str]:
-    """Return ACM plan name if user has an active Razorpay subscription."""
-    sub = await db.razorpay_subscriptions.find_one(
+    """Return ACM plan name if user has an active subscription."""
+    # 1. Check primary credit_wallets collection (written by apply_charge)
+    w = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "current_plan": 1, "subscription_status": 1}
+    )
+    if w:
+        st = str(w.get("subscription_status") or "").lower()
+        cp = str(w.get("current_plan") or "").lower()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"free", "none"}:
+            return RAZORPAY_TO_ACM_PLAN.get(cp, cp)
+
+    # 2. Check subscriptions collection
+    sub = await db.subscriptions.find_one(
+        {"user_id": user_id, "status": {"$in": ["active", "authenticated", "manual"]}},
+        sort=[("updated_at", -1)],
+    )
+    if sub:
+        plan = (sub.get("plan_tier") or sub.get("plan_id") or sub.get("tier") or "").lower()
+        if plan and plan not in {"free", "none"}:
+            return RAZORPAY_TO_ACM_PLAN.get(plan, plan)
+
+    # 3. Check legacy razorpay_subscriptions collection
+    sub_legacy = await db.razorpay_subscriptions.find_one(
         {"user_id": user_id, "status": {"$in": ["active", "authenticated"]}},
         sort=[("created_at", -1)],
     )
-    if not sub:
-        return None
-    plan = (sub.get("plan_slug") or sub.get("plan_id") or "").lower()
-    return RAZORPAY_TO_ACM_PLAN.get(plan)
+    if sub_legacy:
+        plan = (sub_legacy.get("plan_slug") or sub_legacy.get("plan_id") or "").lower()
+        return RAZORPAY_TO_ACM_PLAN.get(plan, plan)
+
+    return None
 
 
 async def _has_active_on_demand_sku(user_id: str, kind: str) -> bool:

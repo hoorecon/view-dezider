@@ -12,7 +12,15 @@ import api from '../../src/utils/api';
 import { showAlert, confirmDialog } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
 
-interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; gst_percent?: number; quota: number; active: boolean; display_order: number; badge_color: string; kind: string; }
+interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; gst_percent?: number; quota: number; active: boolean; display_order: number; badge_color: string; kind: string; applies_to_modules?: string[]; }
+
+const MODULE_OPTIONS = [
+  { key: 'dezider', label: 'My Dezider' },
+  { key: 'pros_cons', label: 'Pros & Cons' },
+  { key: 'solution_finder', label: 'Solution Finder' },
+  { key: 'book_expert', label: 'Book Expert' },
+  { key: 'expert_review', label: 'Expert Review' },
+];
 
 function formatINR(p: number) {
   const rupees = p / 100;
@@ -44,6 +52,16 @@ export default function AdminSkuPricing() {
 
   const patch = (code: string, field: keyof Sku, value: any) => {
     setDirty(d => ({ ...d, [code]: { ...d[code], [field]: value } }));
+  };
+
+  const toggleModule = (code: string, currentModules: string[], modKey: string) => {
+    const set = new Set(currentModules || []);
+    if (set.has(modKey)) {
+      set.delete(modKey);
+    } else {
+      set.add(modKey);
+    }
+    patch(code, 'applies_to_modules', Array.from(set));
   };
 
   const save = useCallback(async (sku: Sku) => {
@@ -87,7 +105,7 @@ export default function AdminSkuPricing() {
       <View style={s.topRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>On-Demand SKU Pricing</Text>
-          <Text style={s.sub}>Set prices, names, and quotas for the 4 pay-as-you-go packs. Defaults: ₹199 · ₹999 · ₹1,999 · ₹2,800.</Text>
+          <Text style={s.sub}>Set prices, names, quotas, and applicable modules for the 4 pay-as-you-go packs. Defaults: ₹199 · ₹999 · ₹1,999 · ₹2,800.</Text>
         </View>
         <TouchableOpacity style={s.resetBtn} onPress={resetDefaults}>
           <Ionicons name="refresh" size={16} color="#DC2626" />
@@ -104,6 +122,7 @@ export default function AdminSkuPricing() {
         const ch = dirty[sku.code] || {};
         const isDirty = Object.keys(ch).length > 0;
         const effective = { ...sku, ...ch };
+        const activeModules = effective.applies_to_modules || [];
         return (
           <View key={sku.code} style={s.card}>
             <View style={s.cardHead}>
@@ -121,6 +140,30 @@ export default function AdminSkuPricing() {
             <Field label="Name" value={String(effective.name ?? '')} onChange={v => patch(sku.code, 'name', v)} />
             <Field label="Tagline" value={String(effective.tagline ?? '')} onChange={v => patch(sku.code, 'tagline', v)} />
             <Field label="Description" value={String(effective.description ?? '')} onChange={v => patch(sku.code, 'description', v)} multiline />
+
+            <View style={{ marginTop: 12 }}>
+              <Text style={s.label}>Applicable Modules / Features</Text>
+              <View style={s.chipRow}>
+                {MODULE_OPTIONS.map(opt => {
+                  const selected = activeModules.includes(opt.key);
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      onPress={() => toggleModule(sku.code, activeModules, opt.key)}
+                      style={[s.modChip, selected && s.modChipActive]}
+                    >
+                      <Ionicons
+                        name={selected ? 'checkbox' : 'square-outline'}
+                        size={15}
+                        color={selected ? '#7C3AED' : '#94A3B8'}
+                      />
+                      <Text style={[s.modChipText, selected && s.modChipTextActive]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={s.hint}>Check which modules/features 1 unit of this SKU unlocks for on-demand users.</Text>
+            </View>
 
             <View style={s.row}>
               <View style={{ flex: 1 }}>
@@ -206,6 +249,11 @@ const s = StyleSheet.create({
   activeWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   label: { fontSize: 11, color: '#475569', fontWeight: '700', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   hint: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, marginBottom: 2 },
+  modChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  modChipActive: { borderColor: '#C4B5FD', backgroundColor: '#F5F3FF' },
+  modChipText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  modChipTextActive: { color: '#7C3AED', fontWeight: '700' },
   input: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: Platform.OS === 'web' ? 10 : 8, fontSize: 14, backgroundColor: '#F8FAFC', color: '#0F172A' },
   row: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 10 },
   saveRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14, gap: 10 },

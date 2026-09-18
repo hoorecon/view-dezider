@@ -9,6 +9,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { showAlert } from '../utils/alert';
 import api from '../utils/api';
+import { useAuthStore } from '../store/authStore';
+import { useACM } from '../hooks/useACM';
+import { isCTTAccessAllowed, promptCTTUpgrade, isLifestyleAccessAllowed, promptLifestyleUpgrade } from '../utils/cttAccess';
 
 export type DecisionSource = 'MYDEZIDER_MPPS' | 'PROS_CONS' | 'SWOT' | 'PNA' | 'CONFLICT_BREAKER' | 'CLD' | 'GEM' | 'SOLUTION_FINDER' | 'INSTANT_DEZIDER' | 'GOAL_SETTER' | 'AALA' | 'ATEX';
 
@@ -76,8 +79,19 @@ export default function ConvertToActionButton({
     } finally { setBusy(false); }
   };
 
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+
   const portTo = async (target: 'CTT' | 'LIFESTYLE') => {
     if (!createdId) return;
+    if (target === 'CTT' && !isCTTAccessAllowed(user, acm?.access)) {
+      promptCTTUpgrade(router, 'Porting actions to Task Tracker (CTT) requires a Subscription Plan (Basic, Pro, Premium). Free and On-Demand plans are not allowed.');
+      return;
+    }
+    if (target === 'LIFESTYLE' && !isLifestyleAccessAllowed(user, acm?.access)) {
+      promptLifestyleUpgrade(router, 'Porting actions to Lifestyle Dezider requires a Subscription Plan (Basic, Pro, Premium). Free and On-Demand plans are not allowed.');
+      return;
+    }
     try {
       await api.post(`/action-items/${createdId}/port`, { target });
       showAlert('Ported', `Action sent to ${target === 'CTT' ? 'CTT' : 'Lifestyle Dezider'}.`);

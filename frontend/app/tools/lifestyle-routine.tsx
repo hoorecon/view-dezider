@@ -13,6 +13,9 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isLifestyleAccessAllowed, promptLifestyleUpgrade } from '../../src/utils/cttAccess';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const FREQUENCIES = [
@@ -56,6 +59,10 @@ export default function LifestyleRoutineScreen() {
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isLifestyleAccessAllowed(user, acm?.access);
+
   const editId = id as string | undefined;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -75,6 +82,7 @@ export default function LifestyleRoutineScreen() {
   useEffect(() => { if (editId) loadRoutine(); }, [editId]);
 
   const loadRoutine = async () => {
+    if (!allowed) return;
     setLoading(true);
     try {
       const res = await api.get(`/lifestyle/routines/${editId}`);
@@ -97,6 +105,10 @@ export default function LifestyleRoutineScreen() {
   };
 
   const handleSave = async () => {
+    if (!allowed) {
+      promptLifestyleUpgrade(router);
+      return;
+    }
     if (!name.trim()) { showAlert('Required', 'Routine name is required'); return; }
     setSaving(true);
     try {
@@ -128,6 +140,35 @@ export default function LifestyleRoutineScreen() {
       <SafeAreaView style={st.container}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color="#059669" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <SafeAreaView style={st.container} edges={['top']}>
+        <LinearGradient colors={['#065F46', '#059669']} style={st.header}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
+            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={st.headerTitle}>Lifestyle Dezider</Text>
+        </LinearGradient>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Ionicons name="lock-closed" size={56} color="#EF4444" />
+          <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginTop: 16, textAlign: 'center' }}>
+            Subscription Required
+          </Text>
+          <Text style={{ fontSize: 14, color: COLORS.textMuted, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+            Lifestyle Dezider routine creation is available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand plans cannot create or edit routines in Lifestyle Dezider.
+          </Text>
+          <TouchableOpacity
+            style={{ marginTop: 24, backgroundColor: '#059669', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+            onPress={() => promptLifestyleUpgrade(router)}
+          >
+            <Ionicons name="diamond" size={18} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>Upgrade Plan</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

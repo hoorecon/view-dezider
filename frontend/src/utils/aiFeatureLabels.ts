@@ -40,6 +40,7 @@ export const AI_FEATURE_LABELS: Record<string, string> = {
   mpps_plan:          'Decisions · MPPS plan',
   pros_cons_wizard:   'Pros & Cons · AI wizard',
   solution_finder:    'Solution Finder · AI',
+  solution_finder_rcas:     'Solution Finder · Root Causes',
   solution_finder_risks:    'Solution Finder · Risks',
   solution_finder_solutions:'Solution Finder · Solutions',
   cld_ai:             'CLD · AI Suggestions',

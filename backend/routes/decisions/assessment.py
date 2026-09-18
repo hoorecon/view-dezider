@@ -14,6 +14,7 @@ from core.blank_default import (
     get_user_blank_default, resolve_decision_blank_pct,
 )
 from .services import ordered_factors, apply_assessment_rows
+from routes.decider_store import verify_decision_templates_access, verify_decider_apps_access
 
 router = APIRouter(tags=["Decisions"])
 
@@ -93,6 +94,7 @@ def _apply_assessment(factor: dict, option: dict, result: dict):
 
 @router.get("/decisions/{decision_id}/assessment-template")
 async def md_download_assessment_template(decision_id: str, user: dict = Depends(get_current_user)):
+    await verify_decision_templates_access(user)
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
@@ -121,6 +123,7 @@ async def md_download_assessment_template(decision_id: str, user: dict = Depends
 async def md_import_assessment_template(
     decision_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user),
 ):
+    await verify_decision_templates_access(user)
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
@@ -138,6 +141,7 @@ async def md_import_assessment_template(
 async def md_create_assessment_gsheet(decision_id: str, user: dict = Depends(get_current_user)):
     """Create a Google Sheet (in the user's own Drive) pre-filled with the
     assessment template. Returns {url, spreadsheet_id}."""
+    await verify_decider_apps_access(user)
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
@@ -169,6 +173,7 @@ async def md_create_assessment_gsheet(decision_id: str, user: dict = Depends(get
 @router.post("/decisions/{decision_id}/assessment-gsheet/import")
 async def md_import_assessment_gsheet(decision_id: str, body: Optional[Dict[str, Any]] = None, user: dict = Depends(get_current_user)):
     """Read back the linked (or provided) Google Sheet and apply filled values."""
+    await verify_decider_apps_access(user)
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
@@ -258,6 +263,12 @@ async def md_ai_assess_batch(
                out_of_credits: bool }   (status ∈ done|skipped|error)
     """
     from core.ai_assess import ai_assess_factor
+    from core import ai_wallet as _aw
+    from routes.module_limits import check_ai_feature_plan_access
+    await check_ai_feature_plan_access(user, "AI Assess ALL")
+
+    if not await _aw.touchpoint_enabled("tp_assess_all"):
+        raise HTTPException(status_code=403, detail="‘AI Assess ALL’ is currently disabled by the administrator.")
 
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:
@@ -365,6 +376,8 @@ async def md_ai_assess_all_batched(
     """
     from core.ai_assess import batch_score_cells
     from core import ai_wallet as _aw
+    from routes.module_limits import check_ai_feature_plan_access
+    await check_ai_feature_plan_access(user, "AI Assess ALL")
 
     if not await _aw.touchpoint_enabled("tp_assess_all"):
         raise HTTPException(status_code=403, detail="‘AI Assess ALL’ is currently disabled by the administrator.")

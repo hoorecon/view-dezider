@@ -15,6 +15,8 @@ import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import { addDaysISO } from '../../src/utils/dateLocalize';
 import { useOrgTypes } from '../../src/hooks/useOrgTypes';
+import { useACM } from '../../src/hooks/useACM';
+import { isFindTemplatesAccessAllowed, promptFindTemplatesUpgrade } from '../../src/utils/cttAccess';
 
 // ====== TYPES ======
 interface LifeArea { id: string; name: string; slug: string; icon: string; color: string; order: number; }
@@ -138,6 +140,16 @@ export default function NewDecisionIntake() {
 
   // ====== SEED + FETCH ======
   const seedAndFetch = useCallback(async () => {
+    // 0. Check access for current module first
+    try {
+      const checkRes = await api.get('/store/access-check', { params: { module: moduleKey } });
+      if (checkRes.data?.has_access === false) {
+        showAlert('Access Limit Reached', checkRes.data?.message || 'You have reached your creation limit for this module.');
+        safeBack(router);
+        return;
+      }
+    } catch (_e) { /* ignore network error */ }
+
     try {
       // Seed master data (idempotent)
       setSeeding(true);
@@ -160,9 +172,27 @@ export default function NewDecisionIntake() {
       setAskTypes(r.data || []);
     } catch (_e) { setAskTypes([]); }
     setLoadingTypes(false);
-  }, []);
+  }, [moduleKey, router]);
 
   useEffect(() => { seedAndFetch(); }, [seedAndFetch]);
+
+  // Access limit check on entry
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const checkMod = moduleKey === 'pros-cons' ? 'pros_cons' : moduleKey;
+        const res = await api.get('/store/access-check', { params: { module: checkMod } });
+        if (active && res.data && !res.data.has_access) {
+          const isSub = ['basic', 'pro', 'premium', 'enterprise', 'paid'].includes((res.data.tier || '').toLowerCase());
+          const msg = res.data.message || 'Creation limit reached for your plan.';
+          showAlert(isSub ? 'Limit Reached' : 'Access Restricted', msg);
+          safeBack(router);
+        }
+      } catch (_e) { /* ignore error on entry */ }
+    })();
+    return () => { active = false; };
+  }, [moduleKey, router]);
 
   // Fetch templates when context is ready
   useEffect(() => {
@@ -332,11 +362,22 @@ export default function NewDecisionIntake() {
         showAlert('Error', 'Could not create Pros & Cons analysis.');
       }
     } catch (e: any) {
-      showAlert('Error', e?.response?.data?.detail || 'Failed to create analysis.');
+      const isLimit = e?.response?.status === 402 || (e?.response?.data?.detail || '').toLowerCase().includes('limit');
+      showAlert(isLimit ? 'Limit Reached' : 'Error', e?.response?.data?.detail || 'Failed to create analysis.');
     } finally {
       setCreating(false);
     }
   };
+
+  // ====== ACM ACCESS CHECK ======
+  const { checkFeature } = useACM();
+  const acmFeatureId = moduleKey === 'swot' ? 'swot_create' : moduleKey === 'pros-cons' ? 'pros_cons_create' : 'my_dezider_create';
+  const acmAccess = checkFeature(acmFeatureId);
+  const userRole = (user?.role || '').toLowerCase();
+  const isAdmin = ['super_admin', 'admin', 'co_admin'].includes(userRole);
+  const isReadOnly = !isAdmin && acmAccess.access_level === 'read';
+  const isRestricted = !isAdmin && (!acmAccess.allowed || isReadOnly || acmAccess.access_level === 'locked' || acmAccess.access_level === 'hidden');
+  const isFindTemplatesAllowed = isFindTemplatesAccessAllowed(user, acmAccess);
 
   // ====== CREATE DECISION ======
   const handleCreateDecision = async (
@@ -344,6 +385,19 @@ export default function NewDecisionIntake() {
     sourceType?: string,
     landOnStep?: number,
   ) => {
+    if (templateId && !isFindTemplatesAllowed) {
+      promptFindTemplatesUpgrade(router);
+      return;
+    }
+    if (isRestricted) {
+      showAlert(
+        'Creation Disabled',
+        acmAccess.access_level === 'read'
+          ? 'Decision creation is set to Read-Only for your plan under Access Control Matrix configuration.'
+          : (acmAccess.upgrade_message || 'Creation is disabled for your plan under Access Control Matrix configuration.')
+      );
+      return;
+    }
     // Carry forward the Step-4 title. When the user left it blank on the
     // "Create from scratch" path, fall back to the smart-default title (same
     // value shown as the placeholder/hint) so we never block them with a
@@ -397,7 +451,8 @@ export default function NewDecisionIntake() {
         router.replace(dest as any);
       }
     } catch (e: any) {
-      showAlert('Error', e.response?.data?.detail || 'Failed to create decision');
+      const isLimit = e?.response?.status === 402 || (e?.response?.data?.detail || '').toLowerCase().includes('limit');
+      showAlert(isLimit ? 'Limit Reached' : 'Error', e.response?.data?.detail || 'Failed to create decision');
     } finally {
       setCreating(false);
     }
@@ -655,6 +710,22 @@ export default function NewDecisionIntake() {
 
   const renderStep4 = () => (
     <View style={{ flex: 1 }}>
+      {!isFindTemplatesAllowed && (
+        <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}>
+            <Ionicons name="lock-closed" size={18} color="#DC2626" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#991B1B' }}>Subscription Required</Text>
+            <Text style={{ fontSize: 11.5, color: '#B91C1C', marginTop: 2 }}>
+              Find Templates is available exclusively for Pro, Premium, and Enterprise plan members. Free, On-Demand, and Basic plan users cannot access Find Templates.
+            </Text>
+          </View>
+          <TouchableOpacity style={{ backgroundColor: '#DC2626', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }} onPress={() => promptFindTemplatesUpgrade(router)}>
+            <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }}>Upgrade Plan</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <Text style={s.stepTitle}>Choose a template or start fresh</Text>
       <Text style={s.stepSubtitle}>
         {templates.length > 0
@@ -887,6 +958,12 @@ export default function NewDecisionIntake() {
                 <TouchableOpacity
                   style={[s.navBtnNext, !canProceed() && s.navBtnDisabled]}
                   onPress={() => {
+                    if (step === 3 && moduleCfg.hasTemplatesStep) {
+                      if (!isFindTemplatesAllowed) {
+                        promptFindTemplatesUpgrade(router);
+                        return;
+                      }
+                    }
                     if (step === 3 && !moduleCfg.hasTemplatesStep) {
                       createProsConsAnalysis();
                     } else {

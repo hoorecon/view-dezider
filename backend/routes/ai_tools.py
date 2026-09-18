@@ -535,6 +535,8 @@ async def find_best_options(request: Request, user: dict = Depends(get_current_u
     limit = max(3, min(5, int(body.get("limit") or 5)))
 
     from core import ai_wallet as _aw
+    from routes.module_limits import check_ai_feature_plan_access
+    await check_ai_feature_plan_access(user, "Fetch My Best Options")
     if not await _aw.touchpoint_enabled("tp_best_options"):
         raise HTTPException(status_code=403, detail="‘Find My Best Options’ is currently disabled by the administrator.")
 
@@ -718,6 +720,8 @@ async def suggest_factors(request: Request, user: dict = Depends(get_current_use
     limit = max(4, min(8, int(body.get("limit") or 7)))
 
     from core import ai_wallet as _aw
+    from routes.module_limits import check_ai_feature_plan_access
+    await check_ai_feature_plan_access(user, "Fetch My Best Factors")
     if not await _aw.touchpoint_enabled("tp_best_factors"):
         raise HTTPException(status_code=403, detail="‘Fetch My Best Factors’ is currently disabled by the administrator.")
 
@@ -824,6 +828,9 @@ async def prioritize_factors(request: Request, user: dict = Depends(get_current_
     import json as _json
     from core.ai_metering import metered_chat
     from core import ai_wallet as _aw
+    from routes.decider_store import verify_decider_apps_access
+
+    await verify_decider_apps_access(user)
 
     if not await _aw.touchpoint_enabled("tp_prioritize_factors"):
         raise HTTPException(status_code=403, detail="‘Prioritize with AI’ is currently disabled by the administrator.")

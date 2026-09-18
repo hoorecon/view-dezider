@@ -241,8 +241,8 @@ def main():
     )
     r.check(res.status_code == 200, "Empty POST returns 200")
     empty_created = res.json() if res.status_code == 200 else {}
-    r.check(empty_created.get("matrix_mode") == "accurate",
-            "Default matrix_mode = 'accurate'", f"got={empty_created.get('matrix_mode')}")
+    r.check(empty_created.get("matrix_mode") == "standard",
+            "Default matrix_mode = 'standard'", f"got={empty_created.get('matrix_mode')}")
     for layer in LAYERS:
         ld = empty_created.get(layer, {})
         has_all = set(ld.keys()) >= set(ALL_SLOTS)
@@ -283,8 +283,8 @@ def main():
     bad_body = dict(body); bad_body["matrix_mode"] = "weird_value"
     res2 = requests.post(f"{API}/solution-matrices", headers=headers, json=bad_body, timeout=15)
     bad_created = res2.json()
-    r.check(bad_created.get("matrix_mode") == "accurate",
-            "Invalid mode falls back to 'accurate'",
+    r.check(bad_created.get("matrix_mode") == "standard",
+            "Invalid mode falls back to 'standard'",
             f"got={bad_created.get('matrix_mode')}")
 
     # Influences roundtrip

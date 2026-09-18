@@ -38,6 +38,7 @@ import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import ValuesAlignmentPanel from '../../src/components/ValuesAlignmentPanel';
 import ConvertToActionButton from '../../src/components/ConvertToActionButton';
 import { CollabBar } from '../../src/components/CollabBar';
+import { useACM } from '../../src/hooks/useACM';
 import LiveSessionPill from '../../src/components/LiveSessionPill';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import { safeBack } from '../../src/utils/navigation';
@@ -213,7 +214,8 @@ export default function SimpleSolutionFinder() {
   const [collapsedRiskSols, setCollapsedRiskSols] = useState<Set<string>>(new Set());
   const [collapsedApIds, setCollapsedApIds] = useState<Set<string>>(new Set());
   // AI generation limits pop-up (a 172-item auto-generated plan was unusable).
-  const [aiOptsOpen, setAiOptsOpen] = useState<null | 'sol' | 'risk'>(null);
+  const [aiOptsOpen, setAiOptsOpen] = useState<null | 'rca' | 'sol' | 'risk'>(null);
+  const [maxPerConcern, setMaxPerConcern] = useState(2);
   const [maxPerRca, setMaxPerRca] = useState(2);
   const [maxRisks, setMaxRisks] = useState(2);
   const [maxMits, setMaxMits] = useState(2);
@@ -250,6 +252,25 @@ export default function SimpleSolutionFinder() {
   useEffect(() => {
     if (seedParam && !editId) setSmartGoal(String(seedParam));
   }, [seedParam, editId]);
+
+  // Entry limit check when creating a new Solution Finder
+  useEffect(() => {
+    if (!editId && authHydrated) {
+      let active = true;
+      (async () => {
+        try {
+          const res = await api.get('/store/access-check', { params: { module: 'solution_finder' } });
+          if (active && res.data && !res.data.has_access) {
+            const isSub = ['basic', 'pro', 'premium', 'enterprise', 'paid'].includes((res.data.tier || '').toLowerCase());
+            const msg = res.data.message || 'Creation limit reached for your plan.';
+            showAlert(isSub ? 'Limit Reached' : 'Access Restricted', msg);
+            safeBack(router);
+          }
+        } catch (_e) { /* ignore error on entry */ }
+      })();
+      return () => { active = false; };
+    }
+  }, [editId, authHydrated, router]);
 
   const loadEntry = async () => {
     setLoading(true);
@@ -324,10 +345,25 @@ export default function SimpleSolutionFinder() {
     ...(statusOverride ? { status: statusOverride } : {}),
   });
 
+  const { checkFeature } = useACM();
+  const sfAccess = checkFeature('solution_finder');
+  const isSfRestricted = !sfAccess.allowed || sfAccess.access_level === 'read' || sfAccess.access_level === 'locked' || sfAccess.access_level === 'hidden';
+
   const handleSave = useCallback(async (silent = false, statusOverride?: string): Promise<string | null> => {
     // Skip silently if auth isn't ready yet — caller will get a null and the
     // step transition still works locally; data persists on the next save.
     if (!authHydrated) return null;
+    if (!savedId && isSfRestricted) {
+      if (!silent) {
+        showAlert(
+          'Creation Disabled',
+          sfAccess.access_level === 'read'
+            ? 'Solution Finder creation is set to Read-Only for your plan under Access Control Matrix configuration.'
+            : (sfAccess.upgrade_message || 'Creation is disabled for your plan under Access Control Matrix configuration.')
+        );
+      }
+      return null;
+    }
     if (!areaOfLife) {
       if (!silent) showAlert('Required', 'Pick a life area.');
       return null;
@@ -349,7 +385,8 @@ export default function SimpleSolutionFinder() {
       }
       return id;
     } catch (e: any) {
-      if (!silent) showAlert('Save failed', e?.response?.data?.detail || 'Try again');
+      const isLimit = e?.response?.status === 402 || (e?.response?.data?.detail || '').toLowerCase().includes('limit');
+      showAlert(isLimit ? 'Limit Reached' : 'Save failed', e?.response?.data?.detail || 'Try again');
       return null;
     } finally { setSaving(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -450,6 +487,53 @@ export default function SimpleSolutionFinder() {
     } else {
       showAlert('AI auto-fill failed', e?.response?.data?.detail || fallback);
     }
+  };
+
+  // Q2 — append AI-suggested root causes per primary concern (dedup, gaps only).
+  const aiFillRootCauses = () => {
+    if (aiBusy) return;
+    if (primaryConcerns.length === 0) {
+      showAlert('Add primary concerns first', 'Go to Q1 and mark at least one concern as primary (⭐).');
+      return;
+    }
+    setAiOptsOpen('rca');
+  };
+
+  const runAiRootCauses = async (limitPerConcern: number) => {
+    setAiBusy('rca');
+    try {
+      const payload = {
+        area_of_life: areaOfLife,
+        smart_goal: smartGoal,
+        max_per_concern: limitPerConcern,
+        primary_concerns: primaryConcerns.map(c => ({
+          concern_id: c.id,
+          text: c.text,
+          existing: rcasFor(c.id).map(r => r.text),
+        })),
+      };
+      const res = await api.post('/solution-finders/ai/suggest-root-causes', payload, { timeout: 90000 });
+      const sug: Record<string, string[]> = res.data?.suggestions || {};
+      let added = 0;
+      setRootCauses(prev => {
+        const next = [...prev];
+        Object.entries(sug).forEach(([concernId, list]) => {
+          const have = new Set(next.filter(r => r.concern_id === concernId).map(r => norm(r.text)));
+          (list || []).forEach(text => {
+            const t = (text || '').trim();
+            if (t && !have.has(norm(t))) {
+              next.push({ id: uid(), concern_id: concernId, text: t });
+              have.add(norm(t));
+              added++;
+            }
+          });
+        });
+        return next;
+      });
+      showAlert('AI auto-fill', added > 0 ? `Added ${added} new root cause${added === 1 ? '' : 's'}.` : 'No new root causes to add — you’re all set.');
+    } catch (e: any) {
+      handleAiError(e, 'Please try again.');
+    } finally { setAiBusy(null); loadAiMeter(); }
   };
 
   // Q3 — append AI-suggested solutions per root cause (dedup, gaps only).
@@ -981,7 +1065,7 @@ export default function SimpleSolutionFinder() {
   };
 
   // ── #3 AI credits metering (visible estimate + balance; confirm before spend) ──
-  const [aiMeter, setAiMeter] = useState<{ balance: number; sol: number; risk: number } | null>(null);
+  const [aiMeter, setAiMeter] = useState<{ balance: number; rca: number; sol: number; risk: number } | null>(null);
   const loadAiMeter = useCallback(async () => {
     try {
       const [est, bal] = await Promise.all([api.get('/ai-wallet/estimates'), api.get('/ai-wallet')]);
@@ -989,6 +1073,7 @@ export default function SimpleSolutionFinder() {
       const def = Number(est.data?.default_estimate ?? 0);
       setAiMeter({
         balance: Number(bal.data?.balance ?? 0),
+        rca: Number(f.solution_finder_rcas ?? def),
         sol: Number(f.solution_finder_solutions ?? def),
         risk: Number(f.solution_finder_risks ?? def),
       });
@@ -1001,7 +1086,7 @@ export default function SimpleSolutionFinder() {
   const runFromModal = async () => {
     const kind = aiOptsOpen;
     if (!kind) return;
-    const est = kind === 'sol' ? (aiMeter?.sol ?? 0) : (aiMeter?.risk ?? 0);
+    const est = kind === 'rca' ? (aiMeter?.rca ?? 0) : kind === 'sol' ? (aiMeter?.sol ?? 0) : (aiMeter?.risk ?? 0);
     let bal = aiMeter?.balance;
     try { const b = await api.get('/ai-wallet'); bal = Number(b.data?.balance ?? bal ?? 0); } catch { /* keep cached */ }
     if (bal !== undefined && est > 0 && bal < est) {
@@ -1013,7 +1098,8 @@ export default function SimpleSolutionFinder() {
       return;
     }
     setAiOptsOpen(null);
-    if (kind === 'sol') runAiSolutions(maxPerRca);
+    if (kind === 'rca') runAiRootCauses(maxPerConcern);
+    else if (kind === 'sol') runAiSolutions(maxPerRca);
     else runAiRisks(maxRisks, maxMits, maxCons);
   };
 
@@ -1055,8 +1141,8 @@ export default function SimpleSolutionFinder() {
       const token = await AsyncStorage.getItem('session_token');
       const resp = await fetch(base, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (resp.status === 402) {
-        showAlert('Unlock report',
-          'Downloading the PDF needs a DIY Decision Report (L1) or any active plan. Open the store now?', [
+        showAlert('Unlock DIY Decision Report',
+          'Downloading the PDF requires On-Demand SKU L1 (DIY Decision Report ₹199) or L2 (5-Decision Bundle ₹999). Open store to purchase?', [
           { text: 'Not now', style: 'cancel' },
           { text: 'Open store', onPress: () => router.push({ pathname: '/store', params: { highlight: 'L1', module: 'solution_finder', decision_id: id } } as any) },
         ]);
@@ -1081,10 +1167,10 @@ export default function SimpleSolutionFinder() {
   };
 
   // Compact AI-credits meter (balance + per-action estimate) shown above the
-  // AI auto-fill buttons in Q3 / Q4 (#3 credits visibility).
-  const renderAiMeterRow = (kind: 'sol' | 'risk') => {
+  // AI auto-fill buttons in Q2 / Q3 / Q4 (#3 credits visibility).
+  const renderAiMeterRow = (kind: 'rca' | 'sol' | 'risk') => {
     if (!aiMeter) return null;
-    const est = kind === 'sol' ? aiMeter.sol : aiMeter.risk;
+    const est = kind === 'rca' ? aiMeter.rca : kind === 'sol' ? aiMeter.sol : aiMeter.risk;
     const low = aiMeter.balance < est;
     return (
       <View style={[s.meterRow, low && s.meterRowLow]}>
@@ -1261,6 +1347,23 @@ export default function SimpleSolutionFinder() {
       <Text style={s.qTitle}>Q2. Root Cause Analysis</Text>
       <Text style={s.qHint}>For each PRIMARY concern, list the root causes (1 to many).</Text>
       {renderClearAll(clearAllRootCauses, rootCauses.length, 'sf-clear-rca')}
+      {primaryConcerns.length > 0 && (
+        <>
+          {renderAiMeterRow('rca')}
+          <TouchableOpacity
+            style={[s.aiFillBtn, aiBusy === 'rca' && s.aiFillBtnBusy]}
+            onPress={aiFillRootCauses}
+            disabled={!!aiBusy}
+            activeOpacity={0.8}
+            testID="ai-fill-rca-btn"
+          >
+            {aiBusy === 'rca'
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Ionicons name="sparkles" size={15} color="#FFF" />}
+            <Text style={s.aiFillBtnText}>{aiBusy === 'rca' ? 'Generating…' : 'AI auto-fill root causes'}</Text>
+          </TouchableOpacity>
+        </>
+      )}
       {primaryConcerns.length === 0 && (
         <Text style={s.empty}>No primary concerns yet. Go back to Q1 and tap ⭐ to mark some.</Text>
       )}
@@ -2053,9 +2156,12 @@ export default function SimpleSolutionFinder() {
           <View style={s.aiOptsCard}>
             <View style={s.aiOptsHead}>
               <Ionicons name="sparkles" size={18} color="#7C3AED" />
-              <Text style={s.aiOptsTitle}>{aiOptsOpen === 'sol' ? 'AI Auto — Solutions' : 'AI Auto — Risk Analysis'}</Text>
+              <Text style={s.aiOptsTitle}>
+                {aiOptsOpen === 'rca' ? 'AI Auto — Root Causes' : aiOptsOpen === 'sol' ? 'AI Auto — Solutions' : 'AI Auto — Risk Analysis'}
+              </Text>
             </View>
             <Text style={s.aiOptsSub}>Set how many items AI generates per parent, so your action plan stays doable.</Text>
+            {aiOptsOpen === 'rca' && renderStepper('Max Root Causes per Primary Concern', maxPerConcern, setMaxPerConcern, 'sf-max-rca')}
             {aiOptsOpen === 'sol' && renderStepper('Max Solutions per Root Cause', maxPerRca, setMaxPerRca, 'sf-max-sol')}
             {aiOptsOpen === 'risk' && (
               <>
@@ -2066,7 +2172,7 @@ export default function SimpleSolutionFinder() {
             )}
             {aiMeter && (
               <Text style={s.aiOptsEst}>
-                Uses ~{aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk} AI credit{(aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk) === 1 ? '' : 's'} · Balance {aiMeter.balance.toFixed(aiMeter.balance < 10 ? 1 : 0)}
+                Uses ~{aiOptsOpen === 'rca' ? aiMeter.rca : aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk} AI credit{(aiOptsOpen === 'rca' ? aiMeter.rca : aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk) === 1 ? '' : 's'} · Balance {aiMeter.balance.toFixed(aiMeter.balance < 10 ? 1 : 0)}
               </Text>
             )}
             <View style={s.aiOptsBtns}>

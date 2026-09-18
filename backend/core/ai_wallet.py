@@ -344,6 +344,7 @@ FEATURE_TOKENS = {
     "ai_assess": 400,          # per cell (single ✨ assess)
     "ai_assess_batch": 1200,   # per ~40-cell batched chunk
     "factor_prioritize": 1100, # Step 4 "Prioritize with AI" — one call for the whole factor set
+    "solution_finder_rcas": 1200,       # Q2 — AI Auto-fill Root Cause Analysis (one call for all primary concerns)
     "solution_finder_solutions": 1400,  # Q3 — AI Auto Solutions (one call for all root causes)
     "solution_finder_risks": 1800,      # Q4 — AI Auto-fill Risks/Mitigations/Contingencies
 }

@@ -183,6 +183,11 @@ async def create_pros_cons(data: ProsConsCreate, user: dict = Depends(get_curren
         "updated_at": _now(),
     }
     await db.pros_cons.insert_one(doc)
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="pros_cons", decision_id=doc["id"])
+    except Exception as _e:
+        logger.warning("entitlement consume on pros_cons create failed: %s", _e)
     return {"id": doc["id"], "message": "Pros & Cons analysis created"}
 
 

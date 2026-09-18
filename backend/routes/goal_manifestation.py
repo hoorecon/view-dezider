@@ -288,20 +288,76 @@ CABFAME_STAGES = [
 ]
 
 
-_CABFAME_CFG_KEY = "cabfame_framework"
+async def verify_manifestation_access(user: dict):
+    """Ensure user is on a Premium or Enterprise Subscription plan (or Admin/Tester role).
 
+    Restricts Free, On-Demand, Basic, AND Pro plan users from accessing Goal Manifestation.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
-async def _effective_framework() -> list:
-    """Admin override (db.app_config) if present, else the built-in default."""
-    doc = await db.app_config.find_one({"key": _CABFAME_CFG_KEY}, {"_id": 0})
-    if doc and isinstance(doc.get("stages"), list) and doc["stages"]:
-        return doc["stages"]
-    return CABFAME_STAGES
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user.get("is_admin"):
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1, "is_admin": 1}) or {}
+    role = str(user_doc.get("role") or user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user_doc.get("is_admin"):
+        return True
+
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
+        return True
+
+    # Explicit check for basic / pro / on_demand / free
+    if utype.startswith("on_demand") or splan.startswith("on_demand") or utype == "free" or splan in {"free", "none", ""}:
+        raise HTTPException(
+            status_code=403,
+            detail="Goal Manifestation is not available for Free or On-Demand plans. Please upgrade to a Premium or Enterprise plan to access Goal Manifestation."
+        )
+
+    if utype in {"basic", "pro"} or splan in {"basic", "pro"} or splan.startswith("basic") or splan.startswith("pro"):
+        raise HTTPException(
+            status_code=403,
+            detail="Goal Manifestation is not available for Basic or Pro plan users. Please upgrade to a Premium or Enterprise plan to access Goal Manifestation."
+        )
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp in {"premium", "enterprise"}:
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan in {"premium", "enterprise"}:
+        return True
+
+    # 5. Block Free, On-Demand, Basic, and Pro users
+    raise HTTPException(
+        status_code=403,
+        detail="Goal Manifestation is not available for Free, On-Demand, Basic, or Pro plans. Please upgrade to Premium or Enterprise plan to access Goal Manifestation."
+    )
 
 
 @router.get("/framework")
-async def get_cabfame_framework():
+async def get_cabfame_framework(user: dict = Depends(get_current_user)):
     """Return the complete CAB-FAME 7-stage framework (admin-overridable)."""
+    await verify_manifestation_access(user)
     stages = await _effective_framework()
     return {"stages": stages, "total_stages": len(stages)}
 
@@ -345,6 +401,7 @@ async def admin_reset_framework(_: dict = Depends(require_admin)):
 
 @router.post("/journeys")
 async def create_journey(request: Request, user: dict = Depends(get_current_user)):
+    await verify_manifestation_access(user)
     body = await request.json()
     journey_id = f"MAN-{uuid.uuid4().hex[:10].upper()}"
     now = datetime.now(timezone.utc).isoformat()
@@ -370,6 +427,7 @@ async def create_journey(request: Request, user: dict = Depends(get_current_user
 
 @router.get("/journeys")
 async def list_journeys(request: Request, user: dict = Depends(get_current_user)):
+    await verify_manifestation_access(user)
     query = {"user_id": user["user_id"]}
     params = request.query_params
     if params.get("status"):
@@ -380,6 +438,7 @@ async def list_journeys(request: Request, user: dict = Depends(get_current_user)
 
 @router.get("/journeys/{journey_id}")
 async def get_journey(journey_id: str, user: dict = Depends(get_current_user)):
+    await verify_manifestation_access(user)
     doc = await db.manifestation_journeys.find_one(
         {"journey_id": journey_id, "user_id": user["user_id"]}, {"_id": 0}
     )
@@ -390,6 +449,7 @@ async def get_journey(journey_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/journeys/{journey_id}")
 async def update_journey(journey_id: str, request: Request, user: dict = Depends(get_current_user)):
+    await verify_manifestation_access(user)
     body = await request.json()
     now = datetime.now(timezone.utc).isoformat()
     update = {"updated_at": now}
@@ -407,6 +467,7 @@ async def update_journey(journey_id: str, request: Request, user: dict = Depends
 
 @router.delete("/journeys/{journey_id}")
 async def delete_journey(journey_id: str, user: dict = Depends(get_current_user)):
+    await verify_manifestation_access(user)
     result = await db.manifestation_journeys.delete_one(
         {"journey_id": journey_id, "user_id": user["user_id"]}
     )
@@ -417,6 +478,7 @@ async def delete_journey(journey_id: str, user: dict = Depends(get_current_user)
 
 @router.get("/dashboard")
 async def manifestation_dashboard(user: dict = Depends(get_current_user)):
+    await verify_manifestation_access(user)
     journeys = await db.manifestation_journeys.find(
         {"user_id": user["user_id"]}, {"_id": 0}
     ).sort("created_at", -1).to_list(100)

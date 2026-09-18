@@ -16,6 +16,9 @@ import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
 import { Alert } from '../../src/utils/crossAlert';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isAIMAccessAllowed, promptAIMUpgrade } from '../../src/utils/cttAccess';
 
 interface Addiction {
   area_of_life: string; addiction: string; triggering_situations: string;
@@ -33,6 +36,10 @@ interface Irritation {
 
 export default function EGAimScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isAIMAccessAllowed(user, acm?.access);
+
   const goBack = () => { if (router.canGoBack?.()) safeBack(router); else router.replace('/tools/emotional-gatekeeper' as any); };
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
@@ -108,6 +115,10 @@ export default function EGAimScreen() {
   }, [addictions, irritations, sessionId]);
 
   useEffect(() => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         const res = await api.get('/emotional-gatekeeper/aim/options');
@@ -115,9 +126,13 @@ export default function EGAimScreen() {
       } catch (err) { console.error(err); }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [allowed]);
 
   const addAddiction = () => {
+    if (!allowed) {
+      promptAIMUpgrade(router);
+      return;
+    }
     if (!addName.trim()) { Alert.alert('Required', 'Name the addiction.'); return; }
     setAddictions(prev => [...prev, {
       area_of_life: addArea || 'other', addiction: addName, triggering_situations: addTrigger,
@@ -130,6 +145,10 @@ export default function EGAimScreen() {
   };
 
   const addIrritation = () => {
+    if (!allowed) {
+      promptAIMUpgrade(router);
+      return;
+    }
     if (!irrName.trim()) { Alert.alert('Required', 'Name the irritation.'); return; }
     setIrritations(prev => [...prev, {
       area_of_life: irrArea || 'other', irritation: irrName, irritation_pct: irrPct,
@@ -141,6 +160,10 @@ export default function EGAimScreen() {
   };
 
   const handleSaveAndAnalyze = async () => {
+    if (!allowed) {
+      promptAIMUpgrade(router);
+      return;
+    }
     if (addictions.length === 0 && irritations.length === 0) {
       Alert.alert('Required', 'Add at least one addiction or irritation.'); return;
     }
@@ -154,6 +177,22 @@ export default function EGAimScreen() {
     } catch (err) { await handleAiError(err, { router, retry: handleSaveAndAnalyze }); }
     finally { setSubmitting(false); }
   };
+
+  const renderLockedState = () => (
+    <View style={s.lockedWrap}>
+      <View style={s.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.lockedTitle}>Subscription Required</Text>
+      <Text style={s.lockedSub}>
+        AIM Manager (Addictions & Irritations) is available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand plans cannot access AIM Manager.
+      </Text>
+      <TouchableOpacity style={s.upgradeBtn} onPress={() => promptAIMUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={s.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   if (loading) {
     return (
@@ -446,8 +485,12 @@ export default function EGAimScreen() {
           <Text style={s.headerSub}>{step === 0 ? 'Log Addictions & Irritations' : 'AI Insights'}</Text>
         </LinearGradient>
         <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-          {step === 0 && renderStep0()}
-          {step === 1 && renderStep1()}
+          {!allowed ? renderLockedState() : (
+            <>
+              {step === 0 && renderStep0()}
+              {step === 1 && renderStep1()}
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -509,4 +552,11 @@ const s = StyleSheet.create({
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
   altBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFFFF', borderColor: '#0EA5E9', borderWidth: 1.5, borderRadius: 14, paddingVertical: 12, marginTop: 14, marginHorizontal: 16 },
   altBtnText: { fontSize: 14, fontWeight: '700', color: '#0EA5E9' },
+
+  lockedWrap: { alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#FFF', borderRadius: 16, marginTop: 24, marginHorizontal: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  lockedSub: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F97316', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 },
+  upgradeBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });

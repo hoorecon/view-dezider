@@ -58,12 +58,12 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "layer": "L1",
         "name": "DIY Decision Report",
         "tagline": "Mass entry",
-        "description": "Unlock the in-app decision summary plus a polished PDF report you can download or email yourself.",
+        "description": "Unlock 1 unit for Pros & Cons, My Dezider, or Solution Finder.",
         "price_paise": 19900,        # ₹199 excl. GST
         "gst_percent": 18,
         "quota": 1,
         "kind": "report",            # report | bundle | session | review
-        "applies_to_modules": ["dezider", "pros_cons", "swot"],
+        "applies_to_modules": ["dezider", "pros_cons", "solution_finder"],
         "fulfilment": "auto",
         "active": True,
         "display_order": 1,
@@ -73,14 +73,14 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
     {
         "code": "L2",
         "layer": "L2",
-        "name": "10-Decision Family Bundle",
+        "name": "5-Decision Family Bundle",
         "tagline": "Main scalable product",
-        "description": "10 decisions you can spend freely across My Dezider, Pros & Cons and SWOT — share with family.",
+        "description": "5 units spendable across Pros & Cons, My Dezider, Solution Finder, Book Expert, or Expert Review.",
         "price_paise": 99900,        # ₹999
         "gst_percent": 18,
-        "quota": 10,
+        "quota": 5,
         "kind": "bundle",
-        "applies_to_modules": ["dezider", "pros_cons", "swot"],
+        "applies_to_modules": ["dezider", "pros_cons", "solution_finder", "book_expert", "expert_review"],
         "fulfilment": "auto",
         "active": True,
         "display_order": 2,
@@ -92,12 +92,12 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "layer": "L3",
         "name": "Professional Guided Session",
         "tagline": "Main assisted revenue",
-        "description": "Book a 1-on-1 expert call with screen-share inside your decision flow. Filter by life-area & sub-area.",
+        "description": "Book a 1-on-1 expert call (1 unit). Filter by life-area & sub-area.",
         "price_paise": 199900,       # ₹1,999
         "gst_percent": 18,
         "quota": 1,
         "kind": "session",
-        "applies_to_modules": ["dezider", "pros_cons", "swot"],
+        "applies_to_modules": ["book_expert"],
         "fulfilment": "booking",      # opens expert-net booking flow
         "active": True,
         "display_order": 3,
@@ -109,11 +109,11 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "layer": "L4",
         "name": "Expert Review",
         "tagline": "Scarce premium escalation",
-        "description": "Have a domain expert review your completed decision and send written recommendations within 48 hours.",
+        "description": "Have a domain expert review your completed decision (1 unit).",
         "price_paise": 280000,       # ₹2,800
         "quota": 1,
         "kind": "review",
-        "applies_to_modules": ["dezider", "pros_cons", "swot"],
+        "applies_to_modules": ["expert_review", "book_expert"],
         "fulfilment": "manual",      # admin assigns expert delivery
         "active": True,
         "display_order": 4,
@@ -142,9 +142,7 @@ def _is_admin(user: dict) -> bool:
 # ────────────────────────────────────────────────────────────────────────────
 async def ensure_sku_catalog_seeded():
     """Idempotent seed — inserts any missing SKU with default values.
-
-    Existing SKUs (already edited by admin) are NEVER overwritten — only
-    missing rows are added. Safe to call on every boot.
+    Updates existing rows if applies_to_modules is missing or outdated.
     """
     for sku in DEFAULT_SKUS:
         existing = await db.sku_catalog.find_one({"code": sku["code"]})
@@ -152,6 +150,25 @@ async def ensure_sku_catalog_seeded():
             doc = {**sku, "id": str(uuid.uuid4()), "created_at": _now(), "updated_at": _now()}
             await db.sku_catalog.insert_one(doc)
             logger.info("sku_catalog seeded: %s @ ₹%d", sku["code"], sku["price_paise"] / 100)
+        else:
+            if sku["code"] == "L2":
+                await db.sku_catalog.update_one(
+                    {"code": "L2"},
+                    {"$set": {
+                        "quota": 5,
+                        "name": sku["name"],
+                        "description": sku["description"],
+                        "applies_to_modules": sku["applies_to_modules"],
+                        "updated_at": _now()
+                    }}
+                )
+            else:
+                cur_applies = existing.get("applies_to_modules")
+                if not cur_applies or set(cur_applies) == {"dezider", "pros_cons", "swot"}:
+                    await db.sku_catalog.update_one(
+                        {"code": sku["code"]},
+                        {"$set": {"applies_to_modules": sku["applies_to_modules"], "updated_at": _now()}}
+                    )
 
 
 async def ensure_in_house_solutions_seeded():
@@ -263,6 +280,7 @@ class SkuPriceUpdate(BaseModel):
     active: Optional[bool] = None
     display_order: Optional[int] = None
     badge_color: Optional[str] = None
+    applies_to_modules: Optional[List[str]] = None
 
 
 @router.put("/admin/skus/{code}")
@@ -419,21 +437,52 @@ async def my_entitlements(user: dict = Depends(get_current_user)):
     return {"entitlements": list(rollup.values()), "raw": docs}
 
 
-async def has_any_paid_access(user_id: str, module: Optional[str] = None) -> Dict[str, Any]:
-    """Returns whether user has ANY way to use the module without paying again.
+def _sku_applies_to_module(sku_doc: dict, module: Optional[str]) -> bool:
+    if not module:
+        return True
+    m = str(module).lower().strip()
+    if m in ("dezider", "my_dezider", "mydezider"):
+        target_keys = {"dezider", "my_dezider"}
+    elif m in ("pros_cons", "pros_and_cons"):
+        target_keys = {"pros_cons"}
+    elif m in ("solution_finder", "solutionfinder"):
+        target_keys = {"solution_finder"}
+    elif m in ("swot", "swot_analysis"):
+        target_keys = {"swot", "dezider", "pros_cons", "solution_finder"}
+    elif m in ("book_expert", "bookexpert", "session"):
+        target_keys = {"book_expert"}
+    elif m in ("expert_review", "expertreview", "review"):
+        target_keys = {"expert_review"}
+    else:
+        target_keys = {m}
 
-    Checks (in order):
-      0. GLOBAL admin "Skip Payment" toggle (payment_admin · /admin/payment-settings)
-         — when ACTIVE the FE is told the user has access via 'admin_skip' so the
-         paywall never shows. This was missing earlier and caused the production
-         bug where the toggle was ON but the Dezider paywall still appeared.
-      1. Active monthly subscription on credit_wallets
-      2. L2 balance > 0 (bundle covers all 3 modules)
-      3. L1 balance > 0 (single report)
+    applies = sku_doc.get("applies_to_modules") or []
+    if not applies:
+        return True
+    return any(k in applies for k in target_keys)
+
+
+async def has_any_paid_access(user_id: str, module: Optional[str] = None) -> Dict[str, Any]:
+    """Check if user has ANY form of paid or privileged access that unlocks DIY reports/sessions:
+      1. Super Admin / Admin / Co-Admin role
+      2. Active subscription_plan or user_type on users table (Basic, Pro, Premium, Paid, etc.)
+      3. Global skip toggle on app_settings
+      4. Active monthly subscription on credit_wallets (active, manual, pending)
+      5. Entitlement balances for SKUs that apply to `module` > 0
     """
-    # Global skip check — single source of truth in app_settings, keyed by
-    # PAYMENT_SETTING_KEY (imported from payment_admin.py). Sharing the constant
-    # prevents the key-name drift that caused the iter22 production bug.
+    # 1. Check user role, subscription_plan, and user_type on users collection
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1})
+    if user_doc:
+        role = str(user_doc.get("role") or "").lower()
+        if role in {"super_admin", "admin", "co_admin"}:
+            return {"has_access": True, "via": "admin_skip", "role": role}
+
+        utype = str(user_doc.get("user_type") or "").lower()
+        splan = str(user_doc.get("subscription_plan") or "").lower()
+        if splan not in {"", "none", "free"} or utype in {"paid", "on_demand_retail_buyer", "on_demand_bulk_buyer", "alpha", "beta", "unit_tester", "integration_tester"}:
+            return {"has_access": True, "via": "subscription", "plan": splan or utype}
+
+    # 2. Global skip check
     s = await db.app_settings.find_one({"_key": PAYMENT_SETTING_KEY}, {"_id": 0})
     if s and s.get("skip_payment_all_flows"):
         return {
@@ -441,24 +490,49 @@ async def has_any_paid_access(user_id: str, module: Optional[str] = None) -> Dic
             "via": "admin_skip",
             "skip_reason": s.get("skip_payment_reason") or "",
         }
-    # Subscription check
+
+    # 3. Subscription check on credit_wallets
     wallet = await db.credit_wallets.find_one(
         {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
     )
-    if wallet and wallet.get("subscription_status") == "active" and (
-        wallet.get("current_plan") not in (None, "", "free")
-    ):
-        return {"has_access": True, "via": "subscription", "plan": wallet["current_plan"]}
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower()
+        cp = str(wallet.get("current_plan") or "").lower()
+        if st in {"active", "manual", "pending"} and cp not in {None, "", "free", "none"}:
+            return {"has_access": True, "via": "subscription", "plan": cp}
 
-    l2 = await get_active_balance(user_id, "L2")
-    if l2 > 0:
-        return {"has_access": True, "via": "L2", "balance": l2}
+    # 4. Entitlement balances for applicable SKUs
+    await ensure_sku_catalog_seeded()
+    skus_cursor = db.sku_catalog.find({"active": True}, {"_id": 0})
+    catalog_skus = {s["code"]: s async for s in skus_cursor}
 
-    l1 = await get_active_balance(user_id, "L1")
-    if l1 > 0:
-        return {"has_access": True, "via": "L1", "balance": l1}
+    ent_cursor = db.user_entitlements.find(
+        {"user_id": user_id, "status": "active", "balance": {"$gt": 0}}
+    )
+    total_matching_balance = 0
+    via_sku = None
+    async for ent in ent_cursor:
+        code = ent.get("sku_code", "").upper()
+        sku_def = catalog_skus.get(code) or {"code": code}
+        if _sku_applies_to_module(sku_def, module):
+            bal = max(0, int(ent.get("balance") or 0))
+            total_matching_balance += bal
+            if not via_sku:
+                via_sku = code
+
+    if total_matching_balance > 0:
+        return {"has_access": True, "via": via_sku, "balance": total_matching_balance}
 
     return {"has_access": False, "via": None, "balance": 0}
+
+
+MODULE_TO_ACM_FEATURE = {
+    "my_dezider": "my_dezider_create",
+    "dezider": "my_dezider_create",
+    "pros_cons": "pros_cons",
+    "swot": "swot_analysis",
+    "solution_finder": "solution_finder",
+}
 
 
 @router.get("/access-check")
@@ -467,7 +541,144 @@ async def access_check(
     user: dict = Depends(get_current_user),
 ):
     """Frontend paywall hook — answers "can this user create a new decision?"."""
-    return await has_any_paid_access(user["user_id"], module=module)
+    feature_id = MODULE_TO_ACM_FEATURE.get(module.lower())
+    if feature_id:
+        try:
+            from core.acm_engine import check_feature_access
+            acm_res = await check_feature_access(user, feature_id, check_quota=True)
+            access_level = acm_res.get("access_level", "full")
+            if access_level in ("locked", "read", "hidden"):
+                return {
+                    "has_access": False,
+                    "access_level": access_level,
+                    "acm_restricted": True,
+                    "message": acm_res.get("upgrade_message") or f"{module.replace('_', ' ').title()} is {access_level} under Access Control Matrix rules.",
+                    "via": None,
+                    "balance": 0,
+                }
+        except Exception as e:
+            logger.warning("ACM access check error in store access-check: %s", e)
+
+    paid = await has_any_paid_access(user["user_id"], module=module)
+    if paid.get("via") == "admin_skip" or paid.get("balance", 0) > 0:
+        paid["access_level"] = "full"
+        paid["acm_restricted"] = False
+        return paid
+
+    # Check Module Free-Use / Subscription limits
+    try:
+        from routes.module_limits import _resolve_tier, _get_limit, _get_usage, _get_combined_l2_usage
+        mod_key = "my_dezider" if module.lower() in ("dezider", "my_dezider") else module.lower()
+        tier = await _resolve_tier(user)
+
+        if mod_key in ("conflict_breaker", "conflict-breaker"):
+            role = (user.get("role") or "").lower()
+            allowed_tiers = {"pro", "premium", "enterprise", "paid", "alpha", "beta", "unit_tester", "integration_tester", "admin", "super_admin", "co_admin"}
+            if role in {"super_admin", "admin", "co_admin"} or tier.lower() in allowed_tiers:
+                return {
+                    "has_access": True,
+                    "access_level": "full",
+                    "acm_restricted": False,
+                    "tier": tier,
+                    "via": "subscription",
+                    "unlimited": True,
+                }
+            else:
+                return {
+                    "has_access": False,
+                    "access_level": "locked",
+                    "acm_restricted": False,
+                    "tier": tier,
+                    "message": "The Conflict Breaker is available on Pro and Premium plans. Upgrade your plan to access this feature.",
+                    "via": None,
+                    "balance": 0,
+                }
+
+        limit = await _get_limit(tier, mod_key)
+        
+        if limit < 0:
+            return {
+                "has_access": True,
+                "access_level": "full",
+                "acm_restricted": False,
+                "tier": tier,
+                "via": paid.get("via") or ("subscription" if tier in ("basic", "pro", "premium") else "free"),
+                "balance": 0,
+                "unlimited": True,
+            }
+
+        diy_used = 0
+        l2_used = 0
+        used = 0
+
+        if tier == "on_demand_l1" and mod_key in ("my_dezider", "pros_cons", "solution_finder"):
+            diy_used = (
+                await _get_usage(user["user_id"], "my_dezider") +
+                await _get_usage(user["user_id"], "pros_cons") +
+                await _get_usage(user["user_id"], "solution_finder")
+            )
+            if diy_used >= limit:
+                return {
+                    "has_access": False,
+                    "access_level": "locked",
+                    "acm_restricted": False,
+                    "tier": tier,
+                    "message": f"You've used your {limit} L1 creation across My Dezider, Pros & Cons, or Solution Finder. Upgrade to L2 (5-decision bundle) or Basic / Pro for higher limits.",
+                    "via": None,
+                    "balance": 0,
+                    "limit": limit,
+                    "used": diy_used,
+                    "remaining": 0,
+                }
+            used = diy_used
+        elif tier == "on_demand_l2" and mod_key in ("my_dezider", "pros_cons", "solution_finder", "group_decision", "book_expert", "expert_review"):
+            l2_used = await _get_combined_l2_usage(user["user_id"])
+            if l2_used >= limit:
+                return {
+                    "has_access": False,
+                    "access_level": "locked",
+                    "acm_restricted": False,
+                    "tier": tier,
+                    "message": f"You've used all {limit} L2 bundle units across My Dezider, Pros & Cons, Solution Finder, Book Expert, or Expert Review. Upgrade your plan or purchase another package to continue.",
+                    "via": None,
+                    "balance": 0,
+                    "limit": limit,
+                    "used": l2_used,
+                    "remaining": 0,
+                }
+            used = l2_used
+        else:
+            used = await _get_usage(user["user_id"], mod_key)
+            if used >= limit:
+                return {
+                    "has_access": False,
+                    "access_level": "locked",
+                    "acm_restricted": False,
+                    "tier": tier,
+                    "message": f"You've used all {limit} {mod_key.replace('_', ' ')} creations on the {tier} plan. Upgrade your plan for higher limits.",
+                    "via": None,
+                    "balance": 0,
+                    "limit": limit,
+                    "used": used,
+                    "remaining": 0,
+                }
+            
+        return {
+            "has_access": True,
+            "access_level": "full",
+            "acm_restricted": False,
+            "tier": tier,
+            "via": paid.get("via") or ("subscription" if tier in ("basic", "pro", "premium") else "free"),
+            "balance": 0,
+            "limit": limit,
+            "used": used,
+            "remaining": max(0, limit - used),
+        }
+    except Exception as e:
+        logger.warning("Module limit check error in store access-check: %s", e)
+
+    return paid
+
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -482,6 +693,11 @@ async def consume_one(
 ) -> bool:
     """Decrement 1 from oldest active entitlement of given SKU. Returns success."""
     sku_code = sku_code.upper()
+    if module:
+        sku_doc = await db.sku_catalog.find_one({"code": sku_code}) or {"code": sku_code}
+        if not _sku_applies_to_module(sku_doc, module):
+            return False
+
     doc = await db.user_entitlements.find_one_and_update(
         {
             "user_id": user_id,
@@ -514,7 +730,7 @@ async def consume_for_decision(
     module: str,
     decision_id: str,
 ) -> Dict[str, Any]:
-    """Decision-creation hook: prefers L2 bundle, falls back to L1 single-use.
+    """Decision-creation hook: prefers L1 single-use DIY report first to save L2 bundle units for expert actions.
 
     Returns {consumed_sku, balance_after} or {consumed_sku: None} if user
     relied on a subscription (no consumption needed).
@@ -528,16 +744,26 @@ async def consume_for_decision(
     ):
         return {"consumed_sku": None, "via": "subscription"}
 
-    # Prefer L2 (bundle) so we don't burn L1 reports first
+    # Try L1 first for DIY reports so L2 bundle units remain available for expert features
+    if await consume_one(user_id, "L1", decision_id=decision_id, module=module):
+        return {
+            "consumed_sku": "L1",
+            "balance_after": await get_active_balance(user_id, "L1"),
+        }
     if await consume_one(user_id, "L2", decision_id=decision_id, module=module):
         return {
             "consumed_sku": "L2",
             "balance_after": await get_active_balance(user_id, "L2"),
         }
-    if await consume_one(user_id, "L1", decision_id=decision_id, module=module):
+    if await consume_one(user_id, "L3", decision_id=decision_id, module=module):
         return {
-            "consumed_sku": "L1",
-            "balance_after": await get_active_balance(user_id, "L1"),
+            "consumed_sku": "L3",
+            "balance_after": await get_active_balance(user_id, "L3"),
+        }
+    if await consume_one(user_id, "L4", decision_id=decision_id, module=module):
+        return {
+            "consumed_sku": "L4",
+            "balance_after": await get_active_balance(user_id, "L4"),
         }
     raise HTTPException(
         status_code=402,
@@ -553,7 +779,7 @@ async def ensure_decision_entitlement(
 ) -> Dict[str, Any]:
     """Consume ONE entitlement when a NEW decision is created.
 
-    Order: prefer L2 bundle → L1 single. The decision's report is pre-unlocked
+    Order: prefer L1 single → L2 bundle. The decision's report is pre-unlocked
     (persisted in `decision_report_unlocks`) so a later PDF export is free — no
     double charge. Subscriptions / admin-skip grant a free pass (no consumption).
     If the user has NO consumable pack, creation is still allowed (no charge);
@@ -584,14 +810,19 @@ async def ensure_decision_entitlement(
 
     access = await has_any_paid_access(user_id, module=module)
     via = access.get("via")
-    # Track ACTUAL usage: always consume from a real pack first (so USED reflects
-    # reality even for admin / subscription accounts that also hold a pack).
-    if await consume_one(user_id, "L2", decision_id=decision_id, module=module):
-        await _persist("L2")
-        return {"via": "L2", "consumed": True}
+    # Track ACTUAL usage: consume L1 first for DIY reports, then L2 bundle
     if await consume_one(user_id, "L1", decision_id=decision_id, module=module):
         await _persist("L1")
         return {"via": "L1", "consumed": True}
+    if await consume_one(user_id, "L2", decision_id=decision_id, module=module):
+        await _persist("L2")
+        return {"via": "L2", "consumed": True}
+    if await consume_one(user_id, "L3", decision_id=decision_id, module=module):
+        await _persist("L3")
+        return {"via": "L3", "consumed": True}
+    if await consume_one(user_id, "L4", decision_id=decision_id, module=module):
+        await _persist("L4")
+        return {"via": "L4", "consumed": True}
     # No consumable pack — subscription / admin-skip grant a free pass.
     if access.get("has_access") and via == "admin_skip":
         return {"via": "admin_skip", "consumed": False}          # temporary — don't persist

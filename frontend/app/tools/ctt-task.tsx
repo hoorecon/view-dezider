@@ -13,6 +13,8 @@ import * as Linking from 'expo-linking';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isCTTAccessAllowed, promptCTTUpgrade } from '../../src/utils/cttAccess';
 import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
 import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
 import { safeBack } from '../../src/utils/navigation';
@@ -71,7 +73,10 @@ export default function CTTTaskScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const spawnParams = useLocalSearchParams<{ parent_task_id?: string; parent_title?: string }>();
-  const { session } = useAuthStore();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isCTTAccessAllowed(user, acm?.access);
+
   const editId = id as string | undefined;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -99,10 +104,10 @@ export default function CTTTaskScreen() {
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
   const [isRoutine, setIsRoutine] = useState(false);
-  const [frequency, setFrequency] = useState('');
+  const [frequency, setFrequency] = useState('daily');
   const [sourceType, setSourceType] = useState('manual');
-  const [sourceId, setSourceId] = useState('');
-  const [linkedFreedoms, setLinkedFreedoms] = useState<string[]>([]);
+  const [sourceId, setSourceId] = useState<string | null>(null);
+  const [linkedFreedoms, setLinkedFreedoms] = useState<any[]>([]);
   // ── Classification ref: link this task under a pre-existing module item ──
   const [classificationRef, setClassificationRef] = useState<{ type: string; ref_id: string; label: string } | null>(null);
   const [clsPickerOpen, setClsPickerOpen] = useState(false);
@@ -279,6 +284,37 @@ export default function CTTTaskScreen() {
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={{ fontSize: 14, color: COLORS.textMuted, marginTop: 12 }}>Loading task...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <SafeAreaView style={st.container} edges={['top']}>
+        <LinearGradient colors={['#2D5F8B', '#1E3A5F']} style={st.header}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
+            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={st.headerTitle}>Task Tracker (CTT)</Text>
+          </View>
+        </LinearGradient>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Ionicons name="lock-closed" size={56} color="#EF4444" />
+          <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginTop: 16, textAlign: 'center' }}>
+            Subscription Required
+          </Text>
+          <Text style={{ fontSize: 14, color: COLORS.textMuted, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+            Task Tracker (CTT) creation is available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand plans cannot create or edit tasks in CTT.
+          </Text>
+          <TouchableOpacity
+            style={{ marginTop: 24, backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+            onPress={() => promptCTTUpgrade(router)}
+          >
+            <Ionicons name="diamond" size={18} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>Upgrade Plan</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

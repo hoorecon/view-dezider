@@ -615,6 +615,9 @@ async def create_decision_from_intake(
     user: dict = Depends(get_current_user),
 ):
     """Create a new decision from the HOS intake flow"""
+    from routes.module_limits import check_and_reserve_usage
+    await check_and_reserve_usage(user, "my_dezider")
+
     # Validate acting_as_context against the dynamic Org-Type master
     # (admin-managed via /api/admin/org-types) with the legacy constant as fallback.
     org_docs = await db.org_types_master.find({"active": True}, {"_id": 0, "key": 1}).to_list(200)
@@ -695,6 +698,12 @@ async def create_decision_from_intake(
     }
 
     await db.decisions.insert_one(doc_dict)
+
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="dezider", decision_id=doc_dict["id"])
+    except Exception as _e:
+        log.warning("entitlement consume on intake create failed: %s", _e)
 
     return {
         "id": doc_dict["id"],

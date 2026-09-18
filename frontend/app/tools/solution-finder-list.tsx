@@ -20,6 +20,8 @@ import { getLifeAreaName } from '../../src/constants/lifeAreas';
 import { safeBack } from '../../src/utils/navigation';
 import LoadErrorState from '../../src/components/LoadErrorState';
 
+import PaywallGate from '../../src/components/PaywallGate';
+
 export default function SolutionFinderListScreen() {
   const router = useRouter();
   const [entries, setEntries] = useState<any[]>([]);
@@ -94,12 +96,11 @@ export default function SolutionFinderListScreen() {
           <Ionicons name="home" size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Solution Finder</Text>
-        <TouchableOpacity
-          style={styles.addHeaderBtn}
-          onPress={() => router.push('/tools/solution-finder')}
-        >
-          <Ionicons name="add" size={24} color="#FFF" />
-        </TouchableOpacity>
+        <PaywallGate module="solution_finder" onAllowed={() => router.push('/tools/solution-finder')}>
+          <TouchableOpacity style={styles.addHeaderBtn} accessibilityLabel="Create new Solution Finder">
+            <Ionicons name="add" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </PaywallGate>
       </LinearGradient>
 
       <ScrollView
@@ -116,12 +117,11 @@ export default function SolutionFinderListScreen() {
             <Ionicons name="search" size={56} color={COLORS.textMuted} />
             <Text style={styles.emptyTitle}>No Solution Finders Yet</Text>
             <Text style={styles.emptySubtitle}>Start your first structured problem-solving worksheet</Text>
-            <TouchableOpacity
-              style={styles.emptyBtn}
-              onPress={() => router.push('/tools/solution-finder')}
-            >
-              <Text style={styles.emptyBtnText}>Create New</Text>
-            </TouchableOpacity>
+            <PaywallGate module="solution_finder" onAllowed={() => router.push('/tools/solution-finder')}>
+              <TouchableOpacity style={styles.emptyBtn}>
+                <Text style={styles.emptyBtnText}>Create New</Text>
+              </TouchableOpacity>
+            </PaywallGate>
           </View>
         ) : (
           entries.map((entry) => (

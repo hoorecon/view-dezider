@@ -115,11 +115,65 @@ async def outlet_analyze(session_id: str, data: OutletAnalysisRequest, user: dic
     return doc
 
 
+async def verify_aim_access(user: dict):
+    """Ensure user is on an active Subscription plan or Admin/Tester role.
+
+    Restricts Free plan and On-Demand plan users from accessing AIM Manager.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user.get("is_admin"):
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1, "is_admin": 1}) or {}
+    role = str(user_doc.get("role") or user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"} or user_doc.get("is_admin"):
+        return True
+
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers and paid user_type override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester", "paid"}:
+        return True
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free"} and not cp.startswith("on_demand"):
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan and splan not in {"none", "free", ""} and not splan.startswith("on_demand"):
+        return True
+
+    # 5. Block Free and On-Demand users
+    raise HTTPException(
+        status_code=403,
+        detail="AIM Manager (Addictions & Irritations) is not available for Free or On-Demand plans. Please upgrade to a subscription plan (Basic, Pro, Premium) to access AIM Manager."
+    )
+
+
 # ============ AIM (Addictions & Irritations Manager) ============
 
 @router.get("/aim/options")
 async def get_aim_options(user: dict = Depends(get_current_user)):
     """Get life areas and occurrence options for AIM."""
+    await verify_aim_access(user)
     return {
         "life_areas": [{"id": la, "name": LIFE_AREA_LABELS.get(la, la)} for la in LIFE_AREAS],
         "occurrences": AIM_OCCURRENCE_OPTIONS,
@@ -129,6 +183,7 @@ async def get_aim_options(user: dict = Depends(get_current_user)):
 @router.post("/aim/{session_id}/save")
 async def aim_save(session_id: str, data: AIMSaveRequest, user: dict = Depends(get_current_user)):
     """Save addictions and irritations data."""
+    await verify_aim_access(user)
     session = await db.breakthrough_sessions.find_one({"id": session_id, "user_id": user["user_id"]})
     if not session:
         raise HTTPException(404, "Session not found")
@@ -162,6 +217,7 @@ async def aim_save(session_id: str, data: AIMSaveRequest, user: dict = Depends(g
 @router.post("/aim/{session_id}/analyze")
 async def aim_analyze(session_id: str, user: dict = Depends(get_current_user)):
     """AI analyzes addictions and irritations, suggests corrective actions."""
+    await verify_aim_access(user)
     if not EMERGENT_LLM_KEY:
         raise HTTPException(500, "AI engine not configured")
 

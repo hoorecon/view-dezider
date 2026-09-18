@@ -13,6 +13,9 @@ import { COLORS } from '../../src/constants/colors';
 import { LIFE_AREAS as CATALOG_LIFE_AREAS } from '../../src/constants/lifeAreas';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isTEPFIAccessAllowed, promptTEPFIUpgrade } from '../../src/utils/cttAccess';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -44,6 +47,10 @@ function getScoreColor(score: number): string {
 
 export default function TEPFIScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isTEPFIAccessAllowed(user, acm?.access);
+
   const [entries, setEntries] = useState<any[]>([]);
   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -68,6 +75,10 @@ export default function TEPFIScreen() {
   const scope = selectedArea || 'all';
 
   const fetchData = async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     try {
       const params = selectedArea ? `?life_area=${selectedArea}` : '';
       const [entriesRes, dashRes] = await Promise.all([
@@ -80,10 +91,14 @@ export default function TEPFIScreen() {
     finally { setLoading(false); }
   };
 
-  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, [selectedArea]));
+  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, [selectedArea, allowed]));
   const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
 
   const handleDelete = (id: string) => {
+    if (!allowed) {
+      promptTEPFIUpgrade(router);
+      return;
+    }
     showAlert('Delete', 'Delete this TEPFI assessment?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -250,6 +265,22 @@ export default function TEPFIScreen() {
     );
   };
 
+  const renderLockedState = () => (
+    <View style={s.lockedWrap}>
+      <View style={s.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.lockedTitle}>Subscription Required</Text>
+      <Text style={s.lockedSub}>
+        TEPFI (Capabilities & Resources Index) is available exclusively for Pro, Premium, and Enterprise plan members. Free, On-Demand, and Basic plan users cannot access TEPFI.
+      </Text>
+      <TouchableOpacity style={s.upgradeBtn} onPress={() => promptTEPFIUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={s.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#7C3AED', '#A855F7']} style={s.header}>
@@ -262,68 +293,83 @@ export default function TEPFIScreen() {
             {dashboard?.total_entries || 0} assessments | Time • Effort • People • Finance • Infra
           </Text>
         </View>
-        <TouchableOpacity onPress={() => router.push({ pathname: '/cld/editor', params: { module_type: 'tepfi' } } as any)} style={s.addBtn}>
+        <TouchableOpacity onPress={() => {
+          if (!allowed) { promptTEPFIUpgrade(router); return; }
+          router.push({ pathname: '/cld/editor', params: { module_type: 'tepfi' } } as any);
+        }} style={s.addBtn}>
           <Ionicons name="git-network" size={20} color="#FFF" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/tools/tepfi-entry')} style={s.addBtn}>
+        <TouchableOpacity onPress={() => {
+          if (!allowed) { promptTEPFIUpgrade(router); return; }
+          router.push('/tools/tepfi-entry');
+        }} style={s.addBtn}>
           <Ionicons name="add" size={22} color="#FFF" />
         </TouchableOpacity>
       </LinearGradient>
 
-      {/* View toggle */}
-      <View style={s.viewRow}>
-        {([{ key: 'matrix', icon: 'grid', label: 'Matrix' }, { key: 'list', icon: 'list', label: 'Entries' }] as const).map(v => (
-          <TouchableOpacity key={v.key} style={[s.viewToggle, viewMode === v.key && s.viewActive]} onPress={() => setViewMode(v.key)}>
-            <Ionicons name={v.icon as any} size={14} color={viewMode === v.key ? '#FFF' : COLORS.textMuted} />
-            <Text style={[s.viewText, viewMode === v.key && { color: '#FFF' }]}>{v.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Life area filter — flex-wrap (2 rows on phones) so all 10 areas
-          are visible at a glance without horizontal scrolling. */}
-      <View style={s.filterRow}>
-        <TouchableOpacity style={[s.filterChip, !selectedArea && s.filterActive]} onPress={() => setSelectedArea('')}>
-          <Text style={[s.filterText, !selectedArea && { color: '#FFF' }]}>All</Text>
-        </TouchableOpacity>
-        {LIFE_AREAS.map(a => (
-          <TouchableOpacity key={a.id} style={[s.filterChip, selectedArea === a.id && s.filterActive]} onPress={() => setSelectedArea(selectedArea === a.id ? '' : a.id)}>
-            <Ionicons name={a.icon as any} size={11} color={selectedArea === a.id ? '#FFF' : COLORS.textMuted} />
-            <Text style={[s.filterText, selectedArea === a.id && { color: '#FFF' }]}>{a.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#7C3AED" />
-        </View>
+      {!allowed ? (
+        renderLockedState()
       ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {viewMode === 'matrix' && renderMatrixOverview()}
-
-          {entries.length === 0 ? (
-            <View style={s.empty}>
-              <View style={s.emptyIcon}>
-                <Ionicons name="cube-outline" size={48} color={COLORS.textMuted} />
-              </View>
-              <Text style={s.emptyTitle}>No Assessments Yet</Text>
-              <Text style={s.emptySub}>
-                Track your Capabilities & Resources across Time, Effort, People, Finance & Infrastructure
-              </Text>
-              <TouchableOpacity style={s.emptyBtn} onPress={() => router.push('/tools/tepfi-entry')}>
-                <Ionicons name="add-circle" size={18} color="#FFF" />
-                <Text style={s.emptyBtnText}>New Assessment</Text>
+        <>
+          {/* View toggle */}
+          <View style={s.viewRow}>
+            {([{ key: 'matrix', icon: 'grid', label: 'Matrix' }, { key: 'list', icon: 'list', label: 'Entries' }] as const).map(v => (
+              <TouchableOpacity key={v.key} style={[s.viewToggle, viewMode === v.key && s.viewActive]} onPress={() => setViewMode(v.key)}>
+                <Ionicons name={v.icon as any} size={14} color={viewMode === v.key ? '#FFF' : COLORS.textMuted} />
+                <Text style={[s.viewText, viewMode === v.key && { color: '#FFF' }]}>{v.label}</Text>
               </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Life area filter — flex-wrap (2 rows on phones) so all 10 areas
+              are visible at a glance without horizontal scrolling. */}
+          <View style={s.filterRow}>
+            <TouchableOpacity style={[s.filterChip, !selectedArea && s.filterActive]} onPress={() => setSelectedArea('')}>
+              <Text style={[s.filterText, !selectedArea && { color: '#FFF' }]}>All</Text>
+            </TouchableOpacity>
+            {LIFE_AREAS.map(a => (
+              <TouchableOpacity key={a.id} style={[s.filterChip, selectedArea === a.id && s.filterActive]} onPress={() => setSelectedArea(selectedArea === a.id ? '' : a.id)}>
+                <Ionicons name={a.icon as any} size={11} color={selectedArea === a.id ? '#FFF' : COLORS.textMuted} />
+                <Text style={[s.filterText, selectedArea === a.id && { color: '#FFF' }]}>{a.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {loading ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#7C3AED" />
             </View>
           ) : (
-            entries.map(renderEntryCard)
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
+              {viewMode === 'matrix' && renderMatrixOverview()}
+
+              {entries.length === 0 ? (
+                <View style={s.empty}>
+                  <View style={s.emptyIcon}>
+                    <Ionicons name="cube-outline" size={48} color={COLORS.textMuted} />
+                  </View>
+                  <Text style={s.emptyTitle}>No Assessments Yet</Text>
+                  <Text style={s.emptySub}>
+                    Track your Capabilities & Resources across Time, Effort, People, Finance & Infrastructure
+                  </Text>
+                  <TouchableOpacity style={s.emptyBtn} onPress={() => {
+                    if (!allowed) { promptTEPFIUpgrade(router); return; }
+                    router.push('/tools/tepfi-entry');
+                  }}>
+                    <Ionicons name="add-circle" size={18} color="#FFF" />
+                    <Text style={s.emptyBtnText}>New Assessment</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                entries.map(renderEntryCard)
+              )}
+            </ScrollView>
           )}
-        </ScrollView>
+        </>
       )}
 
       {/* Override modal — slider-based per-cell editor (axis × dim × scope).
@@ -474,4 +520,12 @@ const s = StyleSheet.create({
   emptySub: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, paddingHorizontal: 32, lineHeight: 20 },
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 20, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#7C3AED', borderRadius: 12 },
   emptyBtnText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+
+  // Locked state
+  lockedWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
+  lockedSub: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 24, maxWidth: 320 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#7C3AED', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  upgradeBtnText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
 });

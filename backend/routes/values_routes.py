@@ -211,17 +211,68 @@ async def _resolved_principles_for(user: dict, org_id: Optional[str] = None) -> 
     return rows
 
 
+async def verify_values_access(user: dict):
+    """Ensure user is on an active Subscription plan or Admin/Tester role.
+
+    Restricts Free plan and On-Demand plan users from accessing Values Tracker.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    role = str(user.get("role") or "").lower()
+    if role in {"super_admin", "admin", "co_admin"}:
+        return True
+
+    user_id = user.get("user_id")
+
+    # 1. Global payment skip check
+    s = await db.app_settings.find_one({"_key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return True
+
+    # 2. Refresh user doc from DB
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "role": 1, "user_type": 1, "subscription_plan": 1}) or {}
+    utype = str(user_doc.get("user_type") or user.get("user_type") or "").lower().strip()
+    splan = str(user_doc.get("subscription_plan") or user.get("subscription_plan") or "").lower().strip()
+
+    # Testers and paid user_type override
+    if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester", "paid"}:
+        return True
+
+    # 3. Check credit wallet subscription status
+    wallet = await db.credit_wallets.find_one(
+        {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
+    )
+    if wallet:
+        st = str(wallet.get("subscription_status") or "").lower().strip()
+        cp = str(wallet.get("current_plan") or "").lower().strip()
+        if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free"} and not cp.startswith("on_demand"):
+            return True
+
+    # 4. Check active subscription plan on user doc
+    if splan and splan not in {"none", "free", ""} and not splan.startswith("on_demand"):
+        return True
+
+    # 5. Block Free and On-Demand users
+    raise HTTPException(
+        status_code=403,
+        detail="Values Tracker is not available for Free or On-Demand plans. Please upgrade to a subscription plan (Basic, Pro, Premium) to access Values Tracker."
+    )
+
+
 # ============================================================
 # CRUD — principles (admin / org-admin)
 # ============================================================
 @router.get("/principles")
 async def list_principles(user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     rows = await _resolved_principles_for(user)
     return {"principles": rows}
 
 
 @router.post("/principles")
 async def create_principle(p: PrincipleIn, user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     role = get_user_role(user)
     if role not in ADMIN_ROLES + ["org_admin", "org_co_admin", "org_super_admin"]:
         raise HTTPException(403, "Admin only")
@@ -242,6 +293,7 @@ async def create_principle(p: PrincipleIn, user: dict = Depends(get_current_user
 
 @router.put("/principles/{principle_id}")
 async def update_principle(principle_id: str, p: PrincipleIn, user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     existing = await db.value_principles.find_one({"id": principle_id}, {"_id": 0})
     if not existing:
         raise HTTPException(404, "Principle not found")
@@ -263,6 +315,7 @@ async def update_principle(principle_id: str, p: PrincipleIn, user: dict = Depen
 
 @router.delete("/principles/{principle_id}")
 async def delete_principle(principle_id: str, user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     existing = await db.value_principles.find_one({"id": principle_id}, {"_id": 0})
     if not existing:
         raise HTTPException(404, "Principle not found")
@@ -280,6 +333,7 @@ async def delete_principle(principle_id: str, user: dict = Depends(get_current_u
 # ============================================================
 @router.post("/reflect")
 async def submit_reflection(r: ReflectionIn, user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     if r.module_ref not in REFLECTION_MODULES:
         raise HTTPException(400, f"module_ref must be one of {REFLECTION_MODULES}")
     doc = {
@@ -310,6 +364,7 @@ async def submit_reflection(r: ReflectionIn, user: dict = Depends(get_current_us
 
 @router.get("/reflections")
 async def list_reflections(module_ref: Optional[str] = None, limit: int = 100, user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     q: Dict[str, Any] = {"user_id": user["user_id"]}
     if module_ref:
         q["module_ref"] = module_ref
@@ -322,6 +377,7 @@ async def list_reflections(module_ref: Optional[str] = None, limit: int = 100, u
 # ============================================================
 @router.post("/ai-advisor")
 async def ai_advise(payload: AdvisorIn, user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     principles = await _resolved_principles_for(user, payload.org_id)
     # Build a compact prompt; we only ship principle name + short summary + bullets.
     p_text = "\n".join(
@@ -375,6 +431,7 @@ async def ai_advise(payload: AdvisorIn, user: dict = Depends(get_current_user)):
 # ============================================================
 @router.get("/settings")
 async def get_settings(user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     cfg = await db.values_settings.find_one({"_id": "global"}, {"_id": 0}) or {
         "public_block_threshold": None,      # None = warn+log only
         "org_block_threshold_default": None,  # per-org override goes in user.org doc
@@ -384,7 +441,9 @@ async def get_settings(user: dict = Depends(get_current_user)):
 
 @router.put("/settings")
 async def put_settings(payload: dict, user: dict = Depends(get_current_user)):
+    await verify_values_access(user)
     if get_user_role(user) not in ADMIN_ROLES:
         raise HTTPException(403, "Platform admin only")
     await db.values_settings.update_one({"_id": "global"}, {"$set": payload}, upsert=True)
     return {"ok": True}
+

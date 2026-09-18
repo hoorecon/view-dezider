@@ -219,12 +219,12 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)' } as any)
       : {
-          shadowColor: '#000',
-          shadowOpacity: 0.2,
-          shadowOffset: { width: 0, height: 8 },
-          shadowRadius: 24,
-          elevation: 8,
-        }),
+        shadowColor: '#000',
+        shadowOpacity: 0.2,
+        shadowOffset: { width: 0, height: 8 },
+        shadowRadius: 24,
+        elevation: 8,
+      }),
   },
   iconCircle: {
     width: 56, height: 56, borderRadius: 28,

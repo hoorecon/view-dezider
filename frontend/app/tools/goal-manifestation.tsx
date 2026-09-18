@@ -14,11 +14,18 @@ import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import InAppVideoModal from '../../src/components/InAppVideoModal';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isManifestationAccessAllowed, promptManifestationUpgrade } from '../../src/utils/cttAccess';
 
 interface Stage { stage_number: number; letter: string; name: string; color: string; icon: string; summary: string; steps: any[]; audio_url?: string; audio_title?: string; }
 
 export default function GoalManifestationScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isManifestationAccessAllowed(user, acm?.access);
+
   const [mode, setMode] = useState<'list' | 'journey'>('list');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,6 +44,10 @@ export default function GoalManifestationScreen() {
   const [meditationPrefs, setMeditationPrefs] = useState<Record<string, any>>({});
 
   const fetchData = async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     try {
       const [fwRes, jRes, dRes, medRes] = await Promise.all([
         api.get('/goal-manifestation/framework'),
@@ -52,15 +63,23 @@ export default function GoalManifestationScreen() {
     finally { setLoading(false); }
   };
 
-  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, []));
+  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, [allowed]));
   const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
 
   const startNew = () => {
+    if (!allowed) {
+      promptManifestationUpgrade(router);
+      return;
+    }
     setWish(''); setCurrentStage(1); setStageInputs({}); setExpandedSteps({}); setEditId('');
     setMode('journey');
   };
 
   const openJourney = (j: any) => {
+    if (!allowed) {
+      promptManifestationUpgrade(router);
+      return;
+    }
     setWish(j.wish || ''); setCurrentStage(j.current_stage || 1);
     setStageInputs(j.stage_inputs || {}); setEditId(j.journey_id); setExpandedSteps({});
     setMode('journey');
@@ -75,6 +94,10 @@ export default function GoalManifestationScreen() {
   };
 
   const handleSave = async () => {
+    if (!allowed) {
+      promptManifestationUpgrade(router);
+      return;
+    }
     if (!wish.trim()) { showAlert('Required', 'Enter your wish / goal'); return; }
     setSaving(true);
     try {
@@ -91,6 +114,10 @@ export default function GoalManifestationScreen() {
   };
 
   const handleDelete = (id: string) => {
+    if (!allowed) {
+      promptManifestationUpgrade(router);
+      return;
+    }
     showAlert('Delete', 'Remove this journey?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -99,6 +126,22 @@ export default function GoalManifestationScreen() {
       }},
     ]);
   };
+
+  const renderLockedState = () => (
+    <View style={st.lockedWrap}>
+      <View style={st.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={st.lockedTitle}>Subscription Required</Text>
+      <Text style={st.lockedSub}>
+        Goal Manifestation (CAB-FAME) is available exclusively for Premium and Enterprise plan members. Free, On-Demand, Basic, and Pro plan users cannot access Goal Manifestation.
+      </Text>
+      <TouchableOpacity style={st.upgradeBtn} onPress={() => promptManifestationUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={st.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const activeStage = stages.find(s => s.stage_number === currentStage);
 
@@ -310,6 +353,10 @@ export default function GoalManifestationScreen() {
 
         {loading ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color="#7C3AED" /></View>
+        ) : !allowed ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+            {renderLockedState()}
+          </ScrollView>
         ) : (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
             refreshControl={mode === 'list' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}>
@@ -317,7 +364,7 @@ export default function GoalManifestationScreen() {
           </ScrollView>
         )}
 
-        {mode === 'journey' && (
+        {allowed && mode === 'journey' && (
           <View style={st.bottom}>
             <TouchableOpacity style={[st.saveBtn, saving && { opacity: 0.7 }]} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator size="small" color="#FFF" /> : (
@@ -327,7 +374,7 @@ export default function GoalManifestationScreen() {
           </View>
         )}
 
-        {mode === 'list' && journeys.length > 0 && (
+        {allowed && mode === 'list' && journeys.length > 0 && (
           <View style={st.bottom}>
             <TouchableOpacity style={st.saveBtn} onPress={startNew}>
               <Ionicons name="add-circle" size={18} color="#FFF" /><Text style={st.saveBtnText}>New Journey</Text>
@@ -410,4 +457,11 @@ const st = StyleSheet.create({
   emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.divider, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
   emptySub: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, paddingHorizontal: 32, lineHeight: 20 },
+
+  lockedWrap: { alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#FFF', borderRadius: 16, marginTop: 24, borderWidth: 1, borderColor: '#E2E8F0' },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  lockedSub: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#7C3AED', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 },
+  upgradeBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });

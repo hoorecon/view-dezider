@@ -1,8 +1,3 @@
-/**
- * Custom Orgs — Interim layer between Life Area and GEM.
- * List, create, delete user-created Orgs of any OrgType under any Life Area/Sub-Area.
- * From an Org, jump into the 7×7 assessment and 6 LeGs hierarchy.
- */
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,26 +6,54 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isOrgsAccessAllowed, promptOrgsUpgrade } from '../../src/utils/cttAccess';
 
 const LIFE_AREAS = ['Career','Business','Finance','Family','Health','Relationships','Personal','Social','Spiritual','Recreation'];
 const ORG_TYPES = ['BUSINESS','NGO','GOVT','EDUCATION','FAMILY','COMMUNITY','SPIRITUAL','HEALTHCARE','OTHER'];
 
 export default function OrgsScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isOrgsAccessAllowed(user, acm?.access);
+
   const [orgs, setOrgs] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<any>(null);
 
   const load = async () => {
+    if (!allowed) {
+      setBusy(false);
+      return;
+    }
     setBusy(true);
-    try { const { data } = await api.get('/seven-seven/orgs'); setOrgs(data?.orgs || []); }
-    finally { setBusy(false); }
+    try {
+      const { data } = await api.get('/seven-seven/orgs');
+      setOrgs(data?.orgs || []);
+    } catch (e: any) {
+      setOrgs([]);
+    } finally {
+      setBusy(false);
+    }
   };
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useFocusEffect(useCallback(() => { load(); }, [allowed]));
 
-  const create = () => setEditing({ name: '', org_type: 'BUSINESS', life_area: LIFE_AREAS[0], sub_area: '', description: '', icon: 'business', color: '#4338CA' });
+
+  const create = () => {
+    if (!allowed) {
+      promptOrgsUpgrade(router);
+      return;
+    }
+    setEditing({ name: '', org_type: 'BUSINESS', life_area: LIFE_AREAS[0], sub_area: '', description: '', icon: 'business', color: '#4338CA' });
+  };
 
   const save = async () => {
+    if (!allowed) {
+      promptOrgsUpgrade(router);
+      return;
+    }
     if (!editing.name?.trim()) { showAlert('Name required'); return; }
     try { await api.post('/seven-seven/orgs', editing); setEditing(null); await load(); }
     catch(e:any){ showAlert('Save failed', e?.response?.data?.detail || e.message); }
@@ -42,6 +65,22 @@ export default function OrgsScreen() {
     catch(e:any){ showAlert('Delete failed', e?.response?.data?.detail || e.message); }
   };
 
+  const renderLockedState = () => (
+    <View style={s.lockedWrap}>
+      <View style={s.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.lockedTitle}>Subscription Required</Text>
+      <Text style={s.lockedSub}>
+        My Organizations (7x7 Matrix & 6 LeGs Goal Tree) is available exclusively for Premium and Enterprise plan members. Free, On-Demand, Basic, and Pro plan users cannot access Orgs.
+      </Text>
+      <TouchableOpacity style={s.upgradeBtn} onPress={() => promptOrgsUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={s.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={s.header}>
@@ -50,51 +89,57 @@ export default function OrgsScreen() {
         <Text style={s.subtitle}>Custom orgs across life areas · 7×7 matrix · 6 LeGs goals</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <TouchableOpacity style={s.addBtn} onPress={create}><Ionicons name="add-circle" size={20} color="#FFF" /><Text style={s.addBtnText}>Create Organization</Text></TouchableOpacity>
-        {busy ? <ActivityIndicator /> : orgs.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="business-outline" size={48} color="#CBD5E1" />
-            <Text style={s.emptyText}>No orgs yet. Create your first interim structure under any life area.</Text>
-            <Text style={s.emptyHint}>Orgs unlock the 7×7 assessment matrix and the 6 Level Goal Setting hierarchy.</Text>
-          </View>
-        ) : orgs.map((o) => (
-          <TouchableOpacity key={o.id} style={s.orgCard} onPress={() => router.push({ pathname: '/tools/org-detail', params: { id: o.id } } as any)}>
-            <View style={[s.orgIcon, { backgroundColor: o.color || '#4338CA' }]}><Ionicons name={(o.icon || 'business') as any} size={22} color="#FFF" /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.orgName}>{o.name}</Text>
-              <Text style={s.orgMeta}>{o.org_type} · {o.life_area}{o.sub_area ? ` / ${o.sub_area}` : ''}</Text>
-              {o.description ? <Text style={s.orgDesc} numberOfLines={2}>{o.description}</Text> : null}
-            </View>
-            <TouchableOpacity onPress={(e) => { e.stopPropagation(); remove(o); }} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}><Ionicons name="trash" size={16} color="#EF4444" /></TouchableOpacity>
-          </TouchableOpacity>
-        ))}
-
-        {editing && (
-          <View style={s.editorOverlay}>
-            <View style={s.editor}>
-              <Text style={s.editorTitle}>New Organization</Text>
-              <ScrollView style={{ maxHeight: 420 }}>
-                <Text style={s.lbl}>Name</Text>
-                <TextInput style={s.inp} value={editing.name} onChangeText={(v) => setEditing((p:any)=>({...p, name: v}))} placeholder="e.g. JELCOS AI Pvt Ltd" placeholderTextColor="#94A3B8" />
-                <Text style={s.lbl}>Org Type</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {ORG_TYPES.map(t => <TouchableOpacity key={t} style={[s.chip, editing.org_type===t && s.chipOn]} onPress={() => setEditing((p:any)=>({...p, org_type: t}))}><Text style={[s.chipText, editing.org_type===t && { color: '#FFF' }]}>{t}</Text></TouchableOpacity>)}
-                </ScrollView>
-                <Text style={s.lbl}>Life Area</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {LIFE_AREAS.map(la => <TouchableOpacity key={la} style={[s.chip, editing.life_area===la && s.chipOn]} onPress={() => setEditing((p:any)=>({...p, life_area: la}))}><Text style={[s.chipText, editing.life_area===la && { color: '#FFF' }]}>{la}</Text></TouchableOpacity>)}
-                </ScrollView>
-                <Text style={s.lbl}>Sub-Area (optional)</Text>
-                <TextInput style={s.inp} value={editing.sub_area} onChangeText={(v) => setEditing((p:any)=>({...p, sub_area: v}))} placeholder="e.g. SaaS, Property, etc." placeholderTextColor="#94A3B8" />
-                <Text style={s.lbl}>Description</Text>
-                <TextInput style={[s.inp, { minHeight: 64, textAlignVertical: 'top' }]} multiline value={editing.description} onChangeText={(v) => setEditing((p:any)=>({...p, description: v}))} placeholder="What this Org delivers" placeholderTextColor="#94A3B8" />
-              </ScrollView>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                <TouchableOpacity style={s.cancelBtn} onPress={() => setEditing(null)}><Text style={s.cancelText}>Cancel</Text></TouchableOpacity>
-                <TouchableOpacity style={s.saveBtn} onPress={save}><Text style={s.saveText}>Create</Text></TouchableOpacity>
+        {!allowed ? (
+          renderLockedState()
+        ) : (
+          <>
+            <TouchableOpacity style={s.addBtn} onPress={create}><Ionicons name="add-circle" size={20} color="#FFF" /><Text style={s.addBtnText}>Create Organization</Text></TouchableOpacity>
+            {busy ? <ActivityIndicator /> : orgs.length === 0 ? (
+              <View style={s.empty}>
+                <Ionicons name="business-outline" size={48} color="#CBD5E1" />
+                <Text style={s.emptyText}>No orgs yet. Create your first interim structure under any life area.</Text>
+                <Text style={s.emptyHint}>Orgs unlock the 7×7 assessment matrix and the 6 Level Goal Setting hierarchy.</Text>
               </View>
-            </View>
-          </View>
+            ) : orgs.map((o) => (
+              <TouchableOpacity key={o.id} style={s.orgCard} onPress={() => router.push({ pathname: '/tools/org-detail', params: { id: o.id } } as any)}>
+                <View style={[s.orgIcon, { backgroundColor: o.color || '#4338CA' }]}><Ionicons name={(o.icon || 'business') as any} size={22} color="#FFF" /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.orgName}>{o.name}</Text>
+                  <Text style={s.orgMeta}>{o.org_type} · {o.life_area}{o.sub_area ? ` / ${o.sub_area}` : ''}</Text>
+                  {o.description ? <Text style={s.orgDesc} numberOfLines={2}>{o.description}</Text> : null}
+                </View>
+                <TouchableOpacity onPress={(e) => { e.stopPropagation(); remove(o); }} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}><Ionicons name="trash" size={16} color="#EF4444" /></TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+
+            {editing && (
+              <View style={s.editorOverlay}>
+                <View style={s.editor}>
+                  <Text style={s.editorTitle}>New Organization</Text>
+                  <ScrollView style={{ maxHeight: 420 }}>
+                    <Text style={s.lbl}>Name</Text>
+                    <TextInput style={s.inp} value={editing.name} onChangeText={(v) => setEditing((p:any)=>({...p, name: v}))} placeholder="e.g. JELCOS AI Pvt Ltd" placeholderTextColor="#94A3B8" />
+                    <Text style={s.lbl}>Org Type</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {ORG_TYPES.map(t => <TouchableOpacity key={t} style={[s.chip, editing.org_type===t && s.chipOn]} onPress={() => setEditing((p:any)=>({...p, org_type: t}))}><Text style={[s.chipText, editing.org_type===t && { color: '#FFF' }]}>{t}</Text></TouchableOpacity>)}
+                    </ScrollView>
+                    <Text style={s.lbl}>Life Area</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {LIFE_AREAS.map(la => <TouchableOpacity key={la} style={[s.chip, editing.life_area===la && s.chipOn]} onPress={() => setEditing((p:any)=>({...p, life_area: la}))}><Text style={[s.chipText, editing.life_area===la && { color: '#FFF' }]}>{la}</Text></TouchableOpacity>)}
+                    </ScrollView>
+                    <Text style={s.lbl}>Sub-Area (optional)</Text>
+                    <TextInput style={s.inp} value={editing.sub_area} onChangeText={(v) => setEditing((p:any)=>({...p, sub_area: v}))} placeholder="e.g. SaaS, Property, etc." placeholderTextColor="#94A3B8" />
+                    <Text style={s.lbl}>Description</Text>
+                    <TextInput style={[s.inp, { minHeight: 64, textAlignVertical: 'top' }]} multiline value={editing.description} onChangeText={(v) => setEditing((p:any)=>({...p, description: v}))} placeholder="What this Org delivers" placeholderTextColor="#94A3B8" />
+                  </ScrollView>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                    <TouchableOpacity style={s.cancelBtn} onPress={() => setEditing(null)}><Text style={s.cancelText}>Cancel</Text></TouchableOpacity>
+                    <TouchableOpacity style={s.saveBtn} onPress={save}><Text style={s.saveText}>Create</Text></TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -129,4 +174,11 @@ const s = StyleSheet.create({
   cancelText: { color: '#475569', fontWeight: '700' },
   saveBtn: { flex: 2, padding: 12, borderRadius: 8, backgroundColor: '#003087', alignItems: 'center' },
   saveText: { color: '#FFF', fontWeight: '700' },
+  lockedWrap: { alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#FFF', borderRadius: 16, marginTop: 24, borderWidth: 1, borderColor: '#E2E8F0' },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  lockedSub: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#003087', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 },
+  upgradeBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });
+

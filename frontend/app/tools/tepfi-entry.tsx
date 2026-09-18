@@ -13,6 +13,9 @@ import { LIFE_AREAS as CATALOG_LIFE_AREAS } from '../../src/constants/lifeAreas'
 import api from '../../src/utils/api';
 import Slider from '@react-native-community/slider';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isTEPFIAccessAllowed, promptTEPFIUpgrade } from '../../src/utils/cttAccess';
 
 const DIMENSIONS = [
   { id: 'time', name: 'Time', icon: 'time', color: '#3B82F6', desc: 'Time allocated & required' },
@@ -81,6 +84,10 @@ function getScoreColor(score: number): string {
 
 export default function TEPFIEntryScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isTEPFIAccessAllowed(user, acm?.access);
+
   const { id } = useLocalSearchParams();
   const editId = id as string | undefined;
   const [loading, setLoading] = useState(false);
@@ -92,7 +99,7 @@ export default function TEPFIEntryScreen() {
   const [matrix, setMatrix] = useState<Matrix>(buildEmptyMatrix());
   const [expandedDim, setExpandedDim] = useState<string>(DIMENSIONS[0].id);
 
-  useEffect(() => { if (editId) loadEntry(); }, [editId]);
+  useEffect(() => { if (editId && allowed) loadEntry(); }, [editId, allowed]);
 
   const loadEntry = async () => {
     setLoading(true);
@@ -125,6 +132,10 @@ export default function TEPFIEntryScreen() {
   };
 
   const handleSave = async () => {
+    if (!allowed) {
+      promptTEPFIUpgrade(router);
+      return;
+    }
     if (!title.trim()) {
       showAlert('Required', 'Please enter a title for this assessment');
       return;
@@ -151,6 +162,22 @@ export default function TEPFIEntryScreen() {
     }
   };
 
+  const renderLockedState = () => (
+    <View style={st.lockedWrap}>
+      <View style={st.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={st.lockedTitle}>Subscription Required</Text>
+      <Text style={st.lockedSub}>
+        TEPFI (Capabilities & Resources Index) is available exclusively for Pro, Premium, and Enterprise plan members. Free, On-Demand, and Basic plan users cannot access TEPFI.
+      </Text>
+      <TouchableOpacity style={st.upgradeBtn} onPress={() => promptTEPFIUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={st.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={st.container}>
@@ -163,7 +190,10 @@ export default function TEPFIEntryScreen() {
 
   return (
     <SafeAreaView style={st.container} edges={['top']}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      {!allowed ? (
+        renderLockedState()
+      ) : (
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#7C3AED', '#A855F7']} style={st.header}>
           <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
@@ -355,6 +385,7 @@ export default function TEPFIEntryScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 }
@@ -394,4 +425,12 @@ const st = StyleSheet.create({
   bottom: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 20 : 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.white },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 16 },
   saveBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+
+  // Locked state
+  lockedWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
+  lockedSub: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 24, maxWidth: 320 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#7C3AED', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  upgradeBtnText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
 });

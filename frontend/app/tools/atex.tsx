@@ -11,12 +11,19 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isATEXAccessAllowed, promptATEXUpgrade } from '../../src/utils/cttAccess';
 
 interface SubTask { title: string; effort_minutes: number; ip_level: string; support_needs: string[]; notes?: string; }
 interface RiskItem { category: string; description: string; mitigation_minutes: number; contingency_minutes: number; }
 
 export default function ATEXScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isATEXAccessAllowed(user, acm?.access);
+
   const params = useLocalSearchParams();
   const sourceModule = (params.source as string) || 'manual';
   const sourceRefId = (params.ref_id as string) || undefined;
@@ -42,6 +49,10 @@ export default function ATEXScreen() {
   const [pickTasks, setPickTasks] = useState<any[]>([]);
   const [pickLoading, setPickLoading] = useState(false);
   const openPicker = async () => {
+    if (!allowed) {
+      promptATEXUpgrade(router);
+      return;
+    }
     setPickerOpen(true); setPickLoading(true);
     try {
       // Pull from BOTH the Action Tracker (universal inbox) and the CTT
@@ -73,7 +84,10 @@ export default function ATEXScreen() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [saveTpl, setSaveTpl] = useState({ on: false, name: '' });
 
-  useEffect(() => { (async () => { try { const { data } = await api.get('/atex/templates'); setTemplates(data?.templates || []); } catch{} })(); }, []);
+  useEffect(() => {
+    if (!allowed) return;
+    (async () => { try { const { data } = await api.get('/atex/templates'); setTemplates(data?.templates || []); } catch{} })();
+  }, [allowed]);
 
   const totalEffort = useMemo(() => subTasks.reduce((s, t) => s + (Number(t.effort_minutes)||0), 0), [subTasks]);
 
@@ -86,6 +100,10 @@ export default function ATEXScreen() {
   const delRisk = (i: number) => setRisks(arr => arr.filter((_, j) => j !== i));
 
   const aiSuggest = async () => {
+    if (!allowed) {
+      promptATEXUpgrade(router);
+      return;
+    }
     if (!taskTitle.trim()) { showAlert('Task title required', 'Enter the task title first.'); return; }
     setAiBusy(true);
     try {
@@ -98,41 +116,65 @@ export default function ATEXScreen() {
   };
 
   const estimate = async () => {
-    if (!scc.trim()) { showAlert('SCC required', 'Synchronized Completion Criteria (SCC) is mandatory.'); return; }
-    if (!subTasks.length || !subTasks.every(t => t.title.trim())) { showAlert('Sub-tasks required', 'At least one sub-task with a title.'); return; }
-    setBusy(true);
+    if (!allowed) {
+      promptATEXUpgrade(router);
+      return;
+    }
+    if (!scc.trim()) { showAlert('SCC Required', 'Synchronized Completion Criteria (SCC) is mandatory for ATEX estimation.'); return; }
+    if (!subTasks.length || !subTasks.some(t => t.title.trim())) { showAlert('Sub-task Required', 'Enter at least one sub-task.'); return; }
+    setBusy(true); setCalc(null);
     try {
-      const { data } = await api.post('/atex/estimate', {
-        task_title: taskTitle.trim() || 'Untitled task',
+      const payload = {
+        task_title: taskTitle || 'Untitled Task',
         task_priority: priority,
-        sub_tasks: subTasks,
+        sub_tasks: subTasks.filter(t => t.title.trim()),
         self_satisfaction: selfSat,
-        synchronized_completion_criteria: scc,
-        ip_summary: ipSummary, support_summary: supportSummary,
-        practical_break_minutes: Number(pbMinutes)||0,
-        risks,
-        minimal_buffer_pct: Number(bufferPct)||7.5,
-        start_date: startDate || null,
-        work_hours_per_day: Number(workHours)||8,
-        holidays_per_week: Number(holidaysPerWeek)||1,
-        source_module: sourceModule, source_ref_id: sourceRefId,
-        save_as_template: saveTpl.on, template_name: saveTpl.name,
-      });
-      setCalc(data?.calc);
-    } catch (e: any) { showAlert('Estimate failed', e?.response?.data?.detail || e.message); }
-    finally { setBusy(false); }
+        synchronized_completion_criteria: scc.trim(),
+        ip_summary: ipSummary,
+        support_summary: supportSummary,
+        practical_break_minutes: pbMinutes,
+        minimal_buffer_pct: bufferPct,
+        start_date: startDate || undefined,
+        work_hours_per_day: workHours,
+        holidays_per_week: holidaysPerWeek,
+        risks: risks.filter(r => r.description.trim()),
+        source_module: sourceModule,
+        source_ref_id: sourceRefId,
+        save_as_template: saveTpl.on,
+        template_name: saveTpl.name,
+      };
+      const { data } = await api.post('/atex/estimate', payload);
+      setCalc(data?.calc || null);
+      showAlert('ATEX Estimation Complete', `Total Timeline: ${data?.calc?.total_timeline_hours || 0} hrs (${data?.calc?.total_timeline_minutes || 0} mins)`);
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Calculation failed');
+    } finally { setBusy(false); }
   };
 
-  const loadTemplate = (tpl: any) => {
-    const t = tpl.template || {};
-    setTaskTitle(t.task_title || ''); setPriority(t.task_priority || 'P2');
-    setScc(t.synchronized_completion_criteria || ''); setSelfSat(t.self_satisfaction || '');
-    setIpSummary(t.ip_summary || ''); setSupportSummary(t.support_summary || '');
-    setPbMinutes(t.practical_break_minutes || 0); setBufferPct(t.minimal_buffer_pct || 7.5);
-    setStartDate(t.start_date || ''); setWorkHours(t.work_hours_per_day || 8);
-    setHolidaysPerWeek(t.holidays_per_week || 1);
-    setSubTasks(t.sub_tasks || []); setRisks(t.risks || []);
+  const loadTpl = (t: any) => {
+    const inp = t.template || {};
+    if (inp.task_title) setTaskTitle(inp.task_title);
+    if (inp.task_priority) setPriority(inp.task_priority);
+    if (inp.synchronized_completion_criteria) setScc(inp.synchronized_completion_criteria);
+    if (inp.sub_tasks) setSubTasks(inp.sub_tasks);
+    if (inp.risks) setRisks(inp.risks);
   };
+
+  const renderLockedState = () => (
+    <View style={s.lockedWrap}>
+      <View style={s.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.lockedTitle}>Subscription Required</Text>
+      <Text style={s.lockedSub}>
+        ATEX Effort Estimation is available exclusively for Pro, Premium, and Enterprise plan members. Free, On-Demand, and Basic plan users cannot access ATEX.
+      </Text>
+      <TouchableOpacity style={s.upgradeBtn} onPress={() => promptATEXUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={s.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
@@ -142,144 +184,154 @@ export default function ATEXScreen() {
         <Text style={s.subtitle}>Accurate Task Estimation for eXcellence</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 14 }}>
-        {/* Task */}
-        <View style={s.card}>
-          <Text style={s.lbl}>Task title</Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TextInput style={[s.inp, { flex: 1 }]} value={taskTitle} onChangeText={setTaskTitle} placeholder="e.g. Implement Video Conferencing" placeholderTextColor="#94A3B8" />
-            <TouchableOpacity style={s.aiBtn} onPress={aiSuggest} disabled={aiBusy}>
-              {aiBusy ? <ActivityIndicator size="small" color="#FFF" /> : <><Ionicons name="sparkles" size={14} color="#FFF" /><Text style={s.aiBtnText}> AI</Text></>}
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity style={s.pickBtn} onPress={openPicker}>
-            <Ionicons name="list" size={14} color="#2563EB" />
-            <Text style={s.pickBtnText}>Pick from existing tasks</Text>
-          </TouchableOpacity>
-          <Text style={s.lbl}>Priority</Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {(['P0','P1','P2','P3'] as const).map(p => (
-              <TouchableOpacity key={p} style={[s.priBtn, priority===p && s.priBtnOn]} onPress={() => setPriority(p)}><Text style={[s.priBtnText, priority===p && { color: '#FFF' }]}>{p}</Text></TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={s.card}>
-          <Text style={s.sectionH}>Quality Conditions (QC)</Text>
-          <Text style={s.lbl}>SCC — Synchronized Completion Criteria *</Text>
-          <TextInput style={[s.inp, s.multi]} multiline value={scc} onChangeText={setScc} placeholder="What does objectively 'done' look like to stakeholders?" placeholderTextColor="#94A3B8" />
-          <Text style={s.lbl}>Self-satisfaction criteria</Text>
-          <TextInput style={[s.inp, s.multi]} multiline value={selfSat} onChangeText={setSelfSat} placeholder="What does 'done' look like to YOU?" placeholderTextColor="#94A3B8" />
-        </View>
-
-        <View style={s.card}>
-          <Text style={s.sectionH}>Sub-Tasks (ST) — Σ effort = {Math.round(totalEffort)} min</Text>
-          {subTasks.map((t, i) => (
-            <View key={i} style={s.subBox}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={s.subIdx}>{i + 1}.</Text>
-                <TextInput style={[s.inp, { flex: 1 }]} value={t.title} onChangeText={(v) => updSub(i, { title: v })} placeholder="Sub-task title" placeholderTextColor="#94A3B8" />
-                <TouchableOpacity onPress={() => delSub(i)}><Ionicons name="close-circle" size={20} color="#EF4444" /></TouchableOpacity>
+        {!allowed ? (
+          renderLockedState()
+        ) : (
+          <>
+            {/* Template loader */}
+            {templates.length > 0 && (
+              <View style={s.card}>
+                <Text style={s.lbl}>Load existing template</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {templates.map(t => (<TouchableOpacity key={t.id} style={s.tplChip} onPress={() => loadTpl(t)}><Text style={s.tplChipText}>{t.name}</Text></TouchableOpacity>))}
+                </ScrollView>
               </View>
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.lblSm}>Effort (min)</Text>
-                  <TextInput style={s.inp} keyboardType="numeric" value={String(t.effort_minutes)} onChangeText={(v) => updSub(i, { effort_minutes: Number(v)||0 })} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.lblSm}>IP (knowledge)</Text>
-                  <View style={{ flexDirection: 'row', gap: 4 }}>
-                    {(['high','medium','low'] as const).map(l => (
-                      <TouchableOpacity key={l} style={[s.miniPick, t.ip_level===l && s.miniPickOn]} onPress={() => updSub(i, { ip_level: l })}><Text style={[s.miniPickText, t.ip_level===l && { color: '#FFF' }]}>{l[0].toUpperCase()}</Text></TouchableOpacity>
-                    ))}
+            )}
+
+            {/* Task */}
+            <View style={s.card}>
+              <Text style={s.lbl}>Task title</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TextInput style={[s.inp, { flex: 1 }]} value={taskTitle} onChangeText={setTaskTitle} placeholder="e.g. Implement Video Conferencing" placeholderTextColor="#94A3B8" />
+                <TouchableOpacity style={s.aiBtn} onPress={aiSuggest} disabled={aiBusy}>
+                  {aiBusy ? <ActivityIndicator size="small" color="#FFF" /> : <><Ionicons name="sparkles" size={14} color="#FFF" /><Text style={s.aiBtnText}> AI</Text></>}
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={s.pickBtn} onPress={openPicker}>
+                <Ionicons name="list" size={14} color="#2563EB" />
+                <Text style={s.pickBtnText}>Pick from existing tasks</Text>
+              </TouchableOpacity>
+              <Text style={s.lbl}>Priority</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {(['P0','P1','P2','P3'] as const).map(p => (
+                  <TouchableOpacity key={p} style={[s.priBtn, priority===p && s.priBtnOn]} onPress={() => setPriority(p)}><Text style={[s.priBtnText, priority===p && { color: '#FFF' }]}>{p}</Text></TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={s.card}>
+              <Text style={s.sectionH}>Quality Conditions (QC)</Text>
+              <Text style={s.lbl}>SCC — Synchronized Completion Criteria *</Text>
+              <TextInput style={[s.inp, s.multi]} multiline value={scc} onChangeText={setScc} placeholder="What does objectively 'done' look like to stakeholders?" placeholderTextColor="#94A3B8" />
+              <Text style={s.lbl}>Self-satisfaction criteria</Text>
+              <TextInput style={[s.inp, s.multi]} multiline value={selfSat} onChangeText={setSelfSat} placeholder="What does 'done' look like to YOU?" placeholderTextColor="#94A3B8" />
+            </View>
+
+            <View style={s.card}>
+              <Text style={s.sectionH}>Sub-Tasks (ST) — Σ effort = {Math.round(totalEffort)} min</Text>
+              {subTasks.map((t, i) => (
+                <View key={i} style={s.subBox}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={s.subIdx}>{i + 1}.</Text>
+                    <TextInput style={[s.inp, { flex: 1 }]} value={t.title} onChangeText={(v) => updSub(i, { title: v })} placeholder="Sub-task title" placeholderTextColor="#94A3B8" />
+                    <TouchableOpacity onPress={() => delSub(i)}><Ionicons name="close-circle" size={20} color="#EF4444" /></TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.lblSm}>Effort (min)</Text>
+                      <TextInput style={s.inp} keyboardType="numeric" value={String(t.effort_minutes)} onChangeText={(v) => updSub(i, { effort_minutes: Number(v)||0 })} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.lblSm}>IP (knowledge)</Text>
+                      <View style={{ flexDirection: 'row', gap: 4 }}>
+                        {(['high','medium','low'] as const).map(l => (
+                          <TouchableOpacity key={l} style={[s.miniPick, t.ip_level===l && s.miniPickOn]} onPress={() => updSub(i, { ip_level: l })}><Text style={[s.miniPickText, t.ip_level===l && { color: '#FFF' }]}>{l[0].toUpperCase()}</Text></TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                    {['IH','ID','EH','ED'].map(sn => {
+                      const on = t.support_needs.includes(sn);
+                      return (
+                        <TouchableOpacity key={sn} style={[s.snBadge, on && s.snBadgeOn]} onPress={() => updSub(i, { support_needs: on ? t.support_needs.filter(x => x !== sn) : [...t.support_needs, sn] })}>
+                          <Text style={[s.snBadgeText, on && { color: '#FFF' }]}>{sn}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                {['IH','ID','EH','ED'].map(sn => {
-                  const on = t.support_needs.includes(sn);
-                  return (
-                    <TouchableOpacity key={sn} style={[s.snBadge, on && s.snBadgeOn]} onPress={() => updSub(i, { support_needs: on ? t.support_needs.filter(x => x !== sn) : [...t.support_needs, sn] })}>
-                      <Text style={[s.snBadgeText, on && { color: '#FFF' }]}>{sn}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              ))}
+              <TouchableOpacity style={s.addBtn} onPress={addSub}><Ionicons name="add" size={16} color="#FFF" /><Text style={s.addBtnText}>Add sub-task</Text></TouchableOpacity>
             </View>
-          ))}
-          <TouchableOpacity style={s.addBtn} onPress={addSub}><Ionicons name="add" size={16} color="#FFF" /><Text style={s.addBtnText}>Add sub-task</Text></TouchableOpacity>
-        </View>
 
-        <View style={s.card}>
-          <Text style={s.sectionH}>Risks (RC) — by priority</Text>
-          {risks.map((r, i) => (
-            <View key={i} style={s.subBox}>
-              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                {(['RC1','RC2','RC3'] as const).map(c => (
-                  <TouchableOpacity key={c} style={[s.miniPick, r.category===c && s.miniPickOn]} onPress={() => updRisk(i, { category: c })}><Text style={[s.miniPickText, r.category===c && { color: '#FFF' }]}>{c}</Text></TouchableOpacity>
-                ))}
-                <TouchableOpacity onPress={() => delRisk(i)} style={{ marginLeft: 'auto' }}><Ionicons name="close-circle" size={20} color="#EF4444" /></TouchableOpacity>
-              </View>
-              <TextInput style={[s.inp, { marginTop: 6 }]} placeholder="Risk description" placeholderTextColor="#94A3B8" value={r.description} onChangeText={(v) => updRisk(i, { description: v })} />
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                <View style={{ flex: 1 }}><Text style={s.lblSm}>Mitigation min</Text><TextInput style={s.inp} keyboardType="numeric" value={String(r.mitigation_minutes)} onChangeText={(v) => updRisk(i, { mitigation_minutes: Number(v)||0 })} /></View>
-                <View style={{ flex: 1 }}><Text style={s.lblSm}>Contingency min</Text><TextInput style={s.inp} keyboardType="numeric" value={String(r.contingency_minutes)} onChangeText={(v) => updRisk(i, { contingency_minutes: Number(v)||0 })} /></View>
-              </View>
-            </View>
-          ))}
-          <TouchableOpacity style={s.addBtn} onPress={addRisk}><Ionicons name="add" size={16} color="#FFF" /><Text style={s.addBtnText}>Add risk</Text></TouchableOpacity>
-        </View>
-
-        <View style={s.card}>
-          <Text style={s.sectionH}>Scheduling</Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <View style={{ flex: 1 }}><Text style={s.lbl}>Practical Breaks (min)</Text><TextInput style={s.inp} keyboardType="numeric" value={String(pbMinutes)} onChangeText={(v) => setPbMinutes(Number(v)||0)} /></View>
-            <View style={{ flex: 1 }}><Text style={s.lbl}>Minimal Buffer %</Text><TextInput style={s.inp} keyboardType="numeric" value={String(bufferPct)} onChangeText={(v) => setBufferPct(Number(v)||7.5)} /></View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <View style={{ flex: 1 }}><Text style={s.lbl}>Start date (YYYY-MM-DD)</Text><TextInput style={s.inp} value={startDate} onChangeText={setStartDate} placeholder="2026-06-20" placeholderTextColor="#94A3B8" /></View>
-            <View style={{ flex: 1 }}><Text style={s.lbl}>Work hrs / day</Text><TextInput style={s.inp} keyboardType="numeric" value={String(workHours)} onChangeText={(v) => setWorkHours(Number(v)||8)} /></View>
-            <View style={{ flex: 1 }}><Text style={s.lbl}>Holidays/wk</Text><TextInput style={s.inp} keyboardType="numeric" value={String(holidaysPerWeek)} onChangeText={(v) => setHolidaysPerWeek(Number(v)||1)} /></View>
-          </View>
-        </View>
-
-        <View style={s.card}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={s.sectionH}>Save as Template</Text>
-            <TouchableOpacity style={[s.toggle, saveTpl.on && s.toggleOn]} onPress={() => setSaveTpl(p => ({ ...p, on: !p.on }))}><Text style={[s.toggleText, saveTpl.on && { color: '#FFF' }]}>{saveTpl.on ? 'ON' : 'OFF'}</Text></TouchableOpacity>
-          </View>
-          {saveTpl.on && <TextInput style={[s.inp, { marginTop: 6 }]} placeholder="Template name" placeholderTextColor="#94A3B8" value={saveTpl.name} onChangeText={(v) => setSaveTpl(p => ({ ...p, name: v }))} />}
-          {templates.length > 0 && (<>
-            <Text style={[s.lbl, { marginTop: 8 }]}>Load existing template</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {templates.map(t => (<TouchableOpacity key={t.id} style={s.tplChip} onPress={() => loadTemplate(t)}><Text style={s.tplChipText}>{t.name}</Text></TouchableOpacity>))}
-            </ScrollView>
-          </>)}
-        </View>
-
-        <TouchableOpacity style={s.calcBtn} onPress={estimate} disabled={busy}>
-          {busy ? <ActivityIndicator color="#FFF" /> : (<><Ionicons name="calculator" size={16} color="#FFF" /><Text style={s.calcBtnText}>  Calculate Final Timeline (TT)</Text></>)}
-        </TouchableOpacity>
-
-        {calc && (
-          <View style={s.resultCard}>
-            <Text style={s.resTitle}>Final Timeline</Text>
-            <Text style={s.resBig}>{calc.total_timeline_hours} hours ({calc.total_timeline_minutes} min)</Text>
-            <View style={s.resRow}><Text style={s.resK}>EE Effort</Text><Text style={s.resV}>{Math.round(calc.effort_minutes)} min</Text></View>
-            <View style={s.resRow}><Text style={s.resK}>MB Buffer ({calc.minimal_buffer_pct}%)</Text><Text style={s.resV}>{calc.minimal_buffer_minutes} min</Text></View>
-            <View style={s.resRow}><Text style={s.resK}>PB Practical Breaks</Text><Text style={s.resV}>{calc.practical_break_minutes} min</Text></View>
-            <View style={s.resRow}><Text style={s.resK}>RM Risk Buffer</Text><Text style={s.resV}>{calc.risk_buffer_minutes} min</Text></View>
-            {calc.end_date && (<><View style={s.resRow}><Text style={s.resK}>Working days</Text><Text style={s.resV}>{calc.working_days_needed}</Text></View>
-            <View style={s.resRow}><Text style={s.resK}>End date</Text><Text style={[s.resV, { color: '#10B981' }]}>{calc.end_date}</Text></View></>)}
-            {calc.risks_breakdown?.length > 0 && (<View style={{ marginTop: 8 }}>
-              {calc.risks_breakdown.map((r: any, i: number) => (
-                <View key={i} style={[s.riskLine, !r.applied && { opacity: 0.5 }]}>
-                  <Text style={[s.riskCat, r.applied && { backgroundColor: '#003087', color: '#FFF' }]}>{r.category}</Text>
-                  <Text style={s.riskDesc}>{r.description}</Text>
-                  {!r.applied && <Text style={s.riskSkip}>skipped · {r.reason?.split('—')[0] || 'priority mismatch'}</Text>}
+            <View style={s.card}>
+              <Text style={s.sectionH}>Risks (RC) — by priority</Text>
+              {risks.map((r, i) => (
+                <View key={i} style={s.subBox}>
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                    {(['RC1','RC2','RC3'] as const).map(c => (
+                      <TouchableOpacity key={c} style={[s.miniPick, r.category===c && s.miniPickOn]} onPress={() => updRisk(i, { category: c })}><Text style={[s.miniPickText, r.category===c && { color: '#FFF' }]}>{c}</Text></TouchableOpacity>
+                    ))}
+                    <TouchableOpacity onPress={() => delRisk(i)} style={{ marginLeft: 'auto' }}><Ionicons name="close-circle" size={20} color="#EF4444" /></TouchableOpacity>
+                  </View>
+                  <TextInput style={[s.inp, { marginTop: 6 }]} placeholder="Risk description" placeholderTextColor="#94A3B8" value={r.description} onChangeText={(v) => updRisk(i, { description: v })} />
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                    <View style={{ flex: 1 }}><Text style={s.lblSm}>Mitigation min</Text><TextInput style={s.inp} keyboardType="numeric" value={String(r.mitigation_minutes)} onChangeText={(v) => updRisk(i, { mitigation_minutes: Number(v)||0 })} /></View>
+                    <View style={{ flex: 1 }}><Text style={s.lblSm}>Contingency min</Text><TextInput style={s.inp} keyboardType="numeric" value={String(r.contingency_minutes)} onChangeText={(v) => updRisk(i, { contingency_minutes: Number(v)||0 })} /></View>
+                  </View>
                 </View>
               ))}
-            </View>)}
-          </View>
+              <TouchableOpacity style={s.addBtn} onPress={addRisk}><Ionicons name="add" size={16} color="#FFF" /><Text style={s.addBtnText}>Add risk</Text></TouchableOpacity>
+            </View>
+
+            <View style={s.card}>
+              <Text style={s.sectionH}>Scheduling</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={{ flex: 1 }}><Text style={s.lbl}>Practical Breaks (min)</Text><TextInput style={s.inp} keyboardType="numeric" value={String(pbMinutes)} onChangeText={(v) => setPbMinutes(Number(v)||0)} /></View>
+                <View style={{ flex: 1 }}><Text style={s.lbl}>Minimal Buffer %</Text><TextInput style={s.inp} keyboardType="numeric" value={String(bufferPct)} onChangeText={(v) => setBufferPct(Number(v)||7.5)} /></View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={{ flex: 1 }}><Text style={s.lbl}>Start date (YYYY-MM-DD)</Text><TextInput style={s.inp} value={startDate} onChangeText={setStartDate} placeholder="2026-06-20" placeholderTextColor="#94A3B8" /></View>
+                <View style={{ flex: 1 }}><Text style={s.lbl}>Work hrs / day</Text><TextInput style={s.inp} keyboardType="numeric" value={String(workHours)} onChangeText={(v) => setWorkHours(Number(v)||8)} /></View>
+                <View style={{ flex: 1 }}><Text style={s.lbl}>Holidays/wk</Text><TextInput style={s.inp} keyboardType="numeric" value={String(holidaysPerWeek)} onChangeText={(v) => setHolidaysPerWeek(Number(v)||1)} /></View>
+              </View>
+            </View>
+
+            <View style={s.card}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={s.sectionH}>Save as Template</Text>
+                <TouchableOpacity style={[s.toggle, saveTpl.on && s.toggleOn]} onPress={() => setSaveTpl(p => ({ ...p, on: !p.on }))}><Text style={[s.toggleText, saveTpl.on && { color: '#FFF' }]}>{saveTpl.on ? 'ON' : 'OFF'}</Text></TouchableOpacity>
+              </View>
+              {saveTpl.on && <TextInput style={[s.inp, { marginTop: 6 }]} placeholder="Template name" placeholderTextColor="#94A3B8" value={saveTpl.name} onChangeText={(v) => setSaveTpl(p => ({ ...p, name: v }))} />}
+            </View>
+
+            <TouchableOpacity style={s.calcBtn} onPress={estimate} disabled={busy}>
+              {busy ? <ActivityIndicator color="#FFF" /> : (<><Ionicons name="calculator" size={16} color="#FFF" /><Text style={s.calcBtnText}>  Calculate Final Timeline (TT)</Text></>)}
+            </TouchableOpacity>
+
+            {calc && (
+              <View style={s.resultCard}>
+                <Text style={s.resTitle}>Final Timeline</Text>
+                <Text style={s.resBig}>{calc.total_timeline_hours} hours ({calc.total_timeline_minutes} min)</Text>
+                <View style={s.resRow}><Text style={s.resK}>EE Effort</Text><Text style={s.resV}>{Math.round(calc.effort_minutes)} min</Text></View>
+                <View style={s.resRow}><Text style={s.resK}>MB Buffer ({calc.minimal_buffer_pct}%)</Text><Text style={s.resV}>{calc.minimal_buffer_minutes} min</Text></View>
+                <View style={s.resRow}><Text style={s.resK}>PB Practical Breaks</Text><Text style={s.resV}>{calc.practical_break_minutes} min</Text></View>
+                <View style={s.resRow}><Text style={s.resK}>RM Risk Buffer</Text><Text style={s.resV}>{calc.risk_buffer_minutes} min</Text></View>
+                {calc.end_date && (<><View style={s.resRow}><Text style={s.resK}>Working days</Text><Text style={s.resV}>{calc.working_days_needed}</Text></View>
+                <View style={s.resRow}><Text style={s.resK}>End date</Text><Text style={[s.resV, { color: '#10B981' }]}>{calc.end_date}</Text></View></>)}
+                {calc.risks_breakdown?.length > 0 && (<View style={{ marginTop: 8 }}>
+                  {calc.risks_breakdown.map((r: any, i: number) => (
+                    <View key={i} style={[s.riskLine, !r.applied && { opacity: 0.5 }]}>
+                      <Text style={[s.riskCat, r.applied && { backgroundColor: '#003087', color: '#FFF' }]}>{r.category}</Text>
+                      <Text style={s.riskDesc}>{r.description}</Text>
+                      {!r.applied && <Text style={s.riskSkip}>skipped · {r.reason?.split('—')[0] || 'priority mismatch'}</Text>}
+                    </View>
+                  ))}
+                </View>)}
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -365,4 +417,10 @@ const s = StyleSheet.create({
   riskCat: { fontSize: 10, fontWeight: '800', color: '#0F172A', backgroundColor: '#E2E8F0', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 },
   riskDesc: { flex: 1, fontSize: 11, color: '#334155' },
   riskSkip: { fontSize: 10, color: '#94A3B8' },
+  lockedWrap: { alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#FFF', borderRadius: 16, marginTop: 24, borderWidth: 1, borderColor: '#E2E8F0' },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  lockedSub: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#003087', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 },
+  upgradeBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });

@@ -25,6 +25,7 @@ import { formatAbsolute } from '../../src/utils/datetime';
 import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
 import ListFilterBar, { DateRangeKey, withinDateRange } from '../../src/components/ListFilterBar';
 import LoadErrorState from '../../src/components/LoadErrorState';
+import PaywallGate from '../../src/components/PaywallGate';
 
 // Stable references so the pinned ListFilterBar never re-mounts on parent renders.
 const NOOP = () => {};
@@ -615,19 +616,21 @@ export default function SolutionBoxScreen() {
               <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.newMenuItem, { borderColor: TYPE_META.decider.color + '40' }]}
-              onPress={() => { setShowNewMenu(false); router.push('/tools/new-decision?module=dezider' as any); }}
-            >
-              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.decider.bg }]}>
-                <Ionicons name={TYPE_META.decider.icon as any} size={20} color={TYPE_META.decider.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.newMenuItemTitle}>Decider</Text>
-                <Text style={styles.newMenuItemDesc}>Quick option-based decision with weighted factors</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
+            <PaywallGate module="dezider" onAllowed={() => setShowNewMenu(false)}>
+              <TouchableOpacity
+                style={[styles.newMenuItem, { borderColor: TYPE_META.decider.color + '40' }]}
+                onPress={() => { setShowNewMenu(false); router.push('/tools/new-decision?module=dezider' as any); }}
+              >
+                <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.decider.bg }]}>
+                  <Ionicons name={TYPE_META.decider.icon as any} size={20} color={TYPE_META.decider.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.newMenuItemTitle}>Decider</Text>
+                  <Text style={styles.newMenuItemDesc}>Quick option-based decision with weighted factors</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </PaywallGate>
 
             <TouchableOpacity
               style={[styles.newMenuItem, { borderColor: TYPE_META.pros_cons.color + '40' }]}

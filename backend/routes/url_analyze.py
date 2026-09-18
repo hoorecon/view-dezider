@@ -369,6 +369,15 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
 
 async def _analyze_url_inner(req: AnalyzeRequest, request: Request, user: dict,
                              tel: Dict[str, Any]) -> Dict[str, Any]:
+    # ── ACM Feature Check ──
+    from core.acm_engine import check_feature_access
+    acm_check = await check_feature_access(user, "my_dezider_sl_import")
+    if user.get("role") not in ("super_admin", "admin", "co_admin") and not acm_check.get("allowed", True):
+        lvl = acm_check.get("access_level")
+        status_code = 402 if lvl == "locked" else 403
+        msg = acm_check.get("upgrade_message") or f"Importing factors & options is {lvl} under Access Control Matrix rules."
+        raise HTTPException(status_code, msg)
+
     # ── Consent validation (legal gate) ──
     if not req.accepted:
         raise HTTPException(400, "You must accept the data-access disclaimer to continue.")

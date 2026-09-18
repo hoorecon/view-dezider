@@ -1,0 +1,18 @@
+
+
+
+
+L1 - MY DECIDER, PROS & CONS , SOULTION FINDER - EITHER ONE 
+L2 - BUNDLE 
+L3 - ASSISTANT DESCION MAKING 
+L4 - EXPERT REVIEW 
+
+1. Book Expert  title change to "Book ASSISTANT" in the MODULE FREE PAGE 
+
+2. hidden should be all MODULEs for all user types
+
+3. all alert messages should be single PAGE
+
+4. The Solution Finder ensure for all anf where will craete the flow (Not for this page and every page should be ensure)
+
+5. mutli lauagage ensure this project and voice and text (Just ensure flow)

@@ -22,9 +22,18 @@ import { FactorTreeSections } from '../FactorGroups';
 import type { Factor } from '../../types/decision';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import LoaderMusicChip from '../LoaderMusicChip';
-import { useAiTouchpoint } from '../../utils/aiEstimates';
+import { useIsSubscriptionUserOrAdmin, useACM } from '../../hooks/useACM';
+import { useAuthStore } from '../../store/authStore';
+import {
+  isDecisionTemplatesAccessAllowed,
+  isDeciderAppsAccessAllowed,
+  promptXLSUpgrade,
+  promptGsheetUpgrade,
+} from '../../utils/cttAccess';
 
 export default function Step7() {
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
   const {
     decision, updateAssessment, getAssessmentValue, getAssessmentMode,
     getUnitValue, getActualValue, getAssessmentKey,
@@ -35,7 +44,7 @@ export default function Step7() {
     setCurrentStep, fetchDecision,
     bulkAssessAllRemaining,
   } = useDecision();
-  const aiAssessAllEnabled = useAiTouchpoint('tp_assess_all');
+  const isSubscriptionOrAdmin = useIsSubscriptionUserOrAdmin();
 
   // Import ACTUAL VALUES from a URL (consent-gated), then auto AI-assess.
   const [actualsDialogOpen, setActualsDialogOpen] = useState(false);
@@ -88,6 +97,10 @@ export default function Step7() {
   const router = useRouter();
   const refreshAiWallet = useAiWalletStore((s) => s.refresh);
   const handleDownloadTemplate = async () => {
+    if (!isDecisionTemplatesAccessAllowed(user, acm?.access)) {
+      promptXLSUpgrade(router);
+      return;
+    }
     setXlsBusy(true);
     try {
       await downloadAssessmentTemplate(`/decisions/${decision.id}/assessment-template`, 'assessment-template.xlsx');
@@ -98,6 +111,10 @@ export default function Step7() {
     }
   };
   const handleImportTemplate = async () => {
+    if (!isDecisionTemplatesAccessAllowed(user, acm?.access)) {
+      promptXLSUpgrade(router);
+      return;
+    }
     setXlsBusy(true);
     try {
       const res = await importAssessmentTemplate(`/decisions/${decision.id}/assessment-import`);
@@ -112,6 +129,10 @@ export default function Step7() {
     }
   };
   const handleCreateGsheet = async () => {
+    if (!isDeciderAppsAccessAllowed(user, acm?.access)) {
+      promptGsheetUpgrade(router);
+      return;
+    }
     setXlsBusy(true);
     try {
       const res = await createAssessmentGsheet(`/decisions/${decision.id}/assessment-gsheet`);
@@ -124,6 +145,10 @@ export default function Step7() {
     }
   };
   const handleImportGsheet = async () => {
+    if (!isDeciderAppsAccessAllowed(user, acm?.access)) {
+      promptGsheetUpgrade(router);
+      return;
+    }
     setXlsBusy(true);
     try {
       const res = await importAssessmentGsheet(`/decisions/${decision.id}/assessment-gsheet/import`);
@@ -615,7 +640,17 @@ export default function Step7() {
       remaining = cells.filter(c => !doneSet.has(`${c.optionId}|${c.factorId}`));
       setBulkProgress({ done, total: cells.length });
     } catch (e: any) {
-      if (e?.response?.status === 402) ranOut = true; else aiDown = true;
+      const detail = e?.response?.data?.detail;
+      if (e?.response?.status === 402) {
+        if (typeof detail === 'string' && (detail.includes('subscription plan') || detail.includes('Upgrade'))) {
+          showAlert('Plan Upgrade Required', detail);
+          setBulkAssessing(false);
+          return;
+        }
+        ranOut = true;
+      } else {
+        aiDown = true;
+      }
       remaining = cells;
     }
     setBulkAssessing(false);
@@ -958,7 +993,18 @@ export default function Step7() {
           {xlsBusy ? <ActivityIndicator size="small" color="#0F9D58" /> : <Ionicons name="cloud-download-outline" size={15} color="#0F9D58" />}
           <Text style={[mdXls.btnText, { color: '#0F9D58' }]}>Import Sheet</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[mdXls.btn, { borderColor: '#C7B3FF', backgroundColor: '#F5F3FF' }]} onPress={() => setActualsDialogOpen(true)} disabled={actualsBusy} testID="md-import-actuals-url">
+        <TouchableOpacity
+          style={[mdXls.btn, { borderColor: '#C7B3FF', backgroundColor: '#F5F3FF' }]}
+          onPress={() => {
+            if (!isDeciderAppsAccessAllowed(user, acm?.access)) {
+              promptGsheetUpgrade(router);
+              return;
+            }
+            setActualsDialogOpen(true);
+          }}
+          disabled={actualsBusy}
+          testID="md-import-actuals-url"
+        >
           {actualsBusy ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="link" size={15} color="#7C3AED" />}
           <Text style={[mdXls.btnText, { color: '#7C3AED' }]}>Import from URL</Text>
         </TouchableOpacity>
@@ -1031,7 +1077,7 @@ export default function Step7() {
         </View>
 
         {/* One-tap metered AI assessment of every empty option×factor cell. */}
-        {aiAssessAllEnabled && (<>
+        {isSubscriptionOrAdmin && (<>
         <TouchableOpacity
           style={[styles.aiAssessAllBtn, bulkAssessing && styles.aiAssessAllBtnBusy]}
           onPress={handleAIAssessAll}

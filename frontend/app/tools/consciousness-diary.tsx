@@ -12,6 +12,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
+import { useACM } from '../../src/hooks/useACM';
+import { isConsciousnessAccessAllowed, promptConsciousnessUpgrade } from '../../src/utils/cttAccess';
 
 const AWARENESS_LEVELS = [
   { level: 1, name: 'Thought Level', icon: 'bulb', color: '#818CF8', desc: 'Awareness of thoughts' },
@@ -24,6 +27,10 @@ const AWARENESS_LEVELS = [
 
 export default function ConsciousnessDiaryScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const acm = useACM();
+  const allowed = isConsciousnessAccessAllowed(user, acm?.access);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,6 +61,10 @@ export default function ConsciousnessDiaryScreen() {
   });
 
   const fetchAll = async () => {
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
     try {
       const [entryRes, saRes, wellRes, histRes] = await Promise.all([
         api.get(`/consciousness-diary/entries?date=${todayDate}`),
@@ -99,10 +110,14 @@ export default function ConsciousnessDiaryScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { fetchAll(); }, []));
+  useFocusEffect(useCallback(() => { fetchAll(); }, [allowed]));
   const onRefresh = async () => { setRefreshing(true); await fetchAll(); setRefreshing(false); };
 
   const saveDiaryEntry = async () => {
+    if (!allowed) {
+      promptConsciousnessUpgrade(router);
+      return;
+    }
     setSaving(true);
     try {
       await api.post('/consciousness-diary/entries', {
@@ -119,6 +134,10 @@ export default function ConsciousnessDiaryScreen() {
   };
 
   const saveSelfAwareness = async () => {
+    if (!allowed) {
+      promptConsciousnessUpgrade(router);
+      return;
+    }
     setSaving(true);
     try {
       const levels: Record<string, any> = {};
@@ -143,6 +162,22 @@ export default function ConsciousnessDiaryScreen() {
     }));
   };
 
+  const renderLockedState = () => (
+    <View style={s.lockedWrap}>
+      <View style={s.lockedIconWrap}>
+        <Ionicons name="lock-closed" size={48} color="#EF4444" />
+      </View>
+      <Text style={s.lockedTitle}>Subscription Required</Text>
+      <Text style={s.lockedSub}>
+        Consciousness Diary is available exclusively for Premium and Enterprise plan members. Free, On-Demand, Basic, and Pro plan users cannot access Consciousness Diary.
+      </Text>
+      <TouchableOpacity style={s.upgradeBtn} onPress={() => promptConsciousnessUpgrade(router)}>
+        <Ionicons name="diamond" size={18} color="#FFF" />
+        <Text style={s.upgradeBtnText}>Upgrade Plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={s.container} edges={['top']}>
@@ -163,59 +198,65 @@ export default function ConsciousnessDiaryScreen() {
         </View>
       </LinearGradient>
 
-      {/* Tab Switcher */}
-      <View style={s.tabRow}>
-        {(['diary', 'awareness', 'wellness'] as const).map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[s.tab, activeTab === tab && s.tabActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Ionicons
-              name={tab === 'diary' ? 'journal' : tab === 'awareness' ? 'eye' : 'heart'}
-              size={16}
-              color={activeTab === tab ? '#FFF' : COLORS.textMuted}
-            />
-            <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>
-              {tab === 'diary' ? 'Daily Diary' : tab === 'awareness' ? 'Self Awareness' : 'Wellness'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {!allowed ? (
+        renderLockedState()
+      ) : (
+        <>
+          {/* Tab Switcher */}
+          <View style={s.tabRow}>
+            {(['diary', 'awareness', 'wellness'] as const).map(tab => (
+              <TouchableOpacity
+                key={tab}
+                style={[s.tab, activeTab === tab && s.tabActive]}
+                onPress={() => setActiveTab(tab)}
+              >
+                <Ionicons
+                  name={tab === 'diary' ? 'journal' : tab === 'awareness' ? 'eye' : 'heart'}
+                  size={16}
+                  color={activeTab === tab ? '#FFF' : COLORS.textMuted}
+                />
+                <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>
+                  {tab === 'diary' ? 'Daily Diary' : tab === 'awareness' ? 'Self Awareness' : 'Wellness'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          style={s.scroll}
-          contentContainerStyle={s.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {activeTab === 'diary' && (
-            <DiaryTab
-              form={form}
-              setForm={setForm}
-              updateNum={updateNum}
-              dailyContext={dailyContext}
-              todayDate={todayDate}
-              saving={saving}
-              onSave={saveDiaryEntry}
-              history={history}
-              hasEntry={!!entry}
-            />
-          )}
-          {activeTab === 'awareness' && (
-            <AwarenessTab
-              selfAwareness={selfAwareness}
-              saRatings={saRatings}
-              setSaRatings={setSaRatings}
-              saving={saving}
-              onSave={saveSelfAwareness}
-            />
-          )}
-          {activeTab === 'wellness' && (
-            <WellnessTab wellness={wellness} history={history} />
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <ScrollView
+              style={s.scroll}
+              contentContainerStyle={s.scrollContent}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
+              {activeTab === 'diary' && (
+                <DiaryTab
+                  form={form}
+                  setForm={setForm}
+                  updateNum={updateNum}
+                  dailyContext={dailyContext}
+                  todayDate={todayDate}
+                  saving={saving}
+                  onSave={saveDiaryEntry}
+                  history={history}
+                  hasEntry={!!entry}
+                />
+              )}
+              {activeTab === 'awareness' && (
+                <AwarenessTab
+                  selfAwareness={selfAwareness}
+                  saRatings={saRatings}
+                  setSaRatings={setSaRatings}
+                  saving={saving}
+                  onSave={saveSelfAwareness}
+                />
+              )}
+              {activeTab === 'wellness' && (
+                <WellnessTab wellness={wellness} history={history} />
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -762,4 +803,12 @@ const s = StyleSheet.create({
   impactCard: { flex: 1, backgroundColor: COLORS.white, borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   impactLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary },
   impactVal: { fontSize: 22, fontWeight: '800', color: '#EF4444', marginTop: 4 },
+
+  // Locked state
+  lockedWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  lockedIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  lockedTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
+  lockedSub: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 24, maxWidth: 320 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#4F46E5', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  upgradeBtnText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
 });
