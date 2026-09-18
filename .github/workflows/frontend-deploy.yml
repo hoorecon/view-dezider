@@ -40,7 +40,7 @@ jobs:
       - name: Build Expo Web Bundle
         working-directory: ./frontend
         env:
-          EXPO_PUBLIC_BACKEND_URL: https://dev-api.jelcos.ai/
+          EXPO_PUBLIC_BACKEND_URL: https://dev-api.jelcos.ai
           EXPO_PUBLIC_POSTHOG_HOST: https://eu.i.posthog.com
           EXPO_PUBLIC_POSTHOG_KEY: phc_ziRrdHFoqZfsvz55irm3d7PqEZpSDYcP7MGgrkXLNVu8
         run: npx expo export --platform web
