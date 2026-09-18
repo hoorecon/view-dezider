@@ -1,0 +1,53 @@
+name: Deploy Jelcos Infrastructure (CloudFormation)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment Environment (dev, staging, prod)'
+        required: true
+        default: 'dev'
+  push:
+    branches:
+      - jelcos-dev
+    paths:
+      - 'backend/deployment/infra.yaml'
+      - '.github/workflows/infra-deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-infra:
+    name: Deploy CloudFormation Base Infra Stack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Validate CloudFormation Infra Template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://backend/deployment/infra.yaml
+
+      - name: Deploy Infrastructure Stack
+        run: |
+          ENV_NAME="${{ inputs.environment || 'dev' }}"
+          STACK_NAME="jelcos-infra"
+          
+          echo "Deploying infrastructure stack: ${STACK_NAME} (Env: ${ENV_NAME})"
+          
+          aws cloudformation deploy \
+            --stack-name "${STACK_NAME}" \
+            --template-file backend/deployment/infra.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides Environment="${ENV_NAME}" \
+            --no-fail-on-empty-changeset

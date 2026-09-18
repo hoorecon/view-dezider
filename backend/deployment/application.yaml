@@ -1,0 +1,250 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Jelcos Backend Application Stack - ECS Task Definition & Fargate Service.
+  References infrastructure exported from infra.yaml stack.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: jelcos
+    Description: Name of the project
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment stage
+
+  InfraStackName:
+    Type: String
+    Default: jelcos-infra
+    Description: Name of the infra CloudFormation stack providing base infrastructure exports
+
+  ImageUri:
+    Type: String
+    Default: 468513581087.dkr.ecr.ap-south-1.amazonaws.com/jelcos-backend:latest
+    Description: Full ECR Image URI with tag (e.g., 468513581087.dkr.ecr.ap-south-1.amazonaws.com/jelcos-backend:<git-commit-sha>)
+
+  ContainerName:
+    Type: String
+    Default: jelcos-backend
+    Description: Name of the application container
+
+  ContainerPort:
+    Type: Number
+    Default: 8001
+    Description: Application port inside the container
+
+  CPU:
+    Type: String
+    Default: '512'
+    AllowedValues: ['256', '512', '1024', '2048', '4096']
+    Description: Fargate CPU units (256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU)
+
+  Memory:
+    Type: String
+    Default: '1024'
+    AllowedValues: ['512', '1024', '2048', '4096', '8192']
+    Description: Fargate Memory in MB
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: Number of ECS task instances to run
+
+  HealthCheckGracePeriod:
+    Type: Number
+    Default: 60
+    Description: Grace period in seconds before ALB health checks fail during startup
+
+  SecretArn:
+    Type: String
+    Default: arn:aws:secretsmanager:ap-south-1:468513581087:secret:jelcos/dev/env-4xm1zD
+    Description: Existing Secrets Manager Secret ARN containing runtime environment variables
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-080420f5a5791f3f5
+    Description: Existing Public Subnet 1 ID for ECS Task network configuration
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0650e8d137db8b04d
+    Description: Existing Public Subnet 2 ID for ECS Task network configuration
+
+Resources:
+  # ------------------------------------------------------------
+  # 1. ECS Task Definition
+  # ------------------------------------------------------------
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-${Environment}-task"
+      Cpu: !Ref CPU
+      Memory: !Ref Memory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub "${InfraStackName}-TaskExecutionRoleArn"
+      TaskRoleArn:
+        Fn::ImportValue: !Sub "${InfraStackName}-TaskRoleArn"
+      ContainerDefinitions:
+        - Name: !Ref ContainerName
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group:
+                Fn::ImportValue: !Sub "${InfraStackName}-CloudWatchLogGroupName"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+          # Secrets Manager ECS integration: maps JSON keys inside the secret to container environment variables
+          Secrets:
+            # Database & Core Configuration
+            - Name: MONGO_URL
+              ValueFrom: !Sub "${SecretArn}:MONGO_URL::"
+            - Name: DB_NAME
+              ValueFrom: !Sub "${SecretArn}:DB_NAME::"
+            - Name: DEZIDER_ENV
+              ValueFrom: !Sub "${SecretArn}:DEZIDER_ENV::"
+            - Name: DEZIDER_VERSION
+              ValueFrom: !Sub "${SecretArn}:DEZIDER_VERSION::"
+            - Name: SECURITY_HEADERS_ENABLED
+              ValueFrom: !Sub "${SecretArn}:SECURITY_HEADERS_ENABLED::"
+            - Name: HSTS_ENABLED
+              ValueFrom: !Sub "${SecretArn}:HSTS_ENABLED::"
+            - Name: MAX_BODY_BYTES
+              ValueFrom: !Sub "${SecretArn}:MAX_BODY_BYTES::"
+            - Name: RATE_LIMIT_DEFAULT
+              ValueFrom: !Sub "${SecretArn}:RATE_LIMIT_DEFAULT::"
+            - Name: RATE_LIMIT_AUTH
+              ValueFrom: !Sub "${SecretArn}:RATE_LIMIT_AUTH::"
+            - Name: RATE_LIMIT_AI
+              ValueFrom: !Sub "${SecretArn}:RATE_LIMIT_AI::"
+            - Name: ALLOWED_ORIGINS
+              ValueFrom: !Sub "${SecretArn}:ALLOWED_ORIGINS::"
+            - Name: JWT_SECRET
+              ValueFrom: !Sub "${SecretArn}:JWT_SECRET::"
+
+            # Communication & Email / WhatsApp
+            - Name: RESEND_API_KEY
+              ValueFrom: !Sub "${SecretArn}:RESEND_API_KEY::"
+            - Name: RESEND_FROM_EMAIL
+              ValueFrom: !Sub "${SecretArn}:RESEND_FROM_EMAIL::"
+            - Name: ULTRAMSG_INSTANCE_ID
+              ValueFrom: !Sub "${SecretArn}:ULTRAMSG_INSTANCE_ID::"
+            - Name: ULTRAMSG_API_TOKEN
+              ValueFrom: !Sub "${SecretArn}:ULTRAMSG_API_TOKEN::"
+            - Name: PUBLIC_APP_URL
+              ValueFrom: !Sub "${SecretArn}:PUBLIC_APP_URL::"
+
+            # Payment Gateway (Razorpay)
+            - Name: RAZORPAY_KEY_ID
+              ValueFrom: !Sub "${SecretArn}:RAZORPAY_KEY_ID::"
+            - Name: RAZORPAY_KEY_SECRET
+              ValueFrom: !Sub "${SecretArn}:RAZORPAY_KEY_SECRET::"
+            - Name: RAZORPAY_WEBHOOK_SECRET
+              ValueFrom: !Sub "${SecretArn}:RAZORPAY_WEBHOOK_SECRET::"
+
+            # Integrations & Auth (Google Sheets, Google OAuth, Zoho)
+            - Name: GOOGLE_SHEETS_CLIENT_ID
+              ValueFrom: !Sub "${SecretArn}:GOOGLE_SHEETS_CLIENT_ID::"
+            - Name: GOOGLE_SHEETS_CLIENT_SECRET
+              ValueFrom: !Sub "${SecretArn}:GOOGLE_SHEETS_CLIENT_SECRET::"
+            - Name: GOOGLE_OAUTH_CLIENT_ID
+              ValueFrom: !Sub "${SecretArn}:GOOGLE_OAUTH_CLIENT_ID::"
+            - Name: GOOGLE_OAUTH_CLIENT_SECRET
+              ValueFrom: !Sub "${SecretArn}:GOOGLE_OAUTH_CLIENT_SECRET::"
+            - Name: ZOHO_ACCOUNTS_URL
+              ValueFrom: !Sub "${SecretArn}:ZOHO_ACCOUNTS_URL::"
+            - Name: ZOHO_API_URL
+              ValueFrom: !Sub "${SecretArn}:ZOHO_API_URL::"
+            - Name: ZOHO_CLIENT_ID
+              ValueFrom: !Sub "${SecretArn}:ZOHO_CLIENT_ID::"
+            - Name: ZOHO_CLIENT_SECRET
+              ValueFrom: !Sub "${SecretArn}:ZOHO_CLIENT_SECRET::"
+            - Name: ZOHO_REFRESH_TOKEN
+              ValueFrom: !Sub "${SecretArn}:ZOHO_REFRESH_TOKEN::"
+            - Name: ZOHO_ORGANIZATION_ID
+              ValueFrom: !Sub "${SecretArn}:ZOHO_ORGANIZATION_ID::"
+
+            # AI Providers (Emergent, Gemini, Groq, OpenAI)
+            - Name: EMERGENT_LLM_KEY
+              ValueFrom: !Sub "${SecretArn}:EMERGENT_LLM_KEY::"
+            - Name: GEMINI_API_KEY
+              ValueFrom: !Sub "${SecretArn}:GEMINI_API_KEY::"
+            - Name: GROQ_API_KEY
+              ValueFrom: !Sub "${SecretArn}:GROQ_API_KEY::"
+            - Name: OPENAI_API_KEY
+              ValueFrom: !Sub "${SecretArn}:OPENAI_API_KEY::"
+
+            # Analytics & Webhooks
+            - Name: POSTHOG_API_KEY
+              ValueFrom: !Sub "${SecretArn}:POSTHOG_API_KEY::"
+            - Name: POSTHOG_HOST
+              ValueFrom: !Sub "${SecretArn}:POSTHOG_HOST::"
+            - Name: REFERRAL_WEBHOOK_SECRET
+              ValueFrom: !Sub "${SecretArn}:REFERRAL_WEBHOOK_SECRET::"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ------------------------------------------------------------
+  # 2. ECS Service
+  # ------------------------------------------------------------
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub "${ProjectName}-${Environment}-service"
+      Cluster:
+        Fn::ImportValue: !Sub "${InfraStackName}-ECSClusterArn"
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      HealthCheckGracePeriodSeconds: !Ref HealthCheckGracePeriod
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - Fn::ImportValue: !Sub "${InfraStackName}-ECSSecurityGroupId"
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - TargetGroupArn:
+            Fn::ImportValue: !Sub "${InfraStackName}-TargetGroupArn"
+          ContainerName: !Ref ContainerName
+          ContainerPort: !Ref ContainerPort
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+# ------------------------------------------------------------
+# Outputs
+# ------------------------------------------------------------
+Outputs:
+  ECSServiceName:
+    Description: Name of the deployed ECS Service
+    Value: !GetAtt ECSService.Name
+
+  TaskDefinitionArn:
+    Description: ARN of the active ECS Task Definition revision
+    Value: !Ref TaskDefinition

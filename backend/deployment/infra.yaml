@@ -1,0 +1,408 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Jelcos Backend Infrastructure Stack - AWS ECS Fargate, ALB, ECR, Security Groups, ACM Certificate, IAM Roles, and CloudWatch Log Group.
+  Region: ap-south-1 | Account: 468513581087 | Project: Jelcos
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: jelcos
+    Description: Name of the project (used for resource naming)
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment stage
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0a47968d6873ffe5b
+    Description: Existing VPC ID
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-080420f5a5791f3f5
+    Description: Existing Public Subnet 1 ID
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0650e8d137db8b04d
+    Description: Existing Public Subnet 2 ID
+
+  SecretArn:
+    Type: String
+    Default: arn:aws:secretsmanager:ap-south-1:468513581087:secret:jelcos/dev/env-4xm1zD
+    Description: Existing Secrets Manager Secret ARN for environment configuration
+
+  DomainName:
+    Type: String
+    Default: jelcos.ai
+    Description: Primary domain name for ACM certificate
+
+  ContainerPort:
+    Type: Number
+    Default: 8001
+    Description: Port on which the Jelcos backend application listens
+
+Resources:
+  # ------------------------------------------------------------
+  # 1. ECR Repository
+  # ------------------------------------------------------------
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ProjectName}-backend"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 30 tagged images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["v", "dev", "sha-"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 30
+                },
+                "action": {
+                  "type": "expire"
+                }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Expire untagged images older than 14 days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 14
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ------------------------------------------------------------
+  # 2. ECS Cluster
+  # ------------------------------------------------------------
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ProjectName}-${Environment}-cluster"
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ------------------------------------------------------------
+  # 3. Security Groups
+  # ------------------------------------------------------------
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Jelcos Application Load Balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP traffic from everywhere (redirected to HTTPS)
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS traffic from everywhere
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-alb-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Jelcos ECS Fargate backend tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: Allow inbound traffic on port 8001 exclusively from ALB Security Group
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-ecs-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ------------------------------------------------------------
+  # 4. Application Load Balancer & Target Group
+  # ------------------------------------------------------------
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-alb"
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-tg"
+      TargetType: ip
+      Protocol: HTTP
+      Port: !Ref ContainerPort
+      VpcId: !Ref VpcId
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthCheckPath: /api/health/live
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckTimeoutSeconds: 5
+      HealthCheckIntervalSeconds: 30
+      Matcher:
+        HttpCode: "200"
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "30"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ------------------------------------------------------------
+  # 5. ACM Certificate
+  # ------------------------------------------------------------
+  ACMCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub "*.${DomainName}"
+      ValidationMethod: DNS
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ------------------------------------------------------------
+  # 6. ALB Listeners
+  # ------------------------------------------------------------
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref ACMCertificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+  # ------------------------------------------------------------
+  # 7. IAM Roles for ECS
+  # ------------------------------------------------------------
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-TaskExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SecretArn
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-TaskRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ------------------------------------------------------------
+  # 8. CloudWatch Log Group
+  # ------------------------------------------------------------
+  CloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-${Environment}"
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+# ------------------------------------------------------------
+# Outputs (Cross-Stack Exports)
+# ------------------------------------------------------------
+Outputs:
+  ECRRepositoryUri:
+    Description: URI of the ECR repository for Jelcos backend Docker images
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRRepositoryUri"
+
+  ECRRepositoryName:
+    Description: Name of the ECR repository
+    Value: !Ref ECRRepository
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRRepositoryName"
+
+  ECSClusterName:
+    Description: Name of the ECS cluster
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub "${AWS::StackName}-ECSClusterName"
+
+  ECSClusterArn:
+    Description: ARN of the ECS cluster
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ECSClusterArn"
+
+  ALBArn:
+    Description: ARN of the Application Load Balancer
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub "${AWS::StackName}-ALBArn"
+
+  ALBDnsName:
+    Description: DNS Name of the Application Load Balancer (use for Cloudflare CNAME record)
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-ALBDnsName"
+
+  ALBSecurityGroupId:
+    Description: Security Group ID for the ALB
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-ALBSecurityGroupId"
+
+  ECSSecurityGroupId:
+    Description: Security Group ID for ECS Tasks
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-ECSSecurityGroupId"
+
+  TargetGroupArn:
+    Description: ARN of the ALB Target Group
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-TargetGroupArn"
+
+  HTTPListenerArn:
+    Description: ARN of the HTTP Listener (Port 80)
+    Value: !Ref HTTPListener
+    Export:
+      Name: !Sub "${AWS::StackName}-HTTPListenerArn"
+
+  HTTPSListenerArn:
+    Description: ARN of the HTTPS Listener (Port 443)
+    Value: !Ref HTTPSListener
+    Export:
+      Name: !Sub "${AWS::StackName}-HTTPSListenerArn"
+
+  ACMCertificateArn:
+    Description: ARN of the ACM SSL/TLS Certificate
+    Value: !Ref ACMCertificate
+    Export:
+      Name: !Sub "${AWS::StackName}-ACMCertificateArn"
+
+  TaskExecutionRoleArn:
+    Description: ARN of the ECS Task Execution IAM Role
+    Value: !GetAtt TaskExecutionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-TaskExecutionRoleArn"
+
+  TaskRoleArn:
+    Description: ARN of the ECS Task IAM Role
+    Value: !GetAtt TaskRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-TaskRoleArn"
+
+  CloudWatchLogGroupName:
+    Description: Name of the CloudWatch Log Group for container logs
+    Value: !Ref CloudWatchLogGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-CloudWatchLogGroupName"

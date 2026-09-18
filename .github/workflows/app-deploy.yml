@@ -1,0 +1,104 @@
+name: Build & Deploy Jelcos Backend App (ECS Fargate)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment Environment'
+        required: true
+        default: 'dev'
+  push:
+    branches:
+      - jelcos-dev
+    paths:
+      - 'backend/**'
+      - '.github/workflows/app-deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build Docker Image & Deploy ECS Service
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set Variables
+        id: vars
+        run: |
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          ECR_REPOSITORY="jelcos-backend"
+          IMAGE_TAG="${{ github.sha }}"
+          
+          echo "registry=${ECR_REGISTRY}" >> $GITHUB_OUTPUT
+          echo "repository=${ECR_REPOSITORY}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "full_image=${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Build, Tag, and Push Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.vars.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.vars.outputs.repository }}
+          IMAGE_TAG: ${{ steps.vars.outputs.image_tag }}
+        run: |
+          echo "Building Docker image..."
+          docker build \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            -f backend/Dockerfile backend
+
+          echo "Pushing images to Amazon ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Validate CloudFormation Application Template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://backend/deployment/application.yaml
+
+      - name: Deploy Application Stack (ECS Task Definition & Service)
+        env:
+          FULL_IMAGE: ${{ steps.vars.outputs.full_image }}
+        run: |
+          ENV_NAME="${{ inputs.environment || 'dev' }}"
+          APP_STACK_NAME="jelcos-app"
+          INFRA_STACK_NAME="jelcos-infra"
+
+          echo "Deploying application stack: ${APP_STACK_NAME}"
+          echo "Image URI: ${FULL_IMAGE}"
+
+          aws cloudformation deploy \
+            --stack-name "${APP_STACK_NAME}" \
+            --template-file backend/deployment/application.yaml \
+            --parameter-overrides \
+                Environment="${ENV_NAME}" \
+                InfraStackName="${INFRA_STACK_NAME}" \
+                ImageUri="${FULL_IMAGE}" \
+            --no-fail-on-empty-changeset
+
+      - name: Wait for ECS Service Stability
+        run: |
+          CLUSTER_NAME="jelcos-dev-cluster"
+          SERVICE_NAME="jelcos-dev-service"
+          
+          echo "Waiting for ECS service ${SERVICE_NAME} in cluster ${CLUSTER_NAME} to reach steady state..."
+          aws ecs wait services-stable \
+            --cluster "${CLUSTER_NAME}" \
+            --services "${SERVICE_NAME}"
+          
+          echo "Deployment completed successfully!"
