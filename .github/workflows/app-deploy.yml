@@ -7,12 +7,6 @@ on:
         description: 'Deployment Environment'
         required: true
         default: 'dev'
-  push:
-    branches:
-      - jelcos-dev
-    paths:
-      - 'backend/**'
-      - '.github/workflows/app-deploy.yml'
 
 permissions:
   id-token: write

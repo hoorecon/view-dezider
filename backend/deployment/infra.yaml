@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Jelcos Backend Infrastructure Stack - AWS ECS Fargate, ALB, ECR, Security Groups, ACM Certificate, IAM Roles, and CloudWatch Log Group.
+  Jelcos Backend Infrastructure Stack - AWS ECS Fargate, ALB, ECR, Security Groups, IAM Roles, and CloudWatch Log Group.
   Region: ap-south-1 | Account: 468513581087 | Project: Jelcos
 
 Parameters:
@@ -38,10 +38,10 @@ Parameters:
     Default: arn:aws:secretsmanager:ap-south-1:468513581087:secret:jelcos/dev/env-4xm1zD
     Description: Existing Secrets Manager Secret ARN for environment configuration
 
-  DomainName:
+  ACMCertificateArn:
     Type: String
-    Default: jelcos.ai
-    Description: Primary domain name for ACM certificate
+    Default: arn:aws:acm:ap-south-1:468513581087:certificate/b75564f1-7989-4d14-9a84-a77ab11c9b1d
+    Description: Existing ACM SSL/TLS Certificate ARN
 
   ContainerPort:
     Type: Number
@@ -208,23 +208,7 @@ Resources:
           Value: !Ref Environment
 
   # ------------------------------------------------------------
-  # 5. ACM Certificate
-  # ------------------------------------------------------------
-  ACMCertificate:
-    Type: AWS::CertificateManager::Certificate
-    Properties:
-      DomainName: !Ref DomainName
-      SubjectAlternativeNames:
-        - !Sub "*.${DomainName}"
-      ValidationMethod: DNS
-      Tags:
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-
-  # ------------------------------------------------------------
-  # 6. ALB Listeners
+  # 5. ALB Listeners
   # ------------------------------------------------------------
   HTTPSListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -233,7 +217,7 @@ Resources:
       Port: 443
       Protocol: HTTPS
       Certificates:
-        - CertificateArn: !Ref ACMCertificate
+        - CertificateArn: !Ref ACMCertificateArn
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
@@ -385,7 +369,7 @@ Outputs:
 
   ACMCertificateArn:
     Description: ARN of the ACM SSL/TLS Certificate
-    Value: !Ref ACMCertificate
+    Value: !Ref ACMCertificateArn
     Export:
       Name: !Sub "${AWS::StackName}-ACMCertificateArn"
 
