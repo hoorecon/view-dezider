@@ -28,8 +28,8 @@ client = AsyncIOMotorClient(
     maxPoolSize=int(os.environ.get("MONGO_MAX_POOL_SIZE", "200")),
     minPoolSize=int(os.environ.get("MONGO_MIN_POOL_SIZE", "10")),
     maxIdleTimeMS=int(os.environ.get("MONGO_MAX_IDLE_TIME_MS", "60000")),
-    waitQueueTimeoutMS=int(os.environ.get("MONGO_WAIT_QUEUE_TIMEOUT_MS", "5000")),
-    serverSelectionTimeoutMS=int(os.environ.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", "5000")),
+    waitQueueTimeoutMS=int(os.environ.get("MONGO_WAIT_QUEUE_TIMEOUT_MS", "10000")),
+    serverSelectionTimeoutMS=int(os.environ.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", "15000")),
     retryWrites=True,
     retryReads=True,
 )
