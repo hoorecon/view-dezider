@@ -13,6 +13,7 @@ import os
 import logging
 from pathlib import Path
 
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 
@@ -25,13 +26,14 @@ mongo_url = os.environ["MONGO_URL"]
 
 client = AsyncIOMotorClient(
     mongo_url,
-    maxPoolSize=int(os.environ.get("MONGO_MAX_POOL_SIZE", "200")),
-    minPoolSize=int(os.environ.get("MONGO_MIN_POOL_SIZE", "10")),
+    maxPoolSize=int(os.environ.get("MONGO_MAX_POOL_SIZE", "50")),
+    minPoolSize=int(os.environ.get("MONGO_MIN_POOL_SIZE", "1")),
     maxIdleTimeMS=int(os.environ.get("MONGO_MAX_IDLE_TIME_MS", "60000")),
     waitQueueTimeoutMS=int(os.environ.get("MONGO_WAIT_QUEUE_TIMEOUT_MS", "10000")),
     serverSelectionTimeoutMS=int(os.environ.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", "15000")),
     retryWrites=True,
     retryReads=True,
+    tlsCAFile=certifi.where(),
 )
 
 db = client[os.environ["DB_NAME"]]

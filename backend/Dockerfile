@@ -19,6 +19,7 @@ WORKDIR /app
 
 # Build-time deps: compilers/headers needed to build wheels (psycopg2, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     gcc \
     libpq-dev \
     libgl1 \
@@ -53,6 +54,7 @@ WORKDIR /app
 # psycopg2) dlopen at import time; without them the container builds fine
 # but crashes on startup with an ImportError.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     libpq5 \
     libgl1 \
     libglib2.0-0 \
@@ -78,6 +80,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request,sys; \
     sys.exit(0 if urllib.request.urlopen('http://localhost:8001/api/health/live', timeout=3).status == 200 else 1)"
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001", \
-     "--workers", "4", "--loop", "uvloop", "--http", "httptools", \
-     "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port 8001 --workers ${WEB_CONCURRENCY:-2} --loop uvloop --http httptools --proxy-headers --forwarded-allow-ips '*'"]
