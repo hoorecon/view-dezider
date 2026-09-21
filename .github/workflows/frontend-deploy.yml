@@ -11,6 +11,9 @@ on:
   push:
     branches:
       - jelcos-dev
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
 
 permissions:
   contents: read
