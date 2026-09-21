@@ -85,8 +85,8 @@ export default function ProsConsWizard() {
   const { checkFeature } = useACM();
   const featureId = module === 'swot' ? 'swot_analysis' : 'pros_cons';
   const acmAccess = checkFeature(featureId);
-  const isReadOnly = acmAccess.access_level === 'read';
-  const isRestricted = !acmAccess.allowed || isReadOnly || acmAccess.access_level === 'locked' || acmAccess.access_level === 'hidden';
+  const isReadOnly = acmAccess.access_level === 'read' || !!analysis?.is_sample;
+  const isRestricted = !acmAccess.allowed || (acmAccess.access_level === 'read' && !analysis?.is_sample) || acmAccess.access_level === 'locked' || acmAccess.access_level === 'hidden';
 
   const load = useCallback(async () => {
     // -------------------------------------------------------------
@@ -188,7 +188,7 @@ export default function ProsConsWizard() {
 
   const persistStep = async (n: number) => {
     setStep(n);
-    if (id) { try { await api.post(`${base}/${id}/step`, { step: n }); } catch { /* non-fatal */ } }
+    if (id && !analysis?.is_sample) { try { await api.post(`${base}/${id}/step`, { step: n }); } catch { /* non-fatal */ } }
   };
 
   const reload = async () => { await load(); };
@@ -877,8 +877,27 @@ export default function ProsConsWizard() {
         </ScrollView>
       </View>
 
+      {/* Sample Record View-Only Banner */}
+      {analysis?.is_sample && (
+        <View style={{ backgroundColor: 'rgba(124, 58, 237, 0.08)', borderWidth: 1, borderColor: 'rgba(124, 58, 237, 0.25)', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Ionicons name="sparkles" size={16} color="#7C3AED" />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#7C3AED' }}>Sample Record — View Only</Text>
+        </View>
+      )}
+
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.body}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.body,
+            analysis?.is_sample && ({
+              filter: 'blur(0.5px)',
+              opacity: 0.96,
+              pointerEvents: 'none',
+              userSelect: 'none',
+            } as any)
+          ]}
+          pointerEvents={analysis?.is_sample ? 'none' : 'auto'}
+        >
 
           {/* Collab affordance — share this step or schedule discussion. */}
           {!contributionMode && id && analysis && (

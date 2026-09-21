@@ -265,7 +265,6 @@ async def verify_values_access(user: dict):
 # ============================================================
 @router.get("/principles")
 async def list_principles(user: dict = Depends(get_current_user)):
-    await verify_values_access(user)
     rows = await _resolved_principles_for(user)
     return {"principles": rows}
 

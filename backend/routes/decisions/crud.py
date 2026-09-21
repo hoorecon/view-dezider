@@ -41,8 +41,11 @@ async def create_decision(decision: PRRDecisionCreate, user: dict = Depends(get_
 
 
 @router.get("/decisions", response_model=List[dict])
-async def get_decisions(user: dict = Depends(get_current_user), folder: str = None):
-    query = {"user_id": user["user_id"]}
+async def get_decisions(include_samples: bool = True, user: dict = Depends(get_current_user), folder: str = None):
+    if include_samples:
+        query = {"$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}
+    else:
+        query = {"user_id": user["user_id"], "is_sample": {"$ne": True}}
     if folder:
         query["folder"] = folder
     decisions = await db.decisions.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
@@ -51,7 +54,7 @@ async def get_decisions(user: dict = Depends(get_current_user), folder: str = No
 
 @router.get("/decisions/{decision_id}")
 async def get_decision(decision_id: str, user: dict = Depends(get_current_user)):
-    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    decision = await db.decisions.find_one({"id": decision_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0})
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
     return decision
@@ -59,9 +62,11 @@ async def get_decision(decision_id: str, user: dict = Depends(get_current_user))
 
 @router.put("/decisions/{decision_id}")
 async def update_decision(decision_id: str, update_data: PRRDecisionUpdate, user: dict = Depends(get_current_user)):
-    existing = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    existing = await db.decisions.find_one({"id": decision_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Decision not found")
+    if existing.get("is_sample"):
+        return {"message": "Sample records are read-only and cannot be modified.", "is_sample": True}
     update_dict = {k: v for k, v in update_data.dict().items() if v is not None}
     update_dict["updated_at"] = datetime.now(timezone.utc)
     if "options" in update_dict and "factors" in update_dict:
@@ -87,6 +92,9 @@ async def update_decision(decision_id: str, update_data: PRRDecisionUpdate, user
 
 @router.delete("/decisions/{decision_id}")
 async def delete_decision(decision_id: str, user: dict = Depends(get_current_user)):
+    existing = await db.decisions.find_one({"id": decision_id})
+    if existing and existing.get("is_sample"):
+        raise HTTPException(status_code=403, detail="Sample records cannot be deleted.")
     moved = await move_to_trash("decision", decision_id, user["user_id"])
     if not moved:
         raise HTTPException(status_code=404, detail="Decision not found")

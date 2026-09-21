@@ -11,7 +11,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator,
+  RefreshControl, ActivityIndicator, Switch,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,6 +36,7 @@ interface DecisionItem {
   life_area?: string | null;
   source_module?: string;
   status?: string;
+  is_sample?: boolean;
   factors?: any[];
   options?: any[];
   chosen_option_id?: string | null;
@@ -53,7 +54,7 @@ function getStatus(d: DecisionItem): { label: string; color: string; bg: string 
   }
   const hasOptions = (d.options || []).length > 0;
   const hasFactors = (d.factors || []).length > 0;
-  if (hasOptions && hasFactors) {
+  if (d.status === 'in_progress' || (hasOptions && hasFactors)) {
     return { label: 'In Progress', color: '#D97706', bg: '#FFFBEB' };
   }
   return { label: 'Draft', color: '#6B7280', bg: '#F3F4F6' };
@@ -102,32 +103,32 @@ export default function DeziderListScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showSamples, setShowSamples] = useState(true);
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
   const [cloneTarget, setCloneTarget] = useState<DecisionItem | null>(null);
-  // Which tab the CloneTemplateModal should land on. Explicit "Clone" icon
-  // pre-selects Clone; explicit "Template" icon pre-selects Template.
   const [cloneModalInitialTab, setCloneModalInitialTab] = useState<'clone' | 'template'>('clone');
 
-  const fetchItems = async () => {
+  const fetchItems = async (samplesEnabled = showSamples) => {
     try {
       setLoadError(false);
-      const res = await api.get('/decisions');
+      const res = await api.get(`/decisions?include_samples=${samplesEnabled}`);
       const all: DecisionItem[] = res.data || [];
-      // Exclude SWOT-converted decisions — they live under the SWOT list.
       const onlyDezider = all.filter(d => d.source_module !== 'swot');
-      // Backend already sorts created_at desc but be defensive.
       onlyDezider.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
       setItems(onlyDezider);
     } catch (err) {
       console.error('Error fetching decisions:', err);
-      // CRITICAL: never let a failed fetch masquerade as "No Decisions Yet".
-      // Flag the error so the UI shows a Retry state instead of an empty one,
-      // and DO NOT wipe any decisions already on screen.
       setLoadError(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToggleSamples = (val: boolean) => {
+    setShowSamples(val);
+    setLoading(true);
+    fetchItems(val);
   };
 
   useFocusEffect(useCallback(() => { fetchItems(); }, []));
@@ -216,6 +217,20 @@ export default function DeziderListScreen() {
             </Text>
           </View>
 
+          {/* Sample Records Toggle Switch */}
+          <View style={styles.sampleToggleRow}>
+            <View style={styles.sampleToggleLeft}>
+              <Ionicons name="sparkles-outline" size={16} color="#6366F1" />
+              <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+            </View>
+            <Switch
+              value={showSamples}
+              onValueChange={handleToggleSamples}
+              trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
+              thumbColor={showSamples ? '#6366F1' : '#9CA3AF'}
+            />
+          </View>
+
           {loadError && items.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="cloud-offline-outline" size={48} color="#F59E0B" />
@@ -266,6 +281,11 @@ export default function DeziderListScreen() {
                       <Text style={styles.listCardTitle} numberOfLines={1}>{d.title || 'Untitled Decision'}</Text>
                       {d.context ? <Text style={styles.listCardContext} numberOfLines={1}>{d.context}</Text> : null}
                     </View>
+                    {d.is_sample ? (
+                      <View style={styles.sampleBadge}>
+                        <Text style={styles.sampleBadgeText}>SAMPLE</Text>
+                      </View>
+                    ) : null}
                     <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
                       <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
                     </View>
@@ -314,13 +334,15 @@ export default function DeziderListScreen() {
                         <Ionicons name="bookmark-outline" size={16} color="#8B5CF6" />
                       </TouchableOpacity>
                     </Tooltip>
-                    <TouchableOpacity
-                      style={styles.deleteBtn}
-                      onPress={(e) => { e.stopPropagation(); handleDelete(d.id); }}
-                      hitSlop={10}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#9CA3AF" />
-                    </TouchableOpacity>
+                    {!d.is_sample ? (
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={(e) => { e.stopPropagation(); handleDelete(d.id); }}
+                        hitSlop={10}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#9CA3AF" />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </TouchableOpacity>
               );
@@ -386,6 +408,19 @@ const styles = StyleSheet.create({
     marginBottom: 16, borderWidth: 1, borderColor: '#C7D2FE',
   },
   howItWorksText: { flex: 1, fontSize: 13, color: '#4338CA', lineHeight: 18 },
+
+  sampleToggleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB',
+  },
+  sampleToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sampleToggleText: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  sampleBadge: {
+    backgroundColor: '#EEF2FF', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6, borderWidth: 1, borderColor: '#C7D2FE', marginRight: 4,
+  },
+  sampleBadgeText: { fontSize: 10, fontWeight: '700', color: '#6366F1' },
 
   emptyState: { alignItems: 'center', paddingVertical: 48, gap: 12 },
   emptyStateTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },

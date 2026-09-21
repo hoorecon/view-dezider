@@ -277,6 +277,7 @@ export default function SimpleSolutionFinder() {
     try {
       const res = await api.get(`/solution-finders/${editId}`);
       const d = res.data;
+      setIsSample(!!d.is_sample);
       setAreaOfLife(d.area_of_life || '');
       setSmartGoal(d.smart_goal || '');
       setDecisionType((d as any).decision_type || '');
@@ -349,7 +350,9 @@ export default function SimpleSolutionFinder() {
   const sfAccess = checkFeature('solution_finder');
   const isSfRestricted = !sfAccess.allowed || sfAccess.access_level === 'read' || sfAccess.access_level === 'locked' || sfAccess.access_level === 'hidden';
 
+  const [isSample, setIsSample] = useState(false);
   const handleSave = useCallback(async (silent = false, statusOverride?: string): Promise<string | null> => {
+    if (isSample) return savedId;
     // Skip silently if auth isn't ready yet — caller will get a null and the
     // step transition still works locally; data persists on the next save.
     if (!authHydrated) return null;
@@ -390,7 +393,7 @@ export default function SimpleSolutionFinder() {
       return null;
     } finally { setSaving(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedId, areaOfLife, smartGoal, timing, concerns, rootCauses, solutions, risks, mitigations, contingencies, actionPlan, authHydrated]);
+  }, [savedId, areaOfLife, smartGoal, timing, concerns, rootCauses, solutions, risks, mitigations, contingencies, actionPlan, authHydrated, isSample]);
 
   // Debounced AUTOSAVE — persists every tree edit (concerns, primary stars,
   // root causes, solutions, risks, mitigations, contingencies, action plan)
@@ -2018,6 +2021,12 @@ export default function SimpleSolutionFinder() {
         </View>
       )}
       {renderStepIndicator()}
+      {isSample && (
+        <View style={{ backgroundColor: 'rgba(124, 58, 237, 0.08)', borderWidth: 1, borderColor: 'rgba(124, 58, 237, 0.25)', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Ionicons name="sparkles" size={16} color="#7C3AED" />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#7C3AED' }}>Sample Record — View Only</Text>
+        </View>
+      )}
       {(savedId || editId) && !contributionMode && (
         <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
           <CollabBar
@@ -2031,7 +2040,19 @@ export default function SimpleSolutionFinder() {
           />
         </View>
       )}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[
+          { flex: 1 },
+          isSample && ({
+            filter: 'blur(0.5px)',
+            opacity: 0.96,
+            pointerEvents: 'none',
+            userSelect: 'none',
+          } as any)
+        ]}
+        pointerEvents={isSample ? 'none' : 'auto'}
+      >
         {step === 0 && renderStep0()}
         {step === 1 && renderStep1()}
         {step === 2 && renderStep2()}

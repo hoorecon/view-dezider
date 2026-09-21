@@ -45,7 +45,7 @@ def _now():
 
 
 async def _load_analysis(analysis_id: str, user_id: str) -> Dict[str, Any]:
-    doc = await db.pros_cons.find_one({"id": analysis_id, "user_id": user_id}, {"_id": 0})
+    doc = await db.pros_cons.find_one({"id": analysis_id, "$or": [{"user_id": user_id}, {"is_sample": True}]}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Analysis not found")
     # ensure default 8-step containers exist
@@ -58,9 +58,13 @@ async def _load_analysis(analysis_id: str, user_id: str) -> Dict[str, Any]:
 
 
 async def _persist(analysis_id: str, user_id: str, patch: Dict[str, Any]):
+    existing = await db.pros_cons.find_one({"id": analysis_id}, {"_id": 0, "is_sample": 1})
+    if existing and existing.get("is_sample"):
+        # Sample records are read-only; return without mutating DB so view/aggregate operations don't throw 403
+        return
     patch["updated_at"] = _now()
     await db.pros_cons.update_one(
-        {"id": analysis_id, "user_id": user_id},
+        {"id": analysis_id},
         {"$set": patch},
     )
 
@@ -192,11 +196,13 @@ async def create_pros_cons(data: ProsConsCreate, user: dict = Depends(get_curren
 
 
 @router.get("")
-async def list_pros_cons(user: dict = Depends(get_current_user)):
-    """List all Pros & Cons analyses for the user"""
-    docs = await db.pros_cons.find(
-        {"user_id": user["user_id"], "contribution_clone": {"$exists": False}}, {"_id": 0}
-    ).sort("created_at", -1).to_list(100)
+async def list_pros_cons(include_samples: bool = True, user: dict = Depends(get_current_user)):
+    """List all Pros & Cons analyses for the user (including sample records if include_samples is True)."""
+    if include_samples:
+        query = {"$or": [{"user_id": user["user_id"]}, {"is_sample": True}], "contribution_clone": {"$exists": False}}
+    else:
+        query = {"user_id": user["user_id"], "is_sample": {"$ne": True}, "contribution_clone": {"$exists": False}}
+    docs = await db.pros_cons.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return docs
 
 
@@ -204,7 +210,7 @@ async def list_pros_cons(user: dict = Depends(get_current_user)):
 async def get_pros_cons(analysis_id: str, user: dict = Depends(get_current_user)):
     """Get a specific Pros & Cons analysis"""
     doc = await db.pros_cons.find_one(
-        {"id": analysis_id, "user_id": user["user_id"]}, {"_id": 0}
+        {"id": analysis_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0}
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Analysis not found")
@@ -215,10 +221,12 @@ async def get_pros_cons(analysis_id: str, user: dict = Depends(get_current_user)
 async def update_pros_cons(analysis_id: str, data: ProsConsUpdate, user: dict = Depends(get_current_user)):
     """Update a Pros & Cons analysis"""
     existing = await db.pros_cons.find_one(
-        {"id": analysis_id, "user_id": user["user_id"]}, {"_id": 0}
+        {"id": analysis_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0}
     )
     if not existing:
         raise HTTPException(status_code=404, detail="Analysis not found")
+    if existing.get("is_sample"):
+        return {"message": "Sample records are read-only and cannot be modified.", "is_sample": True}
     update_dict = {k: v for k, v in data.dict().items() if v is not None}
     if "pros" in update_dict:
         update_dict["pros"] = [p if isinstance(p, dict) else p.dict() for p in update_dict["pros"]]
@@ -232,6 +240,9 @@ async def update_pros_cons(analysis_id: str, data: ProsConsUpdate, user: dict = 
 @router.delete("/{analysis_id}")
 async def delete_pros_cons(analysis_id: str, user: dict = Depends(get_current_user)):
     """Delete a Pros & Cons analysis (moves to Trash)"""
+    existing = await db.pros_cons.find_one({"id": analysis_id})
+    if existing and existing.get("is_sample"):
+        raise HTTPException(status_code=403, detail="Sample records cannot be deleted.")
     moved = await move_to_trash("pros_cons", analysis_id, user["user_id"])
     if not moved:
         raise HTTPException(status_code=404, detail="Analysis not found")

@@ -25,8 +25,14 @@ export default function ValuesAlignmentPanel({ values_applied = [], values_viola
   useEffect(() => {
     (async () => {
       setBusy(true);
-      try { const { data } = await api.get('/values/principles'); setPrinciples(data?.principles || []); }
-      finally { setBusy(false); }
+      try {
+        const { data } = await api.get('/values/principles');
+        setPrinciples(data?.principles || []);
+      } catch (err) {
+        setPrinciples([]);
+      } finally {
+        setBusy(false);
+      }
     })();
   }, []);
 

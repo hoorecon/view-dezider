@@ -309,8 +309,8 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const saveDecision = async (updates: Partial<Decision>) => {
-    // Contribution Mode: never write to the owner's decision — keep edits local.
-    if (contributionMode) {
+    // Contribution Mode or Sample Record: never write to the database — keep edits local.
+    if (contributionMode || decision?.is_sample) {
       setDecision(prev => (prev ? { ...prev, ...updates } : prev));
       return;
     }

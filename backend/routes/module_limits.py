@@ -227,18 +227,19 @@ async def _get_usage(user_id: str, module_key: str) -> int:
         {"user_id": user_id, "module": module_key}, {"_id": 0, "count": 1},
     )
     cnt = int(row["count"]) if row else 0
-    # Also count actual docs in DB so existing user creations are strictly accounted for
+    # Also count actual docs in DB (excluding sample records) so user creations are strictly accounted for
     actual = 0
+    sample_filter = {"is_sample": {"$ne": True}}
     if module_key in ("my_dezider", "dezider"):
-        actual = await db.decisions.count_documents({"user_id": user_id})
+        actual = await db.decisions.count_documents({"user_id": user_id, **sample_filter})
     elif module_key == "pros_cons":
-        actual = await db.pros_cons.count_documents({"user_id": user_id})
+        actual = await db.pros_cons.count_documents({"user_id": user_id, **sample_filter})
     elif module_key == "swot":
-        actual = await db.swot.count_documents({"user_id": user_id})
+        actual = await db.swot.count_documents({"user_id": user_id, **sample_filter})
     elif module_key == "solution_finder":
-        actual = await db.solution_finders.count_documents({"user_id": user_id})
+        actual = await db.solution_finders.count_documents({"user_id": user_id, **sample_filter})
     elif module_key in ("group_decision", "collaboration", "group_decisions"):
-        actual = await db.collaboration_sessions.count_documents({"owner_id": user_id})
+        actual = await db.collaboration_sessions.count_documents({"owner_id": user_id, **sample_filter})
     return max(cnt, actual)
 
 

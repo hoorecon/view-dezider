@@ -432,9 +432,24 @@ function PRRDecisionDetailInner() {
           </View>
         )}
         {renderStepIndicator()}
+        {decision?.is_sample && (
+          <View style={{ backgroundColor: 'rgba(124, 58, 237, 0.08)', borderWidth: 1, borderColor: 'rgba(124, 58, 237, 0.25)', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Ionicons name="sparkles" size={16} color="#7C3AED" />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#7C3AED' }}>Sample Record — View Only</Text>
+          </View>
+        )}
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            decision?.is_sample && ({
+              filter: 'blur(0.5px)',
+              opacity: 0.96,
+              pointerEvents: 'none',
+              userSelect: 'none',
+            } as any)
+          ]}
+          pointerEvents={decision?.is_sample ? 'none' : 'auto'}
           showsVerticalScrollIndicator={false}
         >
           {renderCurrentStep()}

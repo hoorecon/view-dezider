@@ -130,8 +130,11 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
 
 
 @router.get("/solution-finders")
-async def list_solution_finders(user: dict = Depends(get_current_user)):
-    query = {"user_id": user["user_id"], "contribution_clone": {"$exists": False}}
+async def list_solution_finders(include_samples: bool = True, user: dict = Depends(get_current_user)):
+    if include_samples:
+        query = {"$or": [{"user_id": user["user_id"]}, {"is_sample": True}], "contribution_clone": {"$exists": False}}
+    else:
+        query = {"user_id": user["user_id"], "is_sample": {"$ne": True}, "contribution_clone": {"$exists": False}}
     entries = await db.solution_finders.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return entries
 
@@ -139,7 +142,7 @@ async def list_solution_finders(user: dict = Depends(get_current_user)):
 @router.get("/solution-finders/{entry_id}")
 async def get_solution_finder(entry_id: str, user: dict = Depends(get_current_user)):
     entry = await db.solution_finders.find_one(
-        {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0}
+        {"entry_id": entry_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0}
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -164,9 +167,11 @@ async def get_solution_finder(entry_id: str, user: dict = Depends(get_current_us
 @router.put("/solution-finders/{entry_id}")
 async def update_solution_finder(entry_id: str, request: Request, user: dict = Depends(get_current_user)):
     body = await request.json()
-    entry = await db.solution_finders.find_one({"entry_id": entry_id, "user_id": user["user_id"]})
+    entry = await db.solution_finders.find_one({"entry_id": entry_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0})
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    if entry.get("is_sample"):
+        return entry
 
     update_fields = {}
     allowed = [
@@ -193,7 +198,7 @@ async def update_solution_finder(entry_id: str, request: Request, user: dict = D
     update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.solution_finders.update_one(
-        {"entry_id": entry_id, "user_id": user["user_id"]}, {"$set": update_fields}
+        {"entry_id": entry_id}, {"$set": update_fields}
     )
     updated = await db.solution_finders.find_one({"entry_id": entry_id}, {"_id": 0})
     return updated
@@ -201,6 +206,9 @@ async def update_solution_finder(entry_id: str, request: Request, user: dict = D
 
 @router.delete("/solution-finders/{entry_id}")
 async def delete_solution_finder(entry_id: str, user: dict = Depends(get_current_user)):
+    existing = await db.solution_finders.find_one({"entry_id": entry_id})
+    if existing and existing.get("is_sample"):
+        raise HTTPException(status_code=403, detail="Sample records cannot be deleted.")
     moved = await move_to_trash("solution_finder", entry_id, user["user_id"])
     if not moved:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -745,12 +753,12 @@ async def get_asm_deep_dive_counts(
     Response shape: { "<source_id>": <count>, ... }
     """
     entry = await db.solution_finders.find_one(
-        {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0, "entry_id": 1},
+        {"entry_id": entry_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0, "entry_id": 1},
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     cursor = db.solution_matrices.find(
-        {"user_id": user["user_id"], "linked_from_sf_entry_id": entry_id},
+        {"$or": [{"user_id": user["user_id"]}, {"is_sample": True}], "linked_from_sf_entry_id": entry_id},
         {"_id": 0, "linked_from_sf_source_id": 1},
     )
     counts: Dict[str, int] = {}
@@ -774,12 +782,12 @@ async def list_linked_asm_entries(
     Response: [{ entry_id, title, source, source_id, categories: [...], sources: [...], updated_at }]
     """
     entry = await db.solution_finders.find_one(
-        {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0, "entry_id": 1},
+        {"entry_id": entry_id, "$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}, {"_id": 0, "entry_id": 1},
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     cursor = db.solution_matrices.find(
-        {"user_id": user["user_id"], "linked_from_sf_entry_id": entry_id},
+        {"$or": [{"user_id": user["user_id"]}, {"is_sample": True}], "linked_from_sf_entry_id": entry_id},
         {"_id": 0},
     )
     out = []

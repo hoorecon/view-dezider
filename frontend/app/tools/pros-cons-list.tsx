@@ -10,7 +10,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,6 +36,8 @@ interface ProsConsAnalysis {
   pros?: any[];
   cons?: any[];
   current_step?: number;
+  status?: string;
+  is_sample?: boolean;
   converted_decision_id?: string | null;
   created_at: string;
   updated_at?: string;
@@ -47,11 +49,14 @@ const LIFE_AREA_LABELS: Record<string, { short: string; icon: string }> = LIFE_A
 );
 
 function getStatus(p: ProsConsAnalysis): { label: string; color: string; bg: string } {
-  const step = p.current_step || 1;
+  if (p.status === 'completed' || (p.current_step || 1) >= 8) {
+    return { label: 'Completed', color: '#059669', bg: '#ECFDF5' };
+  }
   const totalPC = (p.options || []).reduce((sum: number, o: any) => sum + ((o.pros || []).length + (o.cons || []).length), 0)
                 + (p.pros || []).length + (p.cons || []).length;
-  if (step >= 8) return { label: 'Completed', color: '#059669', bg: '#ECFDF5' };
-  if (step > 1 || totalPC > 0) return { label: 'In Progress', color: '#D97706', bg: '#FFFBEB' };
+  if (p.status === 'in_progress' || (p.current_step || 1) > 1 || totalPC > 0) {
+    return { label: 'In Progress', color: '#D97706', bg: '#FFFBEB' };
+  }
   return { label: 'Draft', color: '#6B7280', bg: '#F3F4F6' };
 }
 
@@ -61,6 +66,7 @@ export default function ProsConsListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [showSamples, setShowSamples] = useState(true);
 
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -69,9 +75,9 @@ export default function ProsConsListScreen() {
   const [newLifeArea, setNewLifeArea] = useState('');
   const [creating, setCreating] = useState(false);
 
-  const fetchItems = async () => {
+  const fetchItems = async (samplesEnabled = showSamples) => {
     try {
-      const res = await api.get('/pros-cons');
+      const res = await api.get(`/pros-cons?include_samples=${samplesEnabled}`);
       const all: ProsConsAnalysis[] = res.data || [];
       all.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
       setItems(all);
@@ -82,6 +88,12 @@ export default function ProsConsListScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToggleSamples = (val: boolean) => {
+    setShowSamples(val);
+    setLoading(true);
+    fetchItems(val);
   };
 
   const retryFetch = () => {
@@ -191,6 +203,20 @@ export default function ProsConsListScreen() {
             </Text>
           </View>
 
+          {/* Sample Records Toggle Switch */}
+          <View style={styles.sampleToggleRow}>
+            <View style={styles.sampleToggleLeft}>
+              <Ionicons name="sparkles-outline" size={16} color="#7C3AED" />
+              <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+            </View>
+            <Switch
+              value={showSamples}
+              onValueChange={handleToggleSamples}
+              trackColor={{ false: '#E5E7EB', true: '#DDD6FE' }}
+              thumbColor={showSamples ? '#7C3AED' : '#9CA3AF'}
+            />
+          </View>
+
           {loadError && items.length === 0 ? (
             <LoadErrorState onRetry={retryFetch} />
           ) : items.length === 0 ? (
@@ -230,6 +256,11 @@ export default function ProsConsListScreen() {
                       <Text style={styles.listCardTitle} numberOfLines={1}>{p.title || 'Untitled Analysis'}</Text>
                       {p.context ? <Text style={styles.listCardContext} numberOfLines={1}>{p.context}</Text> : null}
                     </View>
+                    {p.is_sample ? (
+                      <View style={styles.sampleBadge}>
+                        <Text style={styles.sampleBadgeText}>SAMPLE</Text>
+                      </View>
+                    ) : null}
                     <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
                       <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
                     </View>
@@ -272,13 +303,15 @@ export default function ProsConsListScreen() {
                       </View>
                     ) : null}
                     <View style={{ flex: 1 }} />
-                    <TouchableOpacity
-                      style={styles.deleteBtn}
-                      onPress={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                      hitSlop={10}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#9CA3AF" />
-                    </TouchableOpacity>
+                    {!p.is_sample ? (
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                        hitSlop={10}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#9CA3AF" />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </TouchableOpacity>
               );
@@ -397,6 +430,19 @@ const styles = StyleSheet.create({
     marginBottom: 16, borderWidth: 1, borderColor: '#DDD6FE',
   },
   howItWorksText: { flex: 1, fontSize: 13, color: '#6D28D9', lineHeight: 18 },
+
+  sampleToggleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB',
+  },
+  sampleToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sampleToggleText: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  sampleBadge: {
+    backgroundColor: '#F3E8FF', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6, borderWidth: 1, borderColor: '#D8B4FE', marginRight: 4,
+  },
+  sampleBadgeText: { fontSize: 10, fontWeight: '700', color: '#7C3AED' },
 
   emptyState: { alignItems: 'center', paddingVertical: 48, gap: 12 },
   emptyStateTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },

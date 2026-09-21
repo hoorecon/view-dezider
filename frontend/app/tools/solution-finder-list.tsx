@@ -7,8 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,19 +28,16 @@ export default function SolutionFinderListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [showSamples, setShowSamples] = useState(true);
 
-  // Robust back: pop history if we got here via in-app nav, else go to the
-  // dashboard. Fixes the dead "back" button on direct/deep-linked loads
-  // (e.g. opening /tools/solution-finder-list in a fresh tab) where
-  // safeBack(router) is a no-op because there is no history to pop.
   const goBack = useCallback(() => {
     if (router.canGoBack()) safeBack(router);
     else router.replace('/(tabs)' as any);
   }, [router]);
 
-  const fetchEntries = async () => {
+  const fetchEntries = async (samplesEnabled = showSamples) => {
     try {
-      const res = await api.get('/solution-finders');
+      const res = await api.get(`/solution-finders?include_samples=${samplesEnabled}`);
       setEntries(res.data || []);
       setLoadError(false);
     } catch (e) {
@@ -49,6 +46,12 @@ export default function SolutionFinderListScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToggleSamples = (val: boolean) => {
+    setShowSamples(val);
+    setLoading(true);
+    fetchEntries(val);
   };
 
   const retryFetch = () => {
@@ -89,6 +92,16 @@ export default function SolutionFinderListScreen() {
 
   const getAreaName = (id: string) => getLifeAreaName(id, id);
 
+  const getStatus = (entry: any) => {
+    if (entry.status === 'completed') {
+      return { label: 'COMPLETED', badgeStyle: styles.statusCompleted, textStyle: styles.statusTextCompleted };
+    }
+    if (entry.status === 'in_progress') {
+      return { label: 'IN PROGRESS', badgeStyle: styles.statusInProgress, textStyle: styles.statusTextInProgress };
+    }
+    return { label: 'DRAFT', badgeStyle: styles.statusDraft, textStyle: styles.statusTextDraft };
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={GRADIENTS.header} style={styles.header}>
@@ -108,6 +121,20 @@ export default function SolutionFinderListScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        {/* Sample Records Toggle Switch */}
+        <View style={styles.sampleToggleRow}>
+          <View style={styles.sampleToggleLeft}>
+            <Ionicons name="sparkles-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+          </View>
+          <Switch
+            value={showSamples}
+            onValueChange={handleToggleSamples}
+            trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
+            thumbColor={showSamples ? COLORS.primary : '#9CA3AF'}
+          />
+        </View>
+
         {loading ? (
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
         ) : loadError && entries.length === 0 ? (
@@ -124,49 +151,55 @@ export default function SolutionFinderListScreen() {
             </PaywallGate>
           </View>
         ) : (
-          entries.map((entry) => (
-            <TouchableOpacity
-              key={entry.entry_id}
-              style={styles.card}
-              onPress={() => router.push({ pathname: '/tools/solution-finder', params: { id: entry.entry_id } })}
-            >
-              <View style={styles.cardHeader}>
-                <View style={[
-                  styles.statusBadge,
-                  entry.status === 'completed' && styles.statusCompleted
-                ]}>
-                  <Text style={[
-                    styles.statusText,
-                    entry.status === 'completed' && styles.statusTextCompleted
-                  ]}>
-                    {entry.status === 'completed' ? 'COMPLETED' : 'IN PROGRESS'}
+          entries.map((entry) => {
+            const st = getStatus(entry);
+            return (
+              <TouchableOpacity
+                key={entry.entry_id}
+                style={styles.card}
+                onPress={() => router.push({ pathname: '/tools/solution-finder', params: { id: entry.entry_id } })}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {entry.is_sample ? (
+                      <View style={styles.sampleBadge}>
+                        <Text style={styles.sampleBadgeText}>SAMPLE</Text>
+                      </View>
+                    ) : null}
+                    <View style={[styles.statusBadge, st.badgeStyle]}>
+                      <Text style={[styles.statusText, st.textStyle]}>
+                        {st.label}
+                      </Text>
+                    </View>
+                  </View>
+                  {!entry.is_sample ? (
+                    <TouchableOpacity onPress={() => handleDelete(entry.entry_id)}>
+                      <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <Text style={styles.cardArea}>{getAreaName(entry.area_of_life)}</Text>
+                <Text style={styles.cardGoal} numberOfLines={2}>{entry.smart_goal || 'No goal set'}</Text>
+                <View style={styles.cardFooter}>
+                  <Text style={styles.cardDate}>
+                    {(() => {
+                      const raw = entry.updated_at || entry.created_at;
+                      if (!raw) return '';
+                      const d = new Date(raw);
+                      if (isNaN(d.getTime())) return '';
+                      return d.toLocaleString(undefined, {
+                        year: 'numeric', month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      });
+                    })()}
+                  </Text>
+                  <Text style={styles.cardActions}>
+                    {(entry.action_items || []).length} action items
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => handleDelete(entry.entry_id)}>
-                  <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.cardArea}>{getAreaName(entry.area_of_life)}</Text>
-              <Text style={styles.cardGoal} numberOfLines={2}>{entry.smart_goal || 'No goal set'}</Text>
-              <View style={styles.cardFooter}>
-                <Text style={styles.cardDate}>
-                  {(() => {
-                    const raw = entry.updated_at || entry.created_at;
-                    if (!raw) return '';
-                    const d = new Date(raw);
-                    if (isNaN(d.getTime())) return '';
-                    return d.toLocaleString(undefined, {
-                      year: 'numeric', month: 'short', day: 'numeric',
-                      hour: '2-digit', minute: '2-digit',
-                    });
-                  })()}
-                </Text>
-                <Text style={styles.cardActions}>
-                  {(entry.action_items || []).length} action items
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -195,6 +228,18 @@ const styles = StyleSheet.create({
   },
   scrollView: { flex: 1 },
   scrollContent: { padding: 16 },
+  sampleToggleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    marginBottom: 16, borderWidth: 1, borderColor: COLORS.border,
+  },
+  sampleToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sampleToggleText: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  sampleBadge: {
+    backgroundColor: 'rgba(124,58,237,0.1)', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6, borderWidth: 1, borderColor: 'rgba(124,58,237,0.3)', marginRight: 6,
+  },
+  sampleBadgeText: { fontSize: 10, fontWeight: '700', color: COLORS.primary },
   emptyState: {
     alignItems: 'center', paddingTop: 60,
   },
@@ -225,8 +270,12 @@ const styles = StyleSheet.create({
     borderRadius: 10, backgroundColor: 'rgba(245,158,11,0.1)',
   },
   statusCompleted: { backgroundColor: 'rgba(16,185,129,0.1)' },
+  statusInProgress: { backgroundColor: 'rgba(245,158,11,0.1)' },
+  statusDraft: { backgroundColor: 'rgba(107,114,128,0.1)' },
   statusText: { fontSize: 10, fontWeight: '700', color: '#F59E0B' },
   statusTextCompleted: { color: '#10B981' },
+  statusTextInProgress: { color: '#F59E0B' },
+  statusTextDraft: { color: '#6B7280' },
   cardArea: {
     fontSize: 11, fontWeight: '600', color: COLORS.primary,
     textTransform: 'uppercase', letterSpacing: 1,
