@@ -49,6 +49,23 @@ def _lookup_access_rule(access_map: dict, access_key: str) -> dict:
         rule = access_map.get(fb)
         if rule:
             return rule
+
+    # Dynamic fallback for arbitrary paid_* or custom plan keys
+    if isinstance(access_key, str) and access_key.startswith("paid_"):
+        k_lower = access_key.lower()
+        if "premium" in k_lower or "enterprise" in k_lower:
+            fallbacks = ["paid_premium", "paid_enterprise", "paid_pro", "paid_starter", "free"]
+        elif "pro" in k_lower:
+            fallbacks = ["paid_pro", "paid_starter", "free"]
+        elif "starter" in k_lower or "basic" in k_lower:
+            fallbacks = ["paid_starter", "free"]
+        else:
+            fallbacks = ["paid_pro", "paid_starter", "free"]
+        for fb in fallbacks:
+            rule = access_map.get(fb)
+            if rule:
+                return rule
+
     return {"level": "hidden", "quota": 0}
 
 # In-memory cache of the ACM matrix (refreshed on seed/update)
@@ -260,9 +277,15 @@ def _resolve_access_key(user_type: str, subscription_plan: str) -> str:
     if user_type in ("super_admin", "admin", "co_admin"):
         return "platform_admin"
     if user_type == "paid":
-        plan = subscription_plan or "starter"
-        if plan == "enterprise":
+        plan = (subscription_plan or "starter").lower()
+        if "premium" in plan or "enterprise" in plan:
             plan = "premium"
+        elif "pro" in plan:
+            plan = "pro"
+        elif "starter" in plan or "basic" in plan:
+            plan = "starter"
+        else:
+            plan = "starter"
         return f"paid_{plan}"
     return user_type
 

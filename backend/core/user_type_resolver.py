@@ -61,17 +61,40 @@ def _is_trial_active(user: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+async def _normalize_plan_tier(raw_plan: str) -> str:
+    if not raw_plan:
+        return "starter"
+    raw_lower = raw_plan.strip().lower()
+    if raw_lower in RAZORPAY_TO_ACM_PLAN:
+        return RAZORPAY_TO_ACM_PLAN[raw_lower]
+    # Check if DB has a matching subscription_plans doc with a tier
+    doc = await db.subscription_plans.find_one({"plan_id": raw_plan}, {"_id": 0, "tier": 1})
+    if doc and doc.get("tier"):
+        tier = str(doc["tier"]).strip().lower()
+        if tier in RAZORPAY_TO_ACM_PLAN:
+            return RAZORPAY_TO_ACM_PLAN[tier]
+    # Check substrings
+    if "premium" in raw_lower or "enterprise" in raw_lower:
+        return "premium"
+    if "pro" in raw_lower:
+        return "pro"
+    if "starter" in raw_lower or "basic" in raw_lower:
+        return "starter"
+    return "starter"
+
+
 async def _razorpay_active_plan(user_id: str) -> Optional[str]:
     """Return ACM plan name if user has an active subscription."""
     # 1. Check primary credit_wallets collection (written by apply_charge)
     w = await db.credit_wallets.find_one(
-        {"user_id": user_id}, {"_id": 0, "current_plan": 1, "subscription_status": 1}
+        {"user_id": user_id}, {"_id": 0, "current_plan": 1, "subscription_status": 1, "subscription_plan_id": 1}
     )
     if w:
         st = str(w.get("subscription_status") or "").lower()
         cp = str(w.get("current_plan") or "").lower()
+        plan_id = str(w.get("subscription_plan_id") or "").lower()
         if st in {"active", "manual", "pending"} and cp and cp not in {"free", "none"}:
-            return RAZORPAY_TO_ACM_PLAN.get(cp, cp)
+            return await _normalize_plan_tier(plan_id or cp)
 
     # 2. Check subscriptions collection
     sub = await db.subscriptions.find_one(
@@ -81,7 +104,7 @@ async def _razorpay_active_plan(user_id: str) -> Optional[str]:
     if sub:
         plan = (sub.get("plan_tier") or sub.get("plan_id") or sub.get("tier") or "").lower()
         if plan and plan not in {"free", "none"}:
-            return RAZORPAY_TO_ACM_PLAN.get(plan, plan)
+            return await _normalize_plan_tier(plan)
 
     # 3. Check legacy razorpay_subscriptions collection
     sub_legacy = await db.razorpay_subscriptions.find_one(
@@ -90,7 +113,7 @@ async def _razorpay_active_plan(user_id: str) -> Optional[str]:
     )
     if sub_legacy:
         plan = (sub_legacy.get("plan_slug") or sub_legacy.get("plan_id") or "").lower()
-        return RAZORPAY_TO_ACM_PLAN.get(plan, plan)
+        return await _normalize_plan_tier(plan)
 
     return None
 
