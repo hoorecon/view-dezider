@@ -198,7 +198,10 @@ async def create_pros_cons(data: ProsConsCreate, user: dict = Depends(get_curren
 @router.get("")
 async def list_pros_cons(include_samples: bool = True, user: dict = Depends(get_current_user)):
     """List all Pros & Cons analyses for the user (including sample records if include_samples is True)."""
-    if include_samples:
+    is_admin = user.get("role") in ("admin", "super_admin", "co_admin") or bool(user.get("is_admin"))
+    if is_admin:
+        query = {"user_id": user["user_id"], "is_sample": {"$ne": True}, "contribution_clone": {"$exists": False}}
+    elif include_samples:
         query = {"$or": [{"user_id": user["user_id"]}, {"is_sample": True}], "contribution_clone": {"$exists": False}}
     else:
         query = {"user_id": user["user_id"], "is_sample": {"$ne": True}, "contribution_clone": {"$exists": False}}

@@ -25,6 +25,8 @@ import { formatAbsolute } from '../../src/utils/datetime';
 import PaywallGate from '../../src/components/PaywallGate';
 import TimestampLine from '../../src/components/TimestampLine';
 import LoadErrorState from '../../src/components/LoadErrorState';
+import { useAuthStore } from '../../src/store/authStore';
+import { isAdminRole } from '../../src/constants/adminTheme';
 
 interface ProsConsAnalysis {
   id: string;
@@ -62,6 +64,8 @@ function getStatus(p: ProsConsAnalysis): { label: string; color: string; bg: str
 
 export default function ProsConsListScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const isAdmin = isAdminRole(user?.role) || Boolean(user?.is_admin);
   const [items, setItems] = useState<ProsConsAnalysis[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,10 +81,12 @@ export default function ProsConsListScreen() {
 
   const fetchItems = async (samplesEnabled = showSamples) => {
     try {
-      const res = await api.get(`/pros-cons?include_samples=${samplesEnabled}`);
+      const shouldIncludeSamples = !isAdmin && samplesEnabled;
+      const res = await api.get(`/pros-cons?include_samples=${shouldIncludeSamples}`);
       const all: ProsConsAnalysis[] = res.data || [];
-      all.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
-      setItems(all);
+      const filtered = isAdmin ? all.filter(p => !p.is_sample) : all;
+      filtered.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
+      setItems(filtered);
       setLoadError(false);
     } catch (err) {
       console.error('Error fetching pros-cons:', err);
@@ -203,19 +209,21 @@ export default function ProsConsListScreen() {
             </Text>
           </View>
 
-          {/* Sample Records Toggle Switch */}
-          <View style={styles.sampleToggleRow}>
-            <View style={styles.sampleToggleLeft}>
-              <Ionicons name="sparkles-outline" size={16} color="#7C3AED" />
-              <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+          {/* Sample Records Toggle Switch - hidden for admin */}
+          {!isAdmin && (
+            <View style={styles.sampleToggleRow}>
+              <View style={styles.sampleToggleLeft}>
+                <Ionicons name="sparkles-outline" size={16} color="#7C3AED" />
+                <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+              </View>
+              <Switch
+                value={showSamples}
+                onValueChange={handleToggleSamples}
+                trackColor={{ false: '#E5E7EB', true: '#DDD6FE' }}
+                thumbColor={showSamples ? '#7C3AED' : '#9CA3AF'}
+              />
             </View>
-            <Switch
-              value={showSamples}
-              onValueChange={handleToggleSamples}
-              trackColor={{ false: '#E5E7EB', true: '#DDD6FE' }}
-              thumbColor={showSamples ? '#7C3AED' : '#9CA3AF'}
-            />
-          </View>
+          )}
 
           {loadError && items.length === 0 ? (
             <LoadErrorState onRetry={retryFetch} />

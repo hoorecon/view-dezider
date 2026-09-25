@@ -42,7 +42,10 @@ async def create_decision(decision: PRRDecisionCreate, user: dict = Depends(get_
 
 @router.get("/decisions", response_model=List[dict])
 async def get_decisions(include_samples: bool = True, user: dict = Depends(get_current_user), folder: str = None):
-    if include_samples:
+    is_admin = user.get("role") in ("admin", "super_admin", "co_admin") or bool(user.get("is_admin"))
+    if is_admin:
+        query = {"user_id": user["user_id"], "is_sample": {"$ne": True}}
+    elif include_samples:
         query = {"$or": [{"user_id": user["user_id"]}, {"is_sample": True}]}
     else:
         query = {"user_id": user["user_id"], "is_sample": {"$ne": True}}

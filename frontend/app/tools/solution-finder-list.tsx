@@ -21,9 +21,13 @@ import { safeBack } from '../../src/utils/navigation';
 import LoadErrorState from '../../src/components/LoadErrorState';
 
 import PaywallGate from '../../src/components/PaywallGate';
+import { useAuthStore } from '../../src/store/authStore';
+import { isAdminRole } from '../../src/constants/adminTheme';
 
 export default function SolutionFinderListScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const isAdmin = isAdminRole(user?.role) || Boolean(user?.is_admin);
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,8 +41,11 @@ export default function SolutionFinderListScreen() {
 
   const fetchEntries = async (samplesEnabled = showSamples) => {
     try {
-      const res = await api.get(`/solution-finders?include_samples=${samplesEnabled}`);
-      setEntries(res.data || []);
+      const shouldIncludeSamples = !isAdmin && samplesEnabled;
+      const res = await api.get(`/solution-finders?include_samples=${shouldIncludeSamples}`);
+      const all: any[] = res.data || [];
+      const filtered = isAdmin ? all.filter(e => !e.is_sample) : all;
+      setEntries(filtered);
       setLoadError(false);
     } catch (e) {
       console.error('Error fetching solution finders:', e);
@@ -121,19 +128,21 @@ export default function SolutionFinderListScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Sample Records Toggle Switch */}
-        <View style={styles.sampleToggleRow}>
-          <View style={styles.sampleToggleLeft}>
-            <Ionicons name="sparkles-outline" size={16} color={COLORS.primary} />
-            <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+        {/* Sample Records Toggle Switch - hidden for admin */}
+        {!isAdmin && (
+          <View style={styles.sampleToggleRow}>
+            <View style={styles.sampleToggleLeft}>
+              <Ionicons name="sparkles-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+            </View>
+            <Switch
+              value={showSamples}
+              onValueChange={handleToggleSamples}
+              trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
+              thumbColor={showSamples ? COLORS.primary : '#9CA3AF'}
+            />
           </View>
-          <Switch
-            value={showSamples}
-            onValueChange={handleToggleSamples}
-            trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
-            thumbColor={showSamples ? COLORS.primary : '#9CA3AF'}
-          />
-        </View>
+        )}
 
         {loading ? (
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />

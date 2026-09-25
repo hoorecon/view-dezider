@@ -27,6 +27,8 @@ import TimestampLine from '../../src/components/TimestampLine';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
 import Tooltip from '../../src/components/Tooltip';
+import { useAuthStore } from '../../src/store/authStore';
+import { isAdminRole } from '../../src/constants/adminTheme';
 
 interface DecisionItem {
   id: string;
@@ -99,6 +101,8 @@ function computeCurrentStep(d: any): number {
 
 export default function DeziderListScreen() {
   const router = useRouter();
+  const user = useAuthStore(s => s.user);
+  const isAdmin = isAdminRole(user?.role) || Boolean(user?.is_admin);
   const [items, setItems] = useState<DecisionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -112,9 +116,12 @@ export default function DeziderListScreen() {
   const fetchItems = async (samplesEnabled = showSamples) => {
     try {
       setLoadError(false);
-      const res = await api.get(`/decisions?include_samples=${samplesEnabled}`);
+      const shouldIncludeSamples = !isAdmin && samplesEnabled;
+      const res = await api.get(`/decisions?include_samples=${shouldIncludeSamples}`);
       const all: DecisionItem[] = res.data || [];
-      const onlyDezider = all.filter(d => d.source_module !== 'swot');
+      const onlyDezider = all
+        .filter(d => d.source_module !== 'swot')
+        .filter(d => !isAdmin || !d.is_sample);
       onlyDezider.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
       setItems(onlyDezider);
     } catch (err) {
@@ -217,19 +224,21 @@ export default function DeziderListScreen() {
             </Text>
           </View>
 
-          {/* Sample Records Toggle Switch */}
-          <View style={styles.sampleToggleRow}>
-            <View style={styles.sampleToggleLeft}>
-              <Ionicons name="sparkles-outline" size={16} color="#6366F1" />
-              <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+          {/* Sample Records Toggle Switch - hidden for admin */}
+          {!isAdmin && (
+            <View style={styles.sampleToggleRow}>
+              <View style={styles.sampleToggleLeft}>
+                <Ionicons name="sparkles-outline" size={16} color="#6366F1" />
+                <Text style={styles.sampleToggleText}>Show Sample Records</Text>
+              </View>
+              <Switch
+                value={showSamples}
+                onValueChange={handleToggleSamples}
+                trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
+                thumbColor={showSamples ? '#6366F1' : '#9CA3AF'}
+              />
             </View>
-            <Switch
-              value={showSamples}
-              onValueChange={handleToggleSamples}
-              trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
-              thumbColor={showSamples ? '#6366F1' : '#9CA3AF'}
-            />
-          </View>
+          )}
 
           {loadError && items.length === 0 ? (
             <View style={styles.emptyState}>
