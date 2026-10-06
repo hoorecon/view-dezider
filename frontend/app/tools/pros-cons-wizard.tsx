@@ -1009,7 +1009,7 @@ export default function ProsConsWizard() {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.sectionTitle}>Direct factors ({directFactors.filter(f => f.source === 'direct').length})</Text>
+              <Text style={styles.sectionTitle}>Direct factors ({analysis.factors.filter(f => f.source === 'direct').length})</Text>
               {analysis.factors.filter(f => f.source === 'direct').map((f, i) => {
                 const isEditing = editingFactorId === f.id;
                 return (
