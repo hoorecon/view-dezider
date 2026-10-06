@@ -1081,7 +1081,7 @@ export default function Index() {
                 const open = blogOpen === note.title;
                 return (
                   <TouchableOpacity activeOpacity={0.95} onPress={() => setBlogOpen(open ? null : note.title)} style={[styles.blogFeature, isWide && { flex: 1.15 }]} {...liftProp}>
-                    <Image source={note.image} style={StyleSheet.absoluteFillObject as any} resizeMode="cover" />
+                    <Image source={note.image} style={styles.coverImg} resizeMode="cover" />
                     <LinearGradient colors={['rgba(16,14,38,0.05)', 'rgba(16,14,38,0.55)', 'rgba(16,14,38,0.96)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFillObject} />
                     <View style={styles.blogFeatureTop}>
                       <View style={styles.casePillDark}><Text style={styles.casePillDarkText}>{note.k}</Text></View>
@@ -1108,7 +1108,7 @@ export default function Index() {
                   return (
                     <TouchableOpacity key={note.title} activeOpacity={0.95} onPress={() => setBlogOpen(open ? null : note.title)} style={[dark ? styles.blogRowDark : styles.blogRow, isMid && { flexDirection: 'row' }]} {...liftProp}>
                       <View style={[styles.blogThumb, isMid && { width: 170, height: 'auto' as any, alignSelf: 'stretch' }]}>
-                        <Image source={note.image} style={StyleSheet.absoluteFillObject as any} resizeMode="cover" />
+                        <Image source={note.image} style={styles.coverImg} resizeMode="cover" />
                       </View>
                       <View style={styles.blogRowBody}>
                         <View style={styles.caseHead}>
@@ -1697,6 +1697,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(16,14,38,0.28)' } as any) : {}),
   },
   blogThumb: { height: 160, overflow: 'hidden' },
+  coverImg: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
   blogRowBody: { flex: 1, padding: 20 },
   blogRowTitle: { fontSize: 21, lineHeight: 27, fontWeight: '700', color: '#16132A', letterSpacing: -0.3, marginBottom: 6 },
   blogRowMore: { fontSize: 13.5, lineHeight: 21, color: '#3A3350', marginTop: 10, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: '#E91E63' },
