@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
 import { LEGAL_LINKS } from '../../constants/company';
+import { MARKETING_NAV } from './marketingNav';
 import { useCompanyName, useAppLogo, useCompany } from '../../contexts/FontFamilyContext';
 
 export default function MarketingFooter() {
@@ -32,9 +33,34 @@ export default function MarketingFooter() {
           ))}
         </View>
 
+        <View style={[styles.col, twoCol && { flex: 0.8 }]}>
+          <Text style={styles.colHead}>EXPLORE</Text>
+          {MARKETING_NAV.map((link) => (
+            <TouchableOpacity
+              key={link.href}
+              style={styles.exploreRow}
+              onPress={() => {
+                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                  window.location.assign(link.href);
+                  return;
+                }
+                router.push(link.href as any);
+              }}
+            >
+              <Text
+                style={styles.exploreLink}
+                accessibilityRole="link"
+                {...(Platform.OS === 'web' ? ({ href: link.href } as any) : {})}
+              >
+                {link.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* Legal links */}
         <View style={[styles.col, twoCol && { flex: 1 }]}>
-          <Text style={styles.colHead}>Legal & Policies</Text>
+          <Text style={styles.colHead}>LEGAL</Text>
           {LEGAL_LINKS.map((link) => (
             <TouchableOpacity key={link.route} style={styles.linkRow} onPress={() => router.push(link.route as any)}>
               <Ionicons name="chevron-forward" size={12} color={COLORS.primary} />
@@ -51,14 +77,15 @@ export default function MarketingFooter() {
 
         {/* Merchant details (payment-gateway compliance) */}
         <View style={[styles.col, twoCol && { flex: 1.2 }]}>
-          <Text style={styles.colHead}>Merchant Details</Text>
-          <Text style={styles.mRow}><Text style={styles.mKey}>Merchant Legal Name: </Text>{company.legalName}</Text>
-          <Text style={styles.mRow}>
-            <Text style={styles.mKey}>Merchant Website: </Text>
-            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.websiteUrl, hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' } } as any) : {})} style={styles.mLink}>{company.websiteUrl}</Text>
-          </Text>
-          <Text style={styles.mRow}><Text style={styles.mKey}>Support Email: </Text>{company.email}</Text>
-          <Text style={styles.mRow}><Text style={styles.mKey}>Support Phone: </Text>{company.phone}</Text>
+          <Text style={styles.colHead}>MERCHANT</Text>
+          <Text style={styles.mKey}>Legal name</Text>
+          <Text style={styles.mVal}>{company.legalName}</Text>
+          <Text style={styles.mKey}>Website</Text>
+          <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.websiteUrl, hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' } } as any) : {})} style={styles.mLink}>{company.website}</Text>
+          <Text style={styles.mKey}>Email</Text>
+          <Text style={styles.mVal}>{company.email}</Text>
+          <Text style={styles.mKey}>Phone</Text>
+          <Text style={styles.mVal}>{company.phone}</Text>
         </View>
       </View>
 
@@ -72,23 +99,25 @@ export default function MarketingFooter() {
 }
 
 const styles = StyleSheet.create({
-  footer: { backgroundColor: '#0F1024', paddingTop: 36 },
-  inner: { paddingHorizontal: 24, paddingBottom: 24 },
-  innerRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  col: { marginBottom: 24 },
-  brand: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.4 },
-  footerLogo: { width: 120, height: 44, marginBottom: 10 },
-  tagline: { fontSize: 12, color: '#A9ABC9', marginTop: 4, marginBottom: 14, lineHeight: 18 },
-  legalName: { fontSize: 13, fontWeight: '700', color: '#E2E3F0', marginBottom: 6 },
-  addr: { fontSize: 12, color: '#8E90B0', lineHeight: 18 },
+  footer: { backgroundColor: '#100E22', paddingTop: 56 },
+  inner: { paddingHorizontal: 28, paddingBottom: 28, maxWidth: 1120, width: '100%', alignSelf: 'center' },
+  innerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 28 },
+  col: { marginBottom: 28, minWidth: 200 },
+  brand: { fontSize: 28, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.6 },
+  footerLogo: { width: 44, height: 44, borderRadius: 10, marginBottom: 12 },
+  tagline: { fontSize: 14, fontWeight: '400', color: 'rgba(255,255,255,0.62)', marginTop: 8, marginBottom: 16, lineHeight: 22, maxWidth: 320 },
+  legalName: { fontSize: 13, fontWeight: '700', color: '#F48FB1', marginBottom: 8, letterSpacing: 0.3 },
+  addr: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)', lineHeight: 20 },
   contactRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  contactLink: { fontSize: 12.5, color: '#C7C9E6' },
-  colHead: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.6 },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7 },
-  link: { fontSize: 13.5, color: '#C7C9E6' },
-  mRow: { fontSize: 12.5, color: '#A9ABC9', lineHeight: 20, marginBottom: 4 },
-  mKey: { color: '#E2E3F0', fontWeight: '700' },
-  mLink: { color: '#C7C9E6', textDecorationLine: 'underline' },
-  bottomBar: { borderTopWidth: 1, borderTopColor: '#22243F', paddingVertical: 16, paddingHorizontal: 24, alignItems: 'center' },
-  copy: { fontSize: 11.5, color: '#7E80A0', textAlign: 'center' },
+  contactLink: { fontSize: 13, color: '#C7C9E6' },
+  colHead: { fontSize: 11, fontWeight: '700', color: '#F48FB1', marginBottom: 14, letterSpacing: 2.4 },
+  exploreRow: { paddingVertical: 7 },
+  exploreLink: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 },
+  link: { fontSize: 15, fontWeight: '500', color: '#FFFFFF' },
+  mKey: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.45)', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 10 },
+  mVal: { fontSize: 15, fontWeight: '600', color: '#FFFFFF', marginTop: 2 },
+  mLink: { fontSize: 15, fontWeight: '600', color: '#E1BEE7', marginTop: 2 },
+  bottomBar: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', paddingVertical: 18, paddingHorizontal: 24, alignItems: 'center' },
+  copy: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.45)', textAlign: 'center', letterSpacing: 0.3 },
 });

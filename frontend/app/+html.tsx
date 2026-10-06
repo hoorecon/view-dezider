@@ -42,6 +42,14 @@ export default function Root({ children }: PropsWithChildren) {
               body > div:first-child { position: fixed !important; top: 0; left: 0; right: 0; bottom: 0; }
               [role="tablist"] [role="tab"] * { overflow: visible !important; }
               [role="heading"], [role="heading"] * { overflow: visible !important; }
+              @keyframes jlRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+              @keyframes jlPulse { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(1.2); opacity: 0; } }
+              @keyframes jlBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+              @keyframes jlSweep { from { transform: translateX(-90px); } to { transform: translateX(200px); } }
+              #jlCenter { animation: jlRise .35s ease-out both; }
+              #jlRing { animation: jlPulse 1.6s ease-out infinite; }
+              #jlMark { animation: jlBreathe 1.8s ease-in-out infinite; }
+              #jlBar { animation: jlSweep 1.1s cubic-bezier(.65,0,.35,1) infinite; }
             `,
           }}
         />

@@ -246,6 +246,10 @@ const PUBLIC_SEGMENTS = new Set<string>([
   'whatsapp-verify', // post-login WhatsApp gate
   'legal',           // privacy / terms / refund / delivery
   'contact',
+  'modules',         // public product catalog
+  'about',
+  'blog',
+  'case-studies',
   'pricing',
   'decider-store',   // public template storefront (browse without login)
   'p',               // public shared-report viewer (/p/[slug])

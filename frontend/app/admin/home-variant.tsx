@@ -1,6 +1,6 @@
 /**
  * Admin · Homepage Variant selector.
- * Choose which hero design renders at jelcos.ai — Classic Purple or Modern Grid.
+ * Legacy selector. The public homepage is a single layout and does not branch on this setting.
  */
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
@@ -43,7 +43,7 @@ export default function AdminHomeVariantScreen() {
     try {
       await api.put('/admin/home-variant', { variant: slug });
       setActive(slug);
-      showAlert('Saved', `Homepage is now using the ${slug} variant. Visitors see it immediately.`);
+      showAlert('Saved', `Saved “${slug}”. The public homepage uses one layout, so visitors will not see a different page.`);
     } catch (e: any) {
       showAlert('Save failed', e?.response?.data?.detail || 'Could not save.');
     } finally { setSaving(''); }
@@ -69,10 +69,10 @@ export default function AdminHomeVariantScreen() {
           <View style={styles.infoCard}>
             <Ionicons name="information-circle" size={18} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              Choose which hero design shows on <Text style={{ fontWeight: '700' }}>jelcos.ai</Text> (guest / logged-out visitors).
-              Switching takes effect immediately for new page loads. Preview opens the variant in a new tab
-              via <Text style={{ fontFamily: Platform.select({ web: 'monospace', default: 'System' }) }}>?variant=…</Text>
-              without changing the persisted default.
+              The guest homepage on <Text style={{ fontWeight: '700' }}>jelcos.ai</Text> now uses a single layout.
+              This selector is kept so an existing setting can still be stored. Preview still opens
+              <Text style={{ fontFamily: Platform.select({ web: 'monospace', default: 'System' }) }}> ?variant=…</Text>
+              , and both values render the same page.
             </Text>
           </View>
 

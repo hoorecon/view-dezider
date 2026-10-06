@@ -1,8 +1,8 @@
 """Homepage variant selector.
 
-Admin picks which hero design renders at jelcos.ai (guest home). Two variants
-ship today: 'classic' (dark purple gradient with stock image) and 'modern'
-(fwdslash.ai-inspired light theme with grid + rotating headline + chat input).
+The public homepage is a single layout. The classic/modern slugs are retained
+so existing admin settings and the public GET stay valid; the guest page no
+longer branches on them.
 
 Endpoints:
   GET  /api/home-variant                        PUBLIC — current variant slug
@@ -24,9 +24,9 @@ _KEY = "homepage_variant"
 _DEFAULT = "modern"
 _VARIANTS: List[Dict[str, str]] = [
     {"slug": "classic", "label": "Classic Purple",
-     "description": "Original dark purple gradient hero with stock image + Get started free CTA."},
-    {"slug": "modern", "label": "Modern Grid (fwdslash-inspired)",
-     "description": "Light graph-paper background · rotating headline word · hero chat input · trusted-by strip."},
+     "description": "Kept for compatibility. The public homepage uses one layout and does not switch on this setting."},
+    {"slug": "modern", "label": "Modern Grid",
+     "description": "Kept for compatibility. The public homepage uses one layout and does not switch on this setting."},
 ]
 _ALLOWED = {v["slug"] for v in _VARIANTS}
 

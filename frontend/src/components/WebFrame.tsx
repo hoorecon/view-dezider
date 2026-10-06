@@ -32,7 +32,11 @@ function classifyRoute(pathname: string | null | undefined): Variant {
   const p = pathname || '/';
   if (p.startsWith('/admin')) return 'admin';
   // Public marketing + legal pages own their full-width responsive layout.
-  if (p === '/' || p.startsWith('/index') || p.startsWith('/legal') || p.startsWith('/contact')) return 'landing';
+  if (
+    p === '/' || p.startsWith('/index') || p.startsWith('/legal') || p.startsWith('/contact')
+    || p.startsWith('/modules') || p.startsWith('/about') || p.startsWith('/blog')
+    || p.startsWith('/case-studies')
+  ) return 'landing';
   if (p.startsWith('/auth')) return 'auth';
   if (p.startsWith('/pricing') || p.startsWith('/p/')) return 'public';
   return 'app';
@@ -49,7 +53,7 @@ export default function WebFrame({ children }: Props) {
   // Native or admin → pass-through (no extra wrapper).
   if (Platform.OS !== 'web') return <>{children}</>;
   const variant = classifyRoute(pathname);
-  if (variant === 'admin') return <>{children}</>;
+  if (variant === 'admin' || variant === 'landing') return <>{children}</>;
 
   // Web mobile width → pass-through (full-bleed mobile card already looks fine).
   if (width < BREAKPOINT_DESKTOP) return <>{children}</>;
