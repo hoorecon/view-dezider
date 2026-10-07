@@ -61,10 +61,22 @@ async def verify_lifestyle_access(user: dict):
     if splan and splan not in {"none", "free", ""} and not splan.startswith("on_demand"):
         return True
 
-    # 5. Block Free and On-Demand users
+    # 5. Check ACM access (if admin enabled it for Free users in /admin/acm)
+    try:
+        from core.acm_engine import check_feature_access
+        acm_res = await check_feature_access(user, "dash_lifestyle_dezider", check_quota=False)
+        if acm_res.get("allowed"):
+            return True
+        dash_res = await check_feature_access(user, "dash_lifestyle_designer", check_quota=False)
+        if dash_res.get("allowed"):
+            return True
+    except Exception as e:
+        logger.warning("ACM access check error in verify_lifestyle_access: %s", e)
+
+    # 6. Block Free and On-Demand users if not granted in ACM or subscription
     raise HTTPException(
         status_code=403,
-        detail="Lifestyle Dezider is not available for Free or On-Demand plans. Please upgrade to a subscription plan (Basic, Pro, Premium) to access Lifestyle Dezider."
+        detail="Lifestyle Dezider is not available for Free or On-Demand plans. Please upgrade to a subscription plan (Basic, Pro, Premium) or contact admin."
     )
 
 

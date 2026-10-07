@@ -47,14 +47,7 @@ async def verify_journal_access(user: dict):
     if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
         return True
 
-    # 3. Explicit check for on_demand / free
-    if utype.startswith("on_demand") or splan.startswith("on_demand") or utype == "free" or splan in {"free", "none", ""}:
-        raise HTTPException(
-            status_code=403,
-            detail="Learning Journal is available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand plans cannot access Learning Journal."
-        )
-
-    # 4. Check credit wallet subscription status
+    # 3. Check credit wallet subscription status
     wallet = await db.credit_wallets.find_one(
         {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
     )
@@ -64,17 +57,29 @@ async def verify_journal_access(user: dict):
         if st in {"active", "manual", "pending"} and cp and cp not in {"none", "free"} and not cp.startswith("on_demand"):
             return True
 
-    # 5. Check active subscription plan on user doc
+    # 4. Check active subscription plan on user doc
     if splan and splan not in {"none", "free", ""} and not splan.startswith("on_demand"):
         return True
 
     if utype == "paid":
         return True
 
-    # 6. Block Free and On-Demand users
+    # 5. Check ACM access (if admin enabled it for Free users in /admin/acm)
+    try:
+        from core.acm_engine import check_feature_access
+        acm_res = await check_feature_access(user, "journal_create", check_quota=False)
+        if acm_res.get("allowed"):
+            return True
+        dash_acm = await check_feature_access(user, "dash_consciousness_diary", check_quota=False)
+        if dash_acm.get("allowed"):
+            return True
+    except Exception as e:
+        logger.warning("ACM access check error in verify_journal_access: %s", e)
+
+    # 6. Block Free and On-Demand users if not granted in ACM or subscription
     raise HTTPException(
         status_code=403,
-        detail="Learning Journal is available exclusively for Subscription Plan members (Basic, Pro, Premium). Free and On-Demand plans cannot access Learning Journal."
+        detail="Learning Journal is available exclusively for Subscription Plan members (Basic, Pro, Premium). Please upgrade your plan or contact admin."
     )
 
 

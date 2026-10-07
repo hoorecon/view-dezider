@@ -209,19 +209,6 @@ async def verify_orgs_access(user: dict):
     if utype in {"admin", "super_admin", "co_admin", "alpha", "beta", "unit_tester", "integration_tester"}:
         return True
 
-    # Explicit check for basic / pro / on_demand / free
-    if utype.startswith("on_demand") or splan.startswith("on_demand") or utype == "free" or splan in {"free", "none", ""}:
-        raise HTTPException(
-            status_code=403,
-            detail="My Organizations is not available for Free or On-Demand plans. Please upgrade to a Premium or Enterprise plan to access My Organizations."
-        )
-
-    if utype in {"basic", "pro"} or splan in {"basic", "pro"} or splan.startswith("basic") or splan.startswith("pro"):
-        raise HTTPException(
-            status_code=403,
-            detail="My Organizations is not available for Basic or Pro plan users. Please upgrade to a Premium or Enterprise plan to access My Organizations."
-        )
-
     # 3. Check credit wallet subscription status
     wallet = await db.credit_wallets.find_one(
         {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}
@@ -236,7 +223,16 @@ async def verify_orgs_access(user: dict):
     if splan in {"premium", "enterprise"}:
         return True
 
-    # 5. Block Free, On-Demand, Basic, and Pro users
+    # 5. Check ACM access (if admin enabled it in /admin/acm)
+    try:
+        from core.acm_engine import check_feature_access
+        acm_res = await check_feature_access(user, "dash_orgs", check_quota=False)
+        if acm_res.get("allowed"):
+            return True
+    except Exception as e:
+        pass
+
+    # 6. Block unauthorized plans
     raise HTTPException(
         status_code=403,
         detail="My Organizations is not available for Free, On-Demand, Basic, or Pro plans. Please upgrade to Premium or Enterprise plan to access My Organizations."
