@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { trackEvent, identifyUser, resetAnalytics } from '../utils/analytics';
+import { clearAcmCache } from '../hooks/acmCache';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -69,6 +70,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setSession: async (sessionToken: string, userData: any) => {
     await AsyncStorage.setItem('session_token', sessionToken);
     if (userData.org_id) await AsyncStorage.setItem('org_id', userData.org_id);
+    clearAcmCache();
     set({ user: userData, isAuthenticated: true, sessionToken });
   },
 
@@ -95,6 +97,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { session_token, ...userData } = response.data;
       await AsyncStorage.setItem('session_token', session_token);
       if (orgId) await AsyncStorage.setItem('org_id', orgId);
+      clearAcmCache();
       set({ user: userData, isAuthenticated: true, sessionToken: session_token });
       identifyUser(userData.user_id);
       trackEvent('login', { method: 'email' });
@@ -114,6 +117,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const { session_token, ...userData } = response.data;
       await AsyncStorage.setItem('session_token', session_token);
+      clearAcmCache();
       set({ user: userData, isAuthenticated: true, sessionToken: session_token });
       identifyUser(userData.user_id);
       trackEvent('signup', { method: 'email' });
@@ -130,6 +134,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const { session_token, ...userData } = response.data;
       await AsyncStorage.setItem('session_token', session_token);
+      clearAcmCache();
       set({ user: userData, isAuthenticated: true, sessionToken: session_token });
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Google login failed');
@@ -151,6 +156,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // scope (e.g. VEALES) sticks and the next user appears as the old one.
       await AsyncStorage.removeItem('org_id');
       await AsyncStorage.removeItem('org_slug');
+      clearAcmCache();
       set({ user: null, isAuthenticated: false, sessionToken: null, orgBranding: null });
       resetAnalytics();
     }

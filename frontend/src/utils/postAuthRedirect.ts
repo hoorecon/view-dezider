@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 /**
  * Decide where to send a user immediately after a successful login.
  *
@@ -51,7 +50,6 @@ export async function getPostAuthRoute(): Promise<string> {
   }
   return '/(tabs)';
 }
-
 
 /**
  * Redirect an unauthenticated visitor to /auth/login while remembering the

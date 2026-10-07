@@ -99,7 +99,7 @@ export default function MarketingFooter() {
 }
 
 const styles = StyleSheet.create({
-  footer: { backgroundColor: '#100E22', paddingTop: 56 },
+  footer: { backgroundColor: '#0A1A4F', paddingTop: 56 },
   inner: { paddingHorizontal: 28, paddingBottom: 28, maxWidth: 1120, width: '100%', alignSelf: 'center' },
   innerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 28 },
   col: { marginBottom: 28, minWidth: 200 },

@@ -45,7 +45,7 @@ export default function AboutPage() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#070B1C' },
+  root: { flex: 1, backgroundColor: '#0A1A4F' },
   hero: { paddingHorizontal: 24, paddingTop: 36, paddingBottom: 32, width: '100%', maxWidth: 1120, alignSelf: 'center' },
   kicker: { fontSize: 12, fontWeight: '800', color: '#F9A8D4', letterSpacing: 1.4 },
   h1: { fontSize: 40, fontWeight: '800', color: '#FFFFFF', marginTop: 8, letterSpacing: -0.6 },

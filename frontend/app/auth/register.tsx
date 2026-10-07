@@ -22,11 +22,14 @@ import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
 import { safeBack } from '../../src/utils/navigation';
+import { useEnterApp } from '../../src/hooks/useEnterApp';
+import JelcosLoader from '../../src/components/marketing/JelcosLoader';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { next: nextParam } = useLocalSearchParams<{ next?: string }>();
   const { register, loginWithGoogle, isAuthenticated } = useAuthStore();
+  const { entering, enterApp } = useEnterApp(router);
 
   // Persist ?next=/foo so getPostAuthRoute() sends us back there after auth.
   useEffect(() => {
@@ -49,7 +52,7 @@ export default function RegisterScreen() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      getPostAuthRoute().then((r) => router.replace(r as any));
+      getPostAuthRoute().then(enterApp);
     }
   }, [isAuthenticated]);
 
@@ -76,7 +79,7 @@ export default function RegisterScreen() {
       await register(email, password, name, orgSlug.trim() || undefined);
       // Honor pending intent (e.g. decider-store clone) rather than always
       // dumping the new user on /(tabs).
-      router.replace((await getPostAuthRoute()) as any);
+      enterApp(await getPostAuthRoute());
     } catch (err: any) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -109,7 +112,7 @@ export default function RegisterScreen() {
           const sessionId = result.url.split('session_id=')[1]?.split('&')[0];
           if (sessionId) {
             await loginWithGoogle(sessionId);
-            router.replace((await getPostAuthRoute()) as any);
+            enterApp(await getPostAuthRoute());
           }
         }
       }
@@ -229,6 +232,7 @@ export default function RegisterScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      {entering && <View style={styles.loaderCover}><JelcosLoader /></View>}
     </SafeAreaView>
   );
 }
@@ -237,6 +241,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  loaderCover: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    ...(Platform.OS === 'web' ? ({ position: 'fixed' } as any) : {}),
   },
   keyboardView: {
     flex: 1,

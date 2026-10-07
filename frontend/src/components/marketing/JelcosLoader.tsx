@@ -71,7 +71,7 @@ export default function JelcosLoader({ visible = true }: { visible?: boolean }) 
 const glow = (c: string) => (Platform.OS === 'web' ? ({ filter: 'blur(90px)', backgroundColor: c } as any) : { backgroundColor: c, opacity: 0.25 });
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#070B1C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0A1A4F', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   orb: { position: 'absolute', width: 420, height: 420, borderRadius: 999, opacity: 0.45 },
   orbPink: { top: -120, left: -100, ...glow('#E91E63') },
   orbPurple: { bottom: -140, right: -80, ...glow('#8E24AA') },

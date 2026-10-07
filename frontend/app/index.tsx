@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image,
   useWindowDimensions, Platform, TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
@@ -17,6 +17,7 @@ import MarketingFooter from '../src/components/marketing/MarketingFooter';
 import Seo from '../src/components/Seo';
 import DemoBooking from '../src/components/marketing/DemoBooking';
 import JelcosLoader from '../src/components/marketing/JelcosLoader';
+import HeroScene3D from '../src/components/marketing/HeroScene3D';
 import { DEFAULT_LAYOUT, TILE_META } from '../src/config/dashboardTiles';
 
 const FEATURES = [
@@ -280,11 +281,17 @@ export default function Index() {
         return;
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Only redirect while the landing page is the visible screen. When it sits
+  // underneath /auth/register or /auth/login, those screens own navigation.
+  useFocusEffect(useCallback(() => {
     if (!isLoading && isAuthenticated) {
       router.replace('/(tabs)');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated]));
 
   const isServerRender = typeof window === 'undefined';
   if (!isServerRender && (isLoading || isAuthenticated)) {
@@ -321,6 +328,7 @@ export default function Index() {
         showsVerticalScrollIndicator
       >
         <View nativeID="jelcosHero" style={styles.hero}>
+          <HeroScene3D />
           <View style={styles.orbA} />
           <View style={styles.orbB} />
           <View style={[styles.heroGrid, isWide && styles.heroGridWide]}>
@@ -1082,7 +1090,7 @@ export default function Index() {
                 return (
                   <TouchableOpacity activeOpacity={0.95} onPress={() => setBlogOpen(open ? null : note.title)} style={[styles.blogFeature, isWide && { flex: 1.15 }]} {...liftProp}>
                     <Image source={note.image} style={styles.coverImg} resizeMode="cover" />
-                    <LinearGradient colors={['rgba(16,14,38,0.05)', 'rgba(16,14,38,0.55)', 'rgba(16,14,38,0.96)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFillObject} />
+                    <LinearGradient colors={['rgba(10,26,79,0.05)', 'rgba(10,26,79,0.55)', 'rgba(10,26,79,0.96)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFillObject} />
                     <View style={styles.blogFeatureTop}>
                       <View style={styles.casePillDark}><Text style={styles.casePillDarkText}>{note.k}</Text></View>
                       <Text style={styles.blogFeatureTime}>{note.minutes}</Text>
@@ -1239,7 +1247,7 @@ const cardShadow = Platform.OS === 'web'
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1, width: '100%', backgroundColor: '#070B1C', overflow: 'hidden',
+    flex: 1, width: '100%', backgroundColor: '#0A1A4F', overflow: 'hidden',
     ...(Platform.OS === 'web' ? { height: '100vh' } : {}),
   },
   scroller: { flex: 1, width: '100%', ...(Platform.OS === 'web' ? { maxHeight: '100%' } : {}) },
@@ -1255,7 +1263,7 @@ const styles = StyleSheet.create({
   hero: {
     position: 'relative',
     overflow: 'hidden',
-    backgroundColor: '#070B1C',
+    backgroundColor: '#0A1A4F',
     paddingHorizontal: 24,
     paddingTop: 128,
     paddingBottom: 96,
@@ -1272,6 +1280,16 @@ const styles = StyleSheet.create({
     pointerEvents: 'none',
     ...(Platform.OS === 'web' ? { filter: 'blur(36px)' } as any : {}),
   },
+  heroMarkWrap: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  heroMark: {
+    alignItems: 'center', justifyContent: 'center', opacity: 0.09,
+    transform: [{ rotate: '-8deg' }],
+  },
+  heroMarkLetter: { color: '#FFFFFF', fontWeight: '900', marginTop: -8 },
+  heroMarkDot: { position: 'absolute', borderRadius: 999, backgroundColor: '#FFFFFF' },
   heroGrid: { width: '100%', maxWidth: 1160, alignSelf: 'center', gap: 36, zIndex: 1 },
   heroGridWide: { flexDirection: 'row', alignItems: 'center', gap: 48 },
   heroCopy: { minWidth: 0, width: '100%' },
@@ -1468,7 +1486,7 @@ const styles = StyleSheet.create({
   howTitleSm: { fontSize: 16, fontWeight: '800', color: '#16132A', marginTop: 10, marginBottom: 6 },
   howLight: { backgroundColor: '#FFFFFF', borderRadius: 28, padding: 26, borderWidth: 1, borderColor: '#EFE3F6', ...cardShadow },
   howDark: {
-    backgroundColor: '#100E26', borderRadius: 28, padding: 26, overflow: 'hidden',
+    backgroundColor: '#10266B', borderRadius: 28, padding: 26, overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.3)' } as any) : {}),
   },
   howDarkGlow: {
@@ -1508,7 +1526,7 @@ const styles = StyleSheet.create({
   vsDivider: { height: 1, backgroundColor: '#F1E8F7', marginVertical: 12, marginLeft: 40 },
   prodStack: { gap: 16 },
   appWin: {
-    borderRadius: 24, overflow: 'hidden', backgroundColor: '#100E26',
+    borderRadius: 24, overflow: 'hidden', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.3)' } as any) : {}),
   },
   appWinGlow: {
@@ -1566,7 +1584,7 @@ const styles = StyleSheet.create({
   kitSwotCell: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   kitSwotLetter: { fontSize: 20, fontWeight: '700', fontStyle: 'italic' },
   kitDark: {
-    borderRadius: 28, padding: 24, overflow: 'hidden', backgroundColor: '#100E26',
+    borderRadius: 28, padding: 24, overflow: 'hidden', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.28)' } as any) : {}),
   },
   kitDarkGlow: {
@@ -1592,7 +1610,7 @@ const styles = StyleSheet.create({
   whyTitle: { fontSize: 30, lineHeight: 36, fontWeight: '700', color: '#16132A', letterSpacing: -0.5, marginBottom: 8 },
   whyWhite: { borderRadius: 28, padding: 26, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EDE1F5', ...cardShadow },
   whyDark: {
-    borderRadius: 28, padding: 26, overflow: 'hidden', backgroundColor: '#100E26',
+    borderRadius: 28, padding: 26, overflow: 'hidden', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.3)' } as any) : {}),
   },
   whyGrad: {
@@ -1630,7 +1648,7 @@ const styles = StyleSheet.create({
   caseSample: { fontSize: 11, fontWeight: '700', color: '#9C93B3', fontStyle: 'italic' },
   caseSampleDark: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' },
   caseDark: {
-    borderRadius: 28, padding: 28, overflow: 'hidden', backgroundColor: '#100E26',
+    borderRadius: 28, padding: 28, overflow: 'hidden', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.3)' } as any) : {}),
   },
   caseQDark: { fontSize: 34, lineHeight: 42, fontWeight: '700', fontStyle: 'italic', color: '#FFFFFF', letterSpacing: -0.6, marginBottom: 10 },
@@ -1659,7 +1677,7 @@ const styles = StyleSheet.create({
   aboutStack: { gap: 16 },
   aboutPair: { gap: 16 },
   aboutDark: {
-    borderRadius: 28, padding: 28, overflow: 'hidden', backgroundColor: '#100E26',
+    borderRadius: 28, padding: 28, overflow: 'hidden', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.3)' } as any) : {}),
   },
   aboutProduct: { color: '#FFFFFF', fontSize: 44, lineHeight: 50, fontWeight: '700', letterSpacing: -1 },
@@ -1679,7 +1697,7 @@ const styles = StyleSheet.create({
   blogWrap: { width: '100%', maxWidth: 1120, alignSelf: 'center', marginTop: 44, gap: 16 },
   blogCol: { gap: 16 },
   blogFeature: {
-    borderRadius: 28, overflow: 'hidden', minHeight: 460, padding: 26, justifyContent: 'space-between', backgroundColor: '#100E26',
+    borderRadius: 28, overflow: 'hidden', minHeight: 460, padding: 26, justifyContent: 'space-between', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.3)' } as any) : {}),
   },
   blogFeatureTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -1693,7 +1711,7 @@ const styles = StyleSheet.create({
   blogReadLightText: { color: '#16132A', fontSize: 13, fontWeight: '800' },
   blogRow: { borderRadius: 24, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EDE1F5', ...cardShadow },
   blogRowDark: {
-    borderRadius: 24, overflow: 'hidden', backgroundColor: '#100E26',
+    borderRadius: 24, overflow: 'hidden', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(16,14,38,0.28)' } as any) : {}),
   },
   blogThumb: { height: 160, overflow: 'hidden' },
@@ -1707,7 +1725,7 @@ const styles = StyleSheet.create({
   bento: { gap: 16, flexDirection: 'row', flexWrap: 'wrap' },
   bentoCol: { gap: 16, flexGrow: 1, flexBasis: 280 },
   bentoDark: {
-    flexGrow: 1, flexBasis: 280, borderRadius: 28, padding: 26, overflow: 'hidden', backgroundColor: '#100E26',
+    flexGrow: 1, flexBasis: 280, borderRadius: 28, padding: 26, overflow: 'hidden', backgroundColor: '#10266B',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 70px rgba(16,14,38,0.35)' } as any) : {}),
   },
   bentoDarkGlow: {
@@ -1769,13 +1787,13 @@ const styles = StyleSheet.create({
   modGradSub: { color: 'rgba(255,255,255,0.86)', fontSize: 15, lineHeight: 22, marginTop: 8, maxWidth: 380 },
   modGradCta: {
     flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginTop: 20,
-    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: 'rgba(10,8,30,0.28)',
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: 'rgba(10,26,79,0.28)',
   },
   modGradCtaText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
   modDark: {
     flexGrow: 1, borderRadius: 24, padding: 24, minHeight: 210, overflow: 'hidden',
-    backgroundColor: '#12102E', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#14307D', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
   modDarkGlow: {
     position: 'absolute', width: 180, height: 180, borderRadius: 999, top: -70, right: -50, opacity: 0.35,
@@ -1848,7 +1866,7 @@ const styles = StyleSheet.create({
 
   ctaBand: { backgroundColor: '#F3E5F5', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 72, alignItems: 'center' },
   ctaCard: {
-    width: '100%', maxWidth: 760, backgroundColor: '#14102A', borderRadius: 28,
+    width: '100%', maxWidth: 760, backgroundColor: '#14307D', borderRadius: 28,
     paddingHorizontal: 36, paddingVertical: 48, alignItems: 'center',
     ...(Platform.OS === 'web' ? { boxShadow: '0 24px 60px rgba(26, 35, 126, 0.18)' } as any : { elevation: 4 }),
   },

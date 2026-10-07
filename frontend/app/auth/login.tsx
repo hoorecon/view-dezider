@@ -28,6 +28,8 @@ import { useAppLogo } from '../../src/contexts/FontFamilyContext';
 import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
+import { useEnterApp } from '../../src/hooks/useEnterApp';
+import JelcosLoader from '../../src/components/marketing/JelcosLoader';
 
 const ORG_TYPES = [
   { key: 'BUSINESS', label: 'Business', icon: 'briefcase', color: '#3B82F6' },
@@ -39,6 +41,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { next: nextParam } = useLocalSearchParams<{ next?: string }>();
   const { login, loginWithGoogle, isAuthenticated, fetchOrgBranding, orgBranding, user } = useAuthStore();
+  const { entering, enterApp } = useEnterApp(router);
 
   // On mount: if the caller passed ?next=/some/path, stash it so
   // getPostAuthRoute() sends us back there after login/register/OTP/Google.
@@ -77,8 +80,8 @@ export default function LoginScreen() {
       getPostAuthRoute().then((route) => {
         // A pending deep link (contribution invite / shared report) always wins,
         // even for admin-like users — only fall back to /admin when there is none.
-        if (route && route !== '/(tabs)') { router.replace(route as any); return; }
-        router.replace((adminLike ? '/admin' : route) as any);
+        if (route && route !== '/(tabs)') { enterApp(route); return; }
+        enterApp(adminLike ? '/admin' : route);
       });
     }
   }, [isAuthenticated, user]);
@@ -122,8 +125,8 @@ export default function LoginScreen() {
       } else {
         // Direct login (NonProfit) — respect pending intent (decider-store clone,
         // shared step, etc.) before falling back to /(tabs).
-        useAuthStore.getState().setSession(data.session_token, data.user);
-        router.replace((await getPostAuthRoute()) as any);
+        await useAuthStore.getState().setSession(data.session_token, data.user);
+        enterApp(await getPostAuthRoute());
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Org login failed');
@@ -146,12 +149,12 @@ export default function LoginScreen() {
         otp: otpCode.trim(),
       });
       const data = r.data;
-      useAuthStore.getState().setSession(data.session_token, data.user);
+      await useAuthStore.getState().setSession(data.session_token, data.user);
       setShowOtpModal(false);
       // Honour pending deep links (e.g. /decider-store/{id}?use=full from
       // "Use this Finder" click) — otherwise the OTP path always dumped the
       // user on /(tabs) and the FinderApp entry silently died.
-      router.replace((await getPostAuthRoute()) as any);
+      enterApp(await getPostAuthRoute());
     } catch (err: any) {
       setOtpError(err.response?.data?.detail || 'Invalid OTP');
     } finally {
@@ -223,7 +226,7 @@ export default function LoginScreen() {
           const sessionId = result.url.split('session_id=')[1]?.split('&')[0];
           if (sessionId) {
             await loginWithGoogle(sessionId);
-            router.replace((await getPostAuthRoute()) as any);
+            enterApp(await getPostAuthRoute());
           }
         }
       }
@@ -440,6 +443,7 @@ export default function LoginScreen() {
           </View>
         </View>
       </Modal>
+      {entering && <View style={styles.loaderCover}><JelcosLoader /></View>}
     </SafeAreaView>
   );
 }
@@ -448,6 +452,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  loaderCover: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    ...(Platform.OS === 'web' ? ({ position: 'fixed' } as any) : {}),
   },
   keyboardView: {
     flex: 1,

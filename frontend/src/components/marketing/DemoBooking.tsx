@@ -247,7 +247,7 @@ export default function DemoBooking() {
 }
 
 const styles = StyleSheet.create({
-  root: { backgroundColor: '#070B1C', paddingTop: 72, paddingBottom: 24 },
+  root: { backgroundColor: '#0A1A4F', paddingTop: 72, paddingBottom: 24 },
   stage: { width: '100%', maxWidth: 1120, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 18, paddingBottom: 48, gap: 28 },
   stageSplit: { flexDirection: 'row', alignItems: 'flex-start', gap: 36 },
   copy: { paddingTop: 12 },
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
   pickFieldOn: { borderColor: '#E91E63', backgroundColor: 'rgba(233,30,99,0.08)' },
   panel: {
     marginTop: 10, borderRadius: 18, padding: 16,
-    backgroundColor: '#15112C', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#14307D', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
   panelTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', marginBottom: 12 },
   panelHint: { color: 'rgba(255,255,255,0.45)', fontSize: 12, marginTop: 12 },
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
   area: { minHeight: 110, textAlignVertical: 'top' },
   menu: {
     marginTop: 6, borderRadius: 14, overflow: 'hidden',
-    backgroundColor: '#1A1433', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#14307D', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
   menuItem: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
   menuText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },

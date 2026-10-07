@@ -13,6 +13,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { useAuthStore } from '../store/authStore';
+import { acmCache, clearAcmCache } from './acmCache';
 
 const API = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL
   || process.env.EXPO_PUBLIC_BACKEND_URL
@@ -40,12 +42,12 @@ const DEFAULT_ACCESS: FeatureAccess = {
   quota_unit: 'toggle',
 };
 
-let _acmMemoryCache: ACMState | null = null;
-let _acmInflight: Promise<ACMState | null> | null = null;
+export { clearAcmCache };
 
 export function useACM() {
-  const [state, setState] = useState<ACMState | null>(_acmMemoryCache);
-  const [isLoading, setIsLoading] = useState(!_acmMemoryCache);
+  const sessionToken = useAuthStore((s) => s.sessionToken);
+  const [state, setState] = useState<ACMState | null>(acmCache.data);
+  const [isLoading, setIsLoading] = useState(!acmCache.data);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAccess = useCallback(async () => {
@@ -56,8 +58,8 @@ export function useACM() {
         return;
       }
 
-      if (_acmInflight) {
-        const data = await _acmInflight;
+      if (acmCache.inflight) {
+        const data = await acmCache.inflight;
         if (data) {
           setState(data);
           setIsLoading(false);
@@ -65,25 +67,26 @@ export function useACM() {
         return;
       }
 
-      _acmInflight = fetch(`${API}/api/acm/my-access`, {
+      const request: Promise<ACMState | null> = fetch(`${API}/api/acm/my-access`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       }).then(async (resp) => {
-        _acmInflight = null;
+        if (acmCache.inflight === request) acmCache.inflight = null;
         if (resp.ok) {
           const data = await resp.json();
-          _acmMemoryCache = data;
+          acmCache.data = data;
           return data;
         }
         return null;
       }).catch(() => {
-        _acmInflight = null;
+        if (acmCache.inflight === request) acmCache.inflight = null;
         return null;
       });
+      acmCache.inflight = request;
 
-      const data = await _acmInflight;
+      const data = await request;
       if (data) {
         setState(data);
         setError(null);
@@ -96,8 +99,12 @@ export function useACM() {
   }, []);
 
   useEffect(() => {
+    if (acmCache.token !== sessionToken) {
+      clearAcmCache();
+      acmCache.token = sessionToken;
+    }
     fetchAccess();
-  }, [fetchAccess]);
+  }, [fetchAccess, sessionToken]);
 
   const checkFeature = useCallback(
     (featureId: string): FeatureAccess & { allowed: boolean } => {
@@ -174,7 +181,7 @@ export function isSubscriptionUserOrAdmin(state: ACMState | null): boolean {
 
 export function useIsSubscriptionUserOrAdmin(): boolean {
   const { access, isLoading } = useACM();
-  const targetState = access || _acmMemoryCache;
+  const targetState = access || acmCache.data;
   if (!targetState && isLoading) return false;
   return isSubscriptionUserOrAdmin(targetState);
 }

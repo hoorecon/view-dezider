@@ -172,13 +172,13 @@ const styles = StyleSheet.create({
   pillWrapOverlay: { backgroundColor: 'transparent', pointerEvents: 'box-none' },
   pillWrap: {
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
-    backgroundColor: '#070B1C', zIndex: 40, position: 'relative',
+    backgroundColor: '#0A1A4F', zIndex: 40, position: 'relative',
     ...(Platform.OS === 'web' ? { position: 'sticky' as const, top: 0 } as any : {}),
   },
   pill: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     maxWidth: 1180, width: '100%', alignSelf: 'center',
-    backgroundColor: 'rgba(18, 22, 48, 0.92)',
+    backgroundColor: 'rgba(16, 38, 107, 0.92)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: 999, paddingLeft: 16, paddingRight: 10, paddingVertical: 10,
     ...(Platform.OS === 'web' ? { boxShadow: '0 10px 30px rgba(0,0,0,0.28)' } as any : { elevation: 4 }),
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   menuBtnLight: { backgroundColor: 'rgba(255,255,255,0.08)' },
   menuBtnInk: { backgroundColor: 'rgba(26,35,126,0.06)' },
   lightWrap: { backgroundColor: '#F6F3FB' },
-  lightWrapInk: { backgroundColor: '#070B1C' },
+  lightWrapInk: { backgroundColor: '#0A1A4F' },
   lightPill: {
     backgroundColor: '#FFFFFF',
     borderColor: 'rgba(26, 35, 126, 0.08)',
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? { boxShadow: '0 16px 40px rgba(15,23,42,0.12)' } as any : { elevation: 6 }),
   },
   menuDark: {
-    backgroundColor: '#14182F', borderColor: 'rgba(255,255,255,0.1)', top: 78, right: 28,
+    backgroundColor: '#14307D', borderColor: 'rgba(255,255,255,0.1)', top: 78, right: 28,
   },
   menuItem: { paddingHorizontal: 16, paddingVertical: 12 },
   menuText: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },

@@ -18,6 +18,7 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import api from './api';
+import { useAuthStore } from '../store/authStore';
 
 export interface TileAccess {
   // Backend `/api/acm/my-access` returns `access_level` (not `level`).
@@ -35,6 +36,7 @@ export interface UseDashboardTilesResult {
 }
 
 export function useDashboardTiles(): UseDashboardTilesResult {
+  const sessionToken = useAuthStore((s) => s.sessionToken);
   const [access, setAccess] = useState<Record<string, TileAccess>>({});
   const [loading, setLoading] = useState(true);
 
@@ -57,7 +59,7 @@ export function useDashboardTiles(): UseDashboardTilesResult {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh, sessionToken]);
 
   /**
    * `dash_<id>` is ON when access level is full/read.
