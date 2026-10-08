@@ -440,10 +440,9 @@ class ShareStepRequest(BaseModel):
     # contacts/experts. Sub-contributions stay transparently attributed.
     allow_reshare: bool = False
     # How the contributor sees steps OTHER than the requested one when they open
-    # the real flow in Contribution Mode: "hidden" (only the target step) or
-    # "readonly" (can view other steps for reference, but only the target step
-    # is submitted).
-    step_access: str = "hidden"
+    # the real flow in Contribution Mode: "readonly" (can view other steps for reference)
+    # or "edit" (can also edit other steps).
+    step_access: str = "readonly"
     # Which module the shared step belongs to: decision | pros_cons | solution_finder
     module: str = "decision"
 

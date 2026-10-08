@@ -170,7 +170,7 @@ async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_cu
         "step_number": int(data.get("step_number") or 0),
         "merge_mode": data.get("merge_mode", "equal"), "custom_weights": data.get("custom_weights") or {},
         "message": data.get("message", ""), "allow_reshare": bool(data.get("allow_reshare")),
-        "step_access": data.get("step_access", "hidden"),
+        "step_access": data.get("step_access", "readonly"),
         "decision_title": title, "decision_context": doc.get("context", ""),
         "step_data": {}, "status": "active",
         "recipients": recipients, "pending_invites": pending,
@@ -510,7 +510,7 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
         "message": data.message, "recipients": recipients, "pending_invites": pending_invites,
         "allow_reshare": bool(data.allow_reshare),
         "module": getattr(data, "module", "decision") or "decision",
-        "step_access": getattr(data, "step_access", "hidden") or "hidden",
+        "step_access": getattr(data, "step_access", "readonly") or "readonly",
         "decision_title": decision.get("title", ""), "decision_context": decision.get("context", ""),
         "step_data": {"factors": decision.get("factors", []),
                       "options": [{"id": o["id"], "name": o["name"]} for o in decision.get("options", [])]},
@@ -523,6 +523,7 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
     sender_email = user.get("email", "")
     decision_title = decision.get("title", "a decision")
     msg = (data.message or "").strip()
+    share_link = f"{PUBLIC_APP_URL}/contribute?share={share_doc['id']}" if PUBLIC_APP_URL else ""
 
     # Registered recipients → in-app notification + email alert
     for r in recipients:
@@ -533,14 +534,14 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
         await send_email(
             r["email"],
             f'{sender_name} shared a decision step with you — {step_name}',
-            _share_email_html(sender_name, data.step_number, step_name, decision_title, msg, PUBLIC_APP_URL))
+            _share_email_html(sender_name, data.step_number, step_name, decision_title, msg, share_link or PUBLIC_APP_URL))
 
     # Unknown emails → invite email (account auto-claims the share on signup)
     for inv in pending_invites:
         await send_email(
             inv["email"],
             f'{sender_name} invited you to collaborate on a decision — {step_name}',
-            _invite_email_html(sender_name, data.step_number, step_name, decision_title, msg, f"{PUBLIC_APP_URL}/register"))
+            _invite_email_html(sender_name, data.step_number, step_name, decision_title, msg, share_link or f"{PUBLIC_APP_URL}/register"))
 
     return {
         "id": share_doc["id"],

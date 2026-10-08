@@ -225,6 +225,7 @@ from routes.admin_import_analytics import router as admin_import_analytics_route
 from routes.admin_url_training import router as admin_url_training_router
 from routes.admin_notifications import router as admin_notifications_router
 from routes.subscriptions import router as subscriptions_router
+from routes.faculty import router as faculty_router
 
 
 # ========================
@@ -319,6 +320,7 @@ api_router.include_router(admin_quota_router)
 api_router.include_router(review_net_router)
 api_router.include_router(expert_net_router)
 api_router.include_router(platform_experts_router)
+api_router.include_router(faculty_router)
 api_router.include_router(public_help_router)
 api_router.include_router(marketplace_router)
 api_router.include_router(earnings_router)

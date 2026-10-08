@@ -56,7 +56,7 @@ export default function ProsConsWizard() {
   // Contribution Mode: contributor edits their sandbox clone, scoped to one step.
   const contributionMode = !!contribShareId;
   const contribStepNum = parseInt(String(contribStep || '0'), 10) || 0;
-  const stepAccess = String(access || 'hidden');
+  const stepAccess = String(access || 'readonly');
   const [submittingContribution, setSubmittingContribution] = useState(false);
 
   const submitContribution = async () => {
@@ -85,7 +85,7 @@ export default function ProsConsWizard() {
   const { checkFeature } = useACM();
   const featureId = module === 'swot' ? 'swot_analysis' : 'pros_cons';
   const acmAccess = checkFeature(featureId);
-  const isReadOnly = acmAccess.access_level === 'read' || !!analysis?.is_sample;
+  const isReadOnly = (contributionMode && stepAccess === 'readonly') || acmAccess.access_level === 'read' || !!analysis?.is_sample;
   const isRestricted = !acmAccess.allowed || (acmAccess.access_level === 'read' && !analysis?.is_sample) || acmAccess.access_level === 'locked' || acmAccess.access_level === 'hidden';
 
   const load = useCallback(async () => {

@@ -221,7 +221,7 @@ function PRRDecisionDetailInner() {
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {(contributionMode && stepAccess === 'hidden' ? [contribStep] : stepsForIndicator).map((step) => (
+        {(contributionMode ? [contribStep] : stepsForIndicator).map((step) => (
           <TouchableOpacity
             key={step}
             testID={`step-dot-${step}`}
@@ -355,11 +355,11 @@ function PRRDecisionDetailInner() {
           )}
           <View style={styles.headerStatusBadge}>
             <Text style={styles.headerStatusText}>
-              Step {isFinderApp ? (finderAppStepMap[currentStep] || currentStep) : currentStep}/{isFinderApp ? 8 : 10}
+              {contributionMode ? `Step ${contribStep}` : `Step ${isFinderApp ? (finderAppStepMap[currentStep] || currentStep) : currentStep}/${isFinderApp ? 8 : 10}`}
             </Text>
           </View>
           {/* Save as Template — visible on every step 2..10 (was only in Step 10) */}
-          {currentStep >= 2 && currentStep <= 10 && (
+          {currentStep >= 2 && currentStep <= 10 && !contributionMode && (
             <Tooltip text="Save as Template — capture what's built so far (Private / Shared / Public)">
               <TouchableOpacity
                 onPress={() => { setSaveTplInitialTab('template'); setSaveTplModalVisible(true); }}
@@ -424,10 +424,24 @@ function PRRDecisionDetailInner() {
           </TouchableOpacity>
         )}
         {contributionMode && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#EEF2FF', borderBottomWidth: 1, borderBottomColor: '#C7D2FE' }}>
-            <Ionicons name="people-circle-outline" size={18} color="#4338CA" />
-            <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: '#3730A3' }}>
-              Contribution Mode — add your input to Step {contribStep}. {stepAccess === 'readonly' ? 'Other steps are reference-only.' : 'Only this step is shown.'}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10,
+            backgroundColor: stepAccess === 'readonly' ? '#FEF3C7' : '#EEF2FF',
+            borderBottomWidth: 1,
+            borderBottomColor: stepAccess === 'readonly' ? '#FDE68A' : '#C7D2FE',
+          }}>
+            <Ionicons
+              name={stepAccess === 'readonly' ? 'eye-outline' : 'create-outline'}
+              size={18}
+              color={stepAccess === 'readonly' ? '#B45309' : '#4338CA'}
+            />
+            <Text style={{
+              flex: 1, fontSize: 12.5, fontWeight: '700',
+              color: stepAccess === 'readonly' ? '#92400E' : '#3730A3',
+            }}>
+              {stepAccess === 'readonly'
+                ? `Contribution Mode (Read-Only) — viewing Step ${contribStep}. Fields cannot be edited.`
+                : `Contribution Mode (Editable) — you can edit and add fields for Step ${contribStep}.`}
             </Text>
           </View>
         )}
@@ -442,14 +456,13 @@ function PRRDecisionDetailInner() {
           ref={scrollRef}
           contentContainerStyle={[
             styles.scrollContent,
-            decision?.is_sample && ({
-              filter: 'blur(0.5px)',
-              opacity: 0.96,
+            (decision?.is_sample || (contributionMode && stepAccess === 'readonly')) && ({
+              opacity: 0.95,
               pointerEvents: 'none',
               userSelect: 'none',
             } as any)
           ]}
-          pointerEvents={decision?.is_sample ? 'none' : 'auto'}
+          pointerEvents={(decision?.is_sample || (contributionMode && stepAccess === 'readonly')) ? 'none' : 'auto'}
           showsVerticalScrollIndicator={false}
         >
           {renderCurrentStep()}
@@ -462,7 +475,7 @@ function PRRDecisionDetailInner() {
             />
           )}
         </ScrollView>
-        {contributionMode && (
+        {contributionMode && stepAccess !== 'readonly' && (
           <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: COLORS.divider, backgroundColor: '#FFF' }}>
             <TouchableOpacity
               testID="submit-contribution"

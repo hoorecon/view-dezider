@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-07-19-01"  # +ad_programs.admaker_program (AdMaker Studio gate)
+ACM_SEED_VERSION = "2026-10-08-01"  # Validation & fix for public_pulse schema
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1784,7 +1784,7 @@ ACM_MODULES = [
                 "access": {
                     "unit_tester": _full(), "integration_tester": _full(),
                     "alpha": _full(), "beta": _full(),
-                    "free": {"enabled": True, "quota": 5},
+                    "free": _full(5),
                     "trial": _full(), "paid_starter": _full(),
                     "paid_pro": _full(), "paid_enterprise": _full(),
                     "paid_api": _hidden(),
@@ -1827,7 +1827,7 @@ ACM_MODULES = [
                 "access": {
                     "unit_tester": _full(), "integration_tester": _full(),
                     "alpha": _full(), "beta": _full(),
-                    "free": {"enabled": True, "quota": 3},
+                    "free": _full(3),
                     "trial": _full(), "paid_starter": _full(),
                     "paid_pro": _full(), "paid_enterprise": _full(),
                     "paid_api": _hidden(),
@@ -1842,7 +1842,7 @@ ACM_MODULES = [
                 "access": {
                     "unit_tester": _full(), "integration_tester": _full(),
                     "alpha": _full(), "beta": _full(),
-                    "free": {"enabled": True, "quota": 0},
+                    "free": _hidden(),
                     "trial": _full(), "paid_starter": _full(),
                     "paid_pro": _full(), "paid_enterprise": _full(),
                     "paid_api": _hidden(),

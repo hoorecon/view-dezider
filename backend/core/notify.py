@@ -25,23 +25,36 @@ ULTRAMSG_TOKEN = os.getenv("ULTRAMSG_API_TOKEN")
 PUBLIC_APP_URL = (os.getenv("PUBLIC_APP_URL") or "https://jelcos.ai").rstrip("/")
 
 
+def _get_resend_key() -> str:
+    return (os.getenv("RESEND_API_KEY") or "").strip()
+
+
+def _get_resend_from() -> str:
+    val = os.getenv("RESEND_FROM_EMAIL") or "JELCOS AI <reports@updates.veales.in>"
+    return val.strip("\"'")
+
+
 def _norm_phone(p: Optional[str]) -> Optional[str]:
     digits = re.sub(r"\D", "", p or "")
     return digits or None
 
 
 async def send_email(to: str, subject: str, html: str) -> bool:
-    if not (RESEND_API_KEY and to):
+    api_key = _get_resend_key()
+    from_email = _get_resend_from()
+    if not (api_key and to):
+        log.warning("RESEND_API_KEY or recipient missing — skipping email to %s", to)
         return False
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             for attempt in range(3):
                 r = await client.post(
                     "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-                    json={"from": RESEND_FROM, "to": [to], "subject": subject, "html": html},
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"from": from_email, "to": [to], "subject": subject, "html": html},
                 )
                 if r.status_code < 300:
+                    log.info(f"Email sent successfully to {to}")
                     return True
                 if r.status_code == 429 and attempt < 2:
                     import asyncio

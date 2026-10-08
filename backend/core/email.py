@@ -10,15 +10,24 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-RESEND_FROM = os.getenv("RESEND_FROM_EMAIL") or "JELCOS AI <reports@updates.veales.in>"
+def _get_api_key() -> str:
+    return (os.getenv("RESEND_API_KEY") or "").strip()
+
+
+def _get_from_email() -> str:
+    from_val = os.getenv("RESEND_FROM_EMAIL") or "JELCOS AI <reports@updates.veales.in>"
+    return from_val.strip("\"'")
+
+
 PUBLIC_APP_URL = (os.getenv("PUBLIC_APP_URL") or "https://jelcos.ai").rstrip("/")
 
 
 async def send_email(to: str, subject: str, html: str) -> bool:
     """Send one email via Resend. Returns True on success, False on any failure
     (callers treat email as best-effort and never block the request on it)."""
-    if not RESEND_API_KEY:
+    api_key = _get_api_key()
+    from_email = _get_from_email()
+    if not api_key:
         logger.warning("RESEND_API_KEY not configured — skipping email to %s", to)
         return False
     try:
@@ -26,11 +35,12 @@ async def send_email(to: str, subject: str, html: str) -> bool:
             for attempt in range(3):  # absorb Resend's 2 req/s rate limit
                 r = await client.post(
                     "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {RESEND_API_KEY}",
+                    headers={"Authorization": f"Bearer {api_key}",
                              "Content-Type": "application/json"},
-                    json={"from": RESEND_FROM, "to": [to], "subject": subject, "html": html},
+                    json={"from": from_email, "to": [to], "subject": subject, "html": html},
                 )
                 if r.status_code < 300:
+                    logger.info("Email sent successfully to %s: %s", to, r.text[:100])
                     return True
                 if r.status_code == 429 and attempt < 2:
                     await asyncio.sleep(0.7 * (attempt + 1))
@@ -40,3 +50,4 @@ async def send_email(to: str, subject: str, html: str) -> bool:
     except Exception as e:  # noqa: BLE001
         logger.warning("Email send to %s failed: %s", to, e)
     return False
+

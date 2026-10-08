@@ -33,6 +33,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'payments',        label: 'Payments & Coupons',  description: 'Skip-pay toggle · Coupon CRUD · Org-Type master', icon: 'card', color: '#0D9488', href: '/admin/payments' },
   { key: 'experts',         label: 'Experts',             description: 'Verified expert profiles · ratings · payouts', icon: 'star',            color: '#F59E0B', href: '/admin/experts' },
   { key: 'platform-experts', label: 'Platform Experts',   description: 'Vetted directory · Expert Type · Languages · Experience · Fees/min · multi-Org · catalog-linked · bulk upload', icon: 'ribbon', color: '#D946EF', href: '/admin/platform-experts' },
+  { key: 'faculty',         label: 'Faculty',             description: 'Academic & research directory · Department · Designation · Institution · Qualifications · Bulk upload', icon: 'school', color: '#7C3AED', href: '/admin/faculty' },
   { key: 'payouts',          label: 'Payouts',             description: 'Marketplace earnings · weekly auto-payout config · RazorpayX', icon: 'cash', color: '#16A34A', href: '/admin/payouts' },
   { key: 'karma',            label: 'Karma Config',        description: 'Points per collaborative event · ratings · fame', icon: 'trophy', color: '#F59E0B', href: '/admin/karma' },
   { key: 'org-members',     label: 'Org Members',         description: 'Organisation users · roles · invitations',     icon: 'people',          color: '#3B82F6', href: '/admin/org-members' },
@@ -100,7 +101,7 @@ const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] 
   { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'module-limits', 'dashboard-layout', 'signup-gate', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
   { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'subscribers', 'razorpay-offers', 'payments', 'payouts', 'catalog-payout', 'sku-pricing', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma', 'ad-programs'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
-  { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'expert-review-queue', 'embed-partners'] },
+  { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'faculty', 'expert-review-queue', 'embed-partners'] },
   { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'templates', 'decision-modes', 'ai-touchpoints', 'crawler-embed-docs', 'eft-config', 'social-learning-admin', 'review-net', 'import-analytics', 'url-training', 'notification-engine', 'landing-pages', 'home-variant', 'short-urls', 'user-quicklinks'] },
   { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'pending-approvals', 'regression-tests', 'docs', 'handbook'] },
 ];

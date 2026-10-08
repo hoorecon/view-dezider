@@ -31,7 +31,7 @@ export default function ContributeDeepLink() {
 
   const routeToStep = useCallback(async (a: any) => {
     setPhase('opening');
-    const qs = `contribShareId=${share}&contribStep=${a.step_number}&access=${a.step_access || 'hidden'}`;
+    const qs = `contribShareId=${share}&contribStep=${a.step_number}&access=${a.step_access || 'readonly'}`;
     try {
       if (a.module === 'decision') {
         router.replace(`/prr/${a.decision_id}?${qs}` as any);

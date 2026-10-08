@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../constants/colors';
+import { showAlert } from '../utils/alert';
 import api from '../utils/api';
 import ReviewMergeModal from './ReviewMergeModal';
 import * as Clipboard from 'expo-clipboard';
@@ -82,14 +83,17 @@ export default function ShareStepModal({
   const [sentShares, setSentShares] = useState<any[]>([]);
   const [showSent, setShowSent] = useState(false);
   const [allowReshare, setAllowReshare] = useState(false);
-  const [stepAccess, setStepAccess] = useState<'hidden' | 'readonly'>('hidden');
+  const [stepAccess, setStepAccess] = useState<'readonly' | 'edit'>('readonly');
   // New: share source tab
-  const [shareSource, setShareSource] = useState<'email' | 'contacts' | 'users' | 'experts'>('email');
+  const [shareSource, setShareSource] = useState<'email' | 'contacts' | 'users' | 'experts' | 'faculty'>('email');
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [experts, setExperts] = useState<any[]>([]);
   const [expertsLoading, setExpertsLoading] = useState(false);
+  const [faculty, setFaculty] = useState<any[]>([]);
+  const [facultyLoading, setFacultyLoading] = useState(false);
+  const [facultySearch, setFacultySearch] = useState('');
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
@@ -107,11 +111,11 @@ export default function ShareStepModal({
         step_number: stepNumber,
         message,
       });
-      Alert.alert('Published 📢', 'Your request is now on the Public Help feed. Track contributions under "My Requests".');
+      showAlert('Published 📢', 'Your request is now on the Public Help feed. Track contributions under "My Requests".');
       onClose();
       router.push('/public-help');
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to publish');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to publish');
     } finally {
       setLoading(false);
     }
@@ -197,6 +201,23 @@ export default function ShareStepModal({
     return () => clearTimeout(t);
   }, [visible, shareSource, contactSearch, smeOnly]);
 
+  // Faculty tab — share with Academic & Research Faculty
+  const fetchFaculty = async () => {
+    setFacultyLoading(true);
+    try {
+      const q = facultySearch.trim();
+      const url = q ? `/faculty?search=${encodeURIComponent(q)}` : '/faculty';
+      const resp = await api.get(url);
+      setFaculty(resp.data?.items || []);
+    } catch { setFaculty([]); }
+    finally { setFacultyLoading(false); }
+  };
+  useEffect(() => {
+    if (!visible || shareSource !== 'faculty') return;
+    const t = setTimeout(fetchFaculty, 300);
+    return () => clearTimeout(t);
+  }, [visible, shareSource, facultySearch]);
+
   const addEmail = () => {
     const email = emailInput.trim().toLowerCase();
     if (email && email.includes('@') && !emails.includes(email)) {
@@ -216,8 +237,16 @@ export default function ShareStepModal({
   };
 
   const handleShare = async () => {
-    if (emails.length === 0) {
-      Alert.alert('Error', 'Please add at least one email');
+    let finalEmails = [...emails];
+    const pending = emailInput.trim().toLowerCase();
+    if (pending && pending.includes('@') && !finalEmails.includes(pending)) {
+      finalEmails.push(pending);
+      setEmails(finalEmails);
+      setEmailInput('');
+    }
+
+    if (finalEmails.length === 0) {
+      showAlert('Error', 'Please add at least one email');
       return;
     }
 
@@ -226,7 +255,7 @@ export default function ShareStepModal({
       const payload: any = {
         decision_id: decisionId,
         step_number: stepNumber,
-        recipient_emails: emails,
+        recipient_emails: finalEmails,
         merge_mode: mergeMode,
         message,
         allow_reshare: allowReshare,
@@ -247,16 +276,16 @@ export default function ShareStepModal({
       const res = _beModule
         ? await api.post('/shared-steps/create', { ...payload, module: _beModule, module_id: decisionId })
         : await api.post(`/decisions/${decisionId}/share-step`, payload);
-      Alert.alert(
-        'Shared!',
+      showAlert(
+        'Shared Successfully! 🎉',
         res.data?.message
-          || `Step ${stepNumber} has been shared with ${emails.length} user(s)`,
+          || `Step ${stepNumber} has been shared with ${finalEmails.length} user(s).`,
       );
       onShareSuccess();
       onClose();
     } catch (error: any) {
       const msg = error.response?.data?.detail || 'Failed to share step';
-      Alert.alert('Error', msg);
+      showAlert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -299,13 +328,14 @@ export default function ShareStepModal({
 
             {!showSent ? (
               <>
-                {/* Share Source Tabs: Email / Users / Experts */}
+                {/* Share Source Tabs: Email / Users / Experts / Faculty */}
                 <View style={styles.sourceTabRow}>
                   {[
                     { id: 'email' as const, label: 'Email', icon: 'mail-outline' },
                     { id: 'contacts' as const, label: 'Contacts', icon: 'person-outline' },
                     { id: 'users' as const, label: 'Users', icon: 'people-outline' },
                     { id: 'experts' as const, label: 'Experts', icon: 'shield-checkmark-outline' },
+                    { id: 'faculty' as const, label: 'Faculty', icon: 'school-outline' },
                   ].map((st) => (
                     <TouchableOpacity
                       key={st.id}
@@ -460,6 +490,49 @@ export default function ShareStepModal({
                     </View>
                   )}
 
+                  {/* Faculty */}
+                  {shareSource === 'faculty' && (
+                    <View>
+                      <TextInput
+                        style={[styles.emailInput, { marginBottom: 6 }]}
+                        placeholder="Search faculty by name, department, institution..."
+                        placeholderTextColor={COLORS.textMuted}
+                        value={facultySearch}
+                        onChangeText={setFacultySearch}
+                        autoCapitalize="none"
+                      />
+                      {facultyLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginBottom: 6 }} />}
+                      {faculty.length === 0 && !facultyLoading && (
+                        <Text style={{ fontSize: 12, color: COLORS.textMuted, padding: 8 }}>No faculty members found.</Text>
+                      )}
+                      {faculty.map((fac) => (
+                        <TouchableOpacity
+                          key={fac.faculty_id}
+                          style={[styles.userResultItem, emails.includes(fac.email) && { backgroundColor: '#F0FDF4' }]}
+                          onPress={() => addUserEmail(fac.email)}
+                        >
+                          <View style={[styles.userAvatar, { backgroundColor: '#7C3AED' }]}>
+                            <Ionicons name="school" size={14} color="#FFF" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.userName}>{fac.name}</Text>
+                            <Text style={styles.userEmail}>{fac.email}</Text>
+                            {(fac.designation || fac.department || fac.institution) ? (
+                              <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: '600' }}>
+                                {[fac.designation, fac.department, fac.institution].filter(Boolean).join(' · ')}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {emails.includes(fac.email) ? (
+                            <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                          ) : (
+                            <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
                   {/* Selected recipients chips */}
                   <View style={styles.emailChips}>
                     {emails.map(email => (
@@ -555,8 +628,8 @@ export default function ShareStepModal({
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     {([
-                      { id: 'hidden', label: 'Hidden', icon: 'eye-off-outline', desc: 'Only this step' },
                       { id: 'readonly', label: 'Read-only', icon: 'eye-outline', desc: 'View others for context' },
+                      { id: 'edit', label: 'Edit', icon: 'create-outline', desc: 'Can edit other steps' },
                     ] as const).map((opt) => (
                       <TouchableOpacity
                         key={opt.id}

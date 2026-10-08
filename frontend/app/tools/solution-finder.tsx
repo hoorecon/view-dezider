@@ -138,7 +138,7 @@ export default function SimpleSolutionFinder() {
   const contribShareId = params.contribShareId as string | undefined;
   const contributionMode = !!contribShareId;
   const contribStepNum = parseInt(String(params.contribStep || '0'), 10) || 0;
-  const stepAccess = String(params.access || 'hidden');
+  const stepAccess = String(params.access || 'readonly');
   const [submittingContribution, setSubmittingContribution] = useState(false);
   const submitContribution = async () => {
     setSubmittingContribution(true);

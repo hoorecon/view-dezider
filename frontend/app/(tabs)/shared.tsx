@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
@@ -23,15 +23,42 @@ interface ShareItem {
   created_at: string;
 }
 
+interface SharedStepItem {
+  id: string;
+  decision_id: string;
+  owner_id: string;
+  owner_name: string;
+  step_number: number;
+  decision_title: string;
+  decision_context: string;
+  merge_mode: string;
+  message: string;
+  recipients: any[];
+  status: string;
+  created_at: string;
+  module?: string;
+  step_access?: string;
+}
+
 const MODULE_ICON: Record<string, string> = {
   dezider: 'git-branch',
   pros_cons: 'swap-horizontal',
   swot: 'grid',
   solution_finder: 'compass',
+  decision: 'git-branch',
+};
+
+const STEP_NAMES: Record<number, string> = {
+  1: 'Context & Options', 2: 'Define Factors & Criteria', 3: 'Classify Factors',
+  4: 'Prioritize Factors', 5: 'Calculate Ratings', 6: 'Define Options',
+  7: 'Assess & Calculate', 8: 'Results Summary', 9: 'Reflection', 10: 'Final Notes',
 };
 
 export default function SharedWithMeTab() {
+  const router = useRouter();
+  const [section, setSection] = useState<'steps' | 'reports'>('steps');
   const [items, setItems] = useState<ShareItem[]>([]);
+  const [stepItems, setStepItems] = useState<SharedStepItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -49,10 +76,19 @@ export default function SharedWithMeTab() {
         try { await api.post(`/shares/${pending}/accept`); } catch { /* ignore */ }
         await AsyncStorage.removeItem('pending_share_token');
       }
-      const res = await api.get('/shares/shared-with-me');
-      setItems(res.data?.items || []);
+      const [repRes, stepRes] = await Promise.allSettled([
+        api.get('/shares/shared-with-me'),
+        api.get('/shared-steps/received'),
+      ]);
+
+      if (repRes.status === 'fulfilled') {
+        setItems(repRes.value.data?.items || []);
+      }
+      if (stepRes.status === 'fulfilled') {
+        setStepItems(Array.isArray(stepRes.value.data) ? stepRes.value.data : []);
+      }
     } catch {
-      showAlert('Error', 'Could not load shared reports.');
+      showAlert('Error', 'Could not load shared items.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -82,6 +118,17 @@ export default function SharedWithMeTab() {
     });
   }, [items, search, lifeArea, decisionType, dateRange]);
 
+  const filteredStepItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return stepItems;
+    return stepItems.filter(
+      (st) =>
+        st.decision_title?.toLowerCase().includes(q) ||
+        st.owner_name?.toLowerCase().includes(q) ||
+        (STEP_NAMES[st.step_number] || '').toLowerCase().includes(q)
+    );
+  }, [stepItems, search]);
+
   const download = useCallback(async (item: ShareItem) => {
     setDownloading(item.token);
     try {
@@ -109,7 +156,69 @@ export default function SharedWithMeTab() {
     }
   }, []);
 
-  const renderItem = ({ item }: { item: ShareItem }) => {
+  const openSharedStep = (stepItem: SharedStepItem) => {
+    const access = stepItem.step_access || 'readonly';
+    const mod = stepItem.module || 'decision';
+    const qs = `contribShareId=${stepItem.id}&contribStep=${stepItem.step_number}&access=${access}`;
+    if (mod === 'decision') {
+      router.push(`/prr/${stepItem.decision_id}?${qs}` as any);
+      return;
+    }
+    if (mod === 'pros_cons') {
+      router.push(`/tools/pros-cons-wizard?id=${stepItem.decision_id}&${qs}` as any);
+    } else if (mod === 'solution_finder') {
+      router.push(`/tools/solution-finder?id=${stepItem.decision_id}&${qs}` as any);
+    }
+  };
+
+  const renderStepItem = ({ item }: { item: SharedStepItem }) => {
+    const isContributed = item.recipients?.some((r: any) => r.status === 'contributed');
+    const isReadOnly = item.step_access === 'readonly';
+
+    return (
+      <TouchableOpacity
+        style={s.card}
+        activeOpacity={0.7}
+        onPress={() => openSharedStep(item)}
+      >
+        <View style={s.iconWrap}>
+          <Ionicons name="git-branch" size={20} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title} numberOfLines={2}>
+            {item.decision_title || 'Untitled Decision'}
+          </Text>
+          <Text style={s.meta} numberOfLines={1}>
+            Step {item.step_number}: {STEP_NAMES[item.step_number] || 'Step ' + item.step_number} · Shared by {item.owner_name}
+          </Text>
+          <View style={s.tagRow}>
+            <View style={[s.tag, { backgroundColor: isContributed ? '#10B98118' : '#F59E0B18' }]}>
+              <Ionicons
+                name={isContributed ? 'checkmark-circle' : 'time-outline'}
+                size={11}
+                color={isContributed ? '#10B981' : '#F59E0B'}
+              />
+              <Text style={[s.tagTxt, { color: isContributed ? '#10B981' : '#D97706' }]}>
+                {isContributed ? 'Contributed' : 'Pending Review'}
+              </Text>
+            </View>
+            <View style={[s.tag, { backgroundColor: COLORS.primary + '12' }]}>
+              <Ionicons name={isReadOnly ? 'eye-outline' : 'create-outline'} size={11} color={COLORS.primary} />
+              <Text style={[s.tagTxt, { color: COLORS.primary }]}>
+                {isReadOnly ? 'Read-only' : 'Editable'}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <TouchableOpacity style={s.openBtn} onPress={() => openSharedStep(item)}>
+          <Ionicons name="open-outline" size={15} color="#fff" />
+          <Text style={s.dlTxt}>Open</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderReportItem = ({ item }: { item: ShareItem }) => {
     const la = getLifeArea(item.life_area);
     return (
       <View style={s.card}>
@@ -146,15 +255,68 @@ export default function SharedWithMeTab() {
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <Text style={s.hTitle}>Shared with me</Text>
-        <Text style={s.hSub}>Reports others shared with you</Text>
+        <Text style={s.hSub}>Collaboration steps and reports shared with you</Text>
+
+        {/* Section Tabs */}
+        <View style={s.tabBar}>
+          <TouchableOpacity
+            style={[s.tabBtn, section === 'steps' && s.tabBtnActive]}
+            onPress={() => setSection('steps')}
+          >
+            <Ionicons
+              name="git-network-outline"
+              size={15}
+              color={section === 'steps' ? '#fff' : COLORS.textSecondary}
+            />
+            <Text style={[s.tabBtnText, section === 'steps' && s.tabBtnTextActive]}>
+              Shared Steps ({stepItems.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.tabBtn, section === 'reports' && s.tabBtnActive]}
+            onPress={() => setSection('reports')}
+          >
+            <Ionicons
+              name="document-text-outline"
+              size={15}
+              color={section === 'reports' ? '#fff' : COLORS.textSecondary}
+            />
+            <Text style={[s.tabBtnText, section === 'reports' && s.tabBtnTextActive]}>
+              Decision Reports ({items.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
+      ) : section === 'steps' ? (
+        <FlatList
+          data={filteredStepItems}
+          keyExtractor={(i) => i.id}
+          renderItem={renderStepItem}
+          ListEmptyComponent={
+            <View style={s.center}>
+              <Ionicons name="git-network-outline" size={48} color={COLORS.textMuted} />
+              <Text style={s.emptyTitle}>
+                {stepItems.length === 0 ? 'No shared steps yet' : 'No matching steps'}
+              </Text>
+              <Text style={s.emptySub}>
+                {stepItems.length === 0
+                  ? 'When someone shares a decision step with you to review or collaborate, it will appear here.'
+                  : 'Try adjusting your search filter.'}
+              </Text>
+            </View>
+          }
+          contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 100, flexGrow: 1 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+        />
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(i) => i.token}
-          renderItem={renderItem}
+          renderItem={renderReportItem}
           ListHeaderComponent={
             items.length > 0 ? (
               <View style={{ marginBottom: 6 }}>
@@ -194,7 +356,40 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
   hTitle: { fontSize: 26, fontWeight: '700', color: COLORS.textPrimary },
-  hSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  hSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, marginBottom: 12 },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    gap: 6,
+  },
+  tabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 9,
+  },
+  tabBtnActive: {
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  tabBtnTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginTop: 6 },
   emptySub: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 19 },
@@ -207,5 +402,6 @@ const s = StyleSheet.create({
   tag: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
   tagTxt: { fontSize: 9.5, fontWeight: '700' },
   dlBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9 },
+  openBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9 },
   dlTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });

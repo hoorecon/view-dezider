@@ -65,6 +65,7 @@ export default function Step2() {
     setCurrentStep,
     setHighlightOptionName,
     fetchDecision,
+    contributionMode,
   } = useDecision();
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
@@ -1848,12 +1849,14 @@ export default function Step2() {
         <Ionicons name="chevron-forward" size={16} color="#7C3AED" />
       </TouchableOpacity>
 
-      <GradientButton
-        title="Continue to Classification"
-        onPress={() => setCurrentStep(3)}
-        disabled={topLevelFactors.length < 2}
-        style={styles.continueButton}
-      />
+      {!contributionMode && (
+        <GradientButton
+          title="Continue to Classification"
+          onPress={() => setCurrentStep(3)}
+          disabled={topLevelFactors.length < 2}
+          style={styles.continueButton}
+        />
+      )}
 
       {/* Social Learning Factor Templates Modal */}
       <Modal visible={showSLFactorModal} transparent animationType="slide">

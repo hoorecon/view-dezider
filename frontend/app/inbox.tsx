@@ -79,7 +79,7 @@ export default function InboxScreen() {
   // Open the REAL module flow in Contribution Mode (scoped to the shared step).
   // decision → load owner's doc read-only; pros_cons/solution_finder → edit a sandbox clone.
   const goContribute = async (item: SharedStep) => {
-    const access = item.step_access || 'hidden';
+    const access = item.step_access || 'readonly';
     const mod = item.module || 'decision';
     const qs = `contribShareId=${item.id}&contribStep=${item.step_number}&access=${access}`;
     if (mod === 'decision') {

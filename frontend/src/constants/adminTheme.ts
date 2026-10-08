@@ -107,10 +107,12 @@ export const ADMIN_NAV: AdminNavSection[] = [
   {
     label: 'People & Access',
     items: [
-      { key: 'org',      label: 'Org Members',       icon: 'people',               href: '/admin/org-members' },
-      { key: 'experts',  label: 'Experts',           icon: 'star',                 href: '/admin/experts' },
-      { key: 'approvals',label: 'Pending Approvals', icon: 'checkmark-circle',     href: '/admin/pending-approvals' },
-      { key: 'acm',      label: 'Access Control',    icon: 'shield-checkmark',     href: '/admin/acm' },
+      { key: 'org',              label: 'Org Members',       icon: 'people',               href: '/admin/org-members' },
+      { key: 'experts',          label: 'Experts',           icon: 'star',                 href: '/admin/experts' },
+      { key: 'platform-experts', label: 'Platform Experts',   icon: 'ribbon',               href: '/admin/platform-experts' },
+      { key: 'faculty',          label: 'Faculty',           icon: 'school',               href: '/admin/faculty' },
+      { key: 'approvals',        label: 'Pending Approvals', icon: 'checkmark-circle',     href: '/admin/pending-approvals' },
+      { key: 'acm',              label: 'Access Control',    icon: 'shield-checkmark',     href: '/admin/acm' },
     ],
   },
   {

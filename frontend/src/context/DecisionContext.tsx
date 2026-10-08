@@ -125,7 +125,9 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const contribShareId = Array.isArray(params.contribShareId) ? params.contribShareId[0] : params.contribShareId;
   const contributionMode = !!contribShareId;
   const contribStep = parseInt(String((Array.isArray(params.contribStep) ? params.contribStep[0] : params.contribStep) || '0'), 10) || 0;
-  const stepAccess = String((Array.isArray(params.access) ? params.access[0] : params.access) || 'hidden');
+  const [stepAccess, setStepAccess] = useState<string>(
+    String((Array.isArray(params.access) ? params.access[0] : params.access) || 'readonly')
+  );
   const [submittingContribution, setSubmittingContribution] = useState(false);
   // Single-shot guard so the ?step=N override is consumed only on the
   // first fetchDecision() call (not on subsequent refreshes triggered by
@@ -222,6 +224,9 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (contributionMode) {
         const { data } = await api.get(`/shared-steps/${contribShareId}/decision`);
         setDecision(data.decision);
+        if (data.share?.step_access) {
+          setStepAccess(data.share.step_access);
+        }
         autoJumpDoneRef.current = true;
         overrideConsumedRef.current = true;
         if (contribStep >= 2 && contribStep <= 10) setCurrentStep(contribStep);
@@ -309,6 +314,11 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const saveDecision = async (updates: Partial<Decision>) => {
+    // If read-only mode in contribution, prevent edits
+    if (contributionMode && stepAccess === 'readonly') {
+      showAlert('Read-only', 'This step was shared in read-only mode. You cannot edit fields.');
+      return;
+    }
     // Contribution Mode or Sample Record: never write to the database — keep edits local.
     if (contributionMode || decision?.is_sample) {
       setDecision(prev => (prev ? { ...prev, ...updates } : prev));
