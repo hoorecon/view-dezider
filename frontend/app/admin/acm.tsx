@@ -173,6 +173,18 @@ export default function ACMAdminScreen() {
   };
 
   // ─── Cell editor handlers ──────────────────────────────────────
+  const MODULE_LIMIT_GOVERNED_FEATURES = new Set([
+    'my_dezider_create',
+    'my_dezider',
+    'pros_cons',
+    'pros_cons_create',
+    'solution_finder',
+    'solution_finder_create',
+  ]);
+
+  const isModuleLimitGoverned = (featId?: string) =>
+    featId ? MODULE_LIMIT_GOVERNED_FEATURES.has(featId) : false;
+
   const openEditor = (feature: Feature, audienceKey: string) => {
     const cur = feature.access[audienceKey] || { level: 'hidden', quota: 0 };
     setEditing({ feature, audienceKey });
@@ -191,6 +203,7 @@ export default function ACMAdminScreen() {
     setSaving(true);
     try {
       const headers = await getHeaders();
+      const isGoverned = isModuleLimitGoverned(editing.feature.feature_id);
       // Merge the existing access map with the single-cell change, so the
       // backend PUT (which replaces `access` wholesale) doesn't drop the
       // other 9 columns.
@@ -201,7 +214,7 @@ export default function ACMAdminScreen() {
       const qNum = parseInt(editQuota, 10);
       const cell = {
         level: editLevel,
-        quota: Number.isFinite(qNum) ? qNum : (editLevel === 'hidden' ? 0 : -1),
+        quota: isGoverned ? -1 : (Number.isFinite(qNum) ? qNum : (editLevel === 'hidden' ? 0 : -1)),
       };
       if (applyAll) {
         // Mass-apply this level+quota to every audience/tier column.
@@ -236,17 +249,18 @@ export default function ACMAdminScreen() {
     }
   };
 
-  const renderAccessCell = (access: { level: string; quota: number } | undefined) => {
+  const renderAccessCell = (access: { level: string; quota: number } | undefined, featureId?: string) => {
     const rule = access || { level: 'hidden', quota: 0 };
     const config = ACCESS_ICONS[rule.level] || ACCESS_ICONS.hidden;
+    const isGoverned = isModuleLimitGoverned(featureId);
 
     return (
       <View style={[styles.accessCell, { borderColor: config.color + '40' }]}>
         <Ionicons name={config.icon as any} size={12} color={config.color} />
-        {rule.quota > 0 && rule.level === 'full' && (
+        {!isGoverned && rule.quota > 0 && rule.level === 'full' && (
           <Text style={[styles.quotaText, { color: config.color }]}>{rule.quota}</Text>
         )}
-        {rule.quota === -1 && rule.level === 'full' && (
+        {(isGoverned || rule.quota === -1) && rule.level === 'full' && (
           <Text style={[styles.quotaText, { color: config.color }]}>∞</Text>
         )}
       </View>
@@ -254,6 +268,7 @@ export default function ACMAdminScreen() {
   };
 
   const renderFeatureRow = (feature: Feature) => {
+    const isGoverned = isModuleLimitGoverned(feature.feature_id);
     return (
       <TouchableOpacity
         key={feature.feature_id}
@@ -263,12 +278,14 @@ export default function ACMAdminScreen() {
       >
         <View style={styles.featureNameCol}>
           <Text style={styles.featureName} numberOfLines={2}>{feature.feature_name}</Text>
-          <Text style={styles.featureQuotaUnit}>{feature.quota_unit}</Text>
+          <Text style={[styles.featureQuotaUnit, isGoverned && { color: COLORS.accent }]}>
+            {isGoverned ? 'Free-Use Limits' : feature.quota_unit}
+          </Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.accessCells}>
           {accessKeys.map((key) => (
             <View key={key} style={styles.cellWrapper}>
-              {renderAccessCell(feature.access[key])}
+              {renderAccessCell(feature.access[key], feature.feature_id)}
             </View>
           ))}
         </ScrollView>
@@ -278,6 +295,7 @@ export default function ACMAdminScreen() {
 
   const renderFeatureDetail = (feature: Feature) => {
     if (selectedFeature?.feature_id !== feature.feature_id) return null;
+    const isGoverned = isModuleLimitGoverned(feature.feature_id);
 
     return (
       <View style={styles.detailPanel}>
@@ -292,11 +310,13 @@ export default function ACMAdminScreen() {
           </View>
           <View style={styles.metaPill}>
             <Text style={styles.metaLabel}>Quota</Text>
-            <Text style={styles.metaValue}>{feature.quota_unit}</Text>
+            <Text style={[styles.metaValue, isGoverned && { color: COLORS.accent }]}>
+              {isGoverned ? 'Module Free-Use Limits' : feature.quota_unit}
+            </Text>
           </View>
           <View style={styles.metaPill}>
             <Text style={styles.metaLabel}>Resets</Text>
-            <Text style={styles.metaValue}>{feature.quota_resets}</Text>
+            <Text style={styles.metaValue}>{isGoverned ? 'Per-Tier Free Limits' : feature.quota_resets}</Text>
           </View>
         </View>
         <View style={styles.detailGrid}>
@@ -316,14 +336,18 @@ export default function ACMAdminScreen() {
                 <Ionicons name={cfg.icon as any} size={14} color={cfg.color} />
                 <Text style={[styles.detailLevel, { color: cfg.color }]}>{cfg.label}</Text>
                 <Text style={styles.detailQuota}>
-                  {rule.quota === -1 ? '∞' : rule.quota === 0 ? '—' : rule.quota}
+                  {isGoverned ? 'Limits' : (rule.quota === -1 ? '∞' : rule.quota === 0 ? '—' : rule.quota)}
                 </Text>
                 <Ionicons name="pencil" size={10} color={COLORS.textMuted} style={{ marginLeft: 'auto' }} />
               </TouchableOpacity>
             );
           })}
         </View>
-        <Text style={styles.detailHint}>Tap any cell above to edit its access level and quota.</Text>
+        <Text style={styles.detailHint}>
+          {isGoverned
+            ? 'Tap any cell above to edit its access level (quota is managed in Module Free-Use Limits).'
+            : 'Tap any cell above to edit its access level and quota.'}
+        </Text>
       </View>
     );
   };
@@ -531,7 +555,9 @@ export default function ACMAdminScreen() {
                   </Text>
                   {'  ·  '}
                   <Text style={{ color: COLORS.textMuted }}>
-                    {editing?.feature.quota_unit} ({editing?.feature.quota_resets})
+                    {isModuleLimitGoverned(editing?.feature.feature_id)
+                      ? 'Governed by Module Free-Use Limits'
+                      : `${editing?.feature.quota_unit} (${editing?.feature.quota_resets})`}
                   </Text>
                 </Text>
               </View>
@@ -557,8 +583,10 @@ export default function ACMAdminScreen() {
                     onPress={() => {
                       setEditLevel(lvl);
                       // Auto-set sensible quota defaults when switching level
-                      if (lvl === 'hidden' || lvl === 'locked') setEditQuota('0');
-                      else if (parseInt(editQuota, 10) === 0) setEditQuota('-1');
+                      if (!isModuleLimitGoverned(editing?.feature.feature_id)) {
+                        if (lvl === 'hidden' || lvl === 'locked') setEditQuota('0');
+                        else if (parseInt(editQuota, 10) === 0) setEditQuota('-1');
+                      }
                     }}
                     activeOpacity={0.75}>
                     {active && (
@@ -573,18 +601,42 @@ export default function ACMAdminScreen() {
               })}
             </View>
 
-            <Text style={styles.modalLabel}>Quota</Text>
-            <Text style={styles.modalHint}>
-              -1 = unlimited (∞){'  ·  '}0 = no allowance (use for Hidden/Locked){'  ·  '}any positive number = cap per {editing?.feature.quota_resets}
-            </Text>
-            <TextInput
-              style={styles.quotaInput}
-              value={editQuota}
-              onChangeText={setEditQuota}
-              keyboardType="numbers-and-punctuation"
-              placeholder="-1"
-              placeholderTextColor={COLORS.textMuted}
-            />
+            {isModuleLimitGoverned(editing?.feature.feature_id) ? (
+              <View style={styles.moduleLimitBanner}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Ionicons name="information-circle" size={18} color={COLORS.accent} />
+                  <Text style={styles.moduleLimitBannerTitle}>Quota Managed via Module Free-Use Limits</Text>
+                </View>
+                <Text style={styles.moduleLimitBannerDesc}>
+                  Quota and creation limits for <Text style={{ fontWeight: '700' }}>{editing?.feature.feature_name}</Text> are configured under{' '}
+                  <Text
+                    style={{ color: COLORS.accent, fontWeight: '700', textDecorationLine: 'underline' }}
+                    onPress={() => {
+                      closeEditor();
+                      router.push('/admin/module-limits');
+                    }}
+                  >
+                    Module Free-Use Limits
+                  </Text>
+                  . The Access Level (Full / Read / Locked / Hidden) for this tier is controlled above.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.modalLabel}>Quota</Text>
+                <Text style={styles.modalHint}>
+                  -1 = unlimited (∞){'  ·  '}0 = no allowance (use for Hidden/Locked){'  ·  '}any positive number = cap per {editing?.feature.quota_resets}
+                </Text>
+                <TextInput
+                  style={styles.quotaInput}
+                  value={editQuota}
+                  onChangeText={setEditQuota}
+                  keyboardType="numbers-and-punctuation"
+                  placeholder="-1"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </>
+            )}
 
             <TouchableOpacity
               style={styles.applyAllRow}
@@ -598,7 +650,9 @@ export default function ACMAdminScreen() {
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.applyAllTitle}>Apply to all user types</Text>
                 <Text style={styles.applyAllHint}>
-                  Sets this level &amp; quota for every audience/tier column at once.
+                  {isModuleLimitGoverned(editing?.feature.feature_id)
+                    ? 'Sets this access level for every audience/tier column at once.'
+                    : 'Sets this level & quota for every audience/tier column at once.'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -834,6 +888,26 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary, fontSize: 16, fontWeight: '700',
     paddingHorizontal: 14, paddingVertical: 12,
     marginBottom: 18,
+  },
+  moduleLimitBanner: {
+    backgroundColor: COLORS.accent + '10',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.accent + '35',
+    padding: 12,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  moduleLimitBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
+  moduleLimitBannerDesc: {
+    fontSize: 11.5,
+    color: COLORS.textSecondary,
+    lineHeight: 16,
+    marginTop: 2,
   },
   modalActions: {
     flexDirection: 'row', gap: 10, marginTop: 4,

@@ -265,7 +265,7 @@ async def set_user_type(user_id: str, request: Request, user: dict = Depends(get
     update = {}
     valid_types = [
         "free", "trial", "paid",
-        "starter_trial", "pro_trial", "premium_trial",
+        "basic_trial", "starter_trial", "pro_trial", "premium_trial",
         "on_demand_retail_buyer", "on_demand_bulk_buyer",
         "unit_tester", "integration_tester", "alpha", "beta",
     ]

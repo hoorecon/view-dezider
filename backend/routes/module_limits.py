@@ -69,6 +69,7 @@ _DEFAULT_LIMITS: Dict[str, Dict[str, int]] = {
     "free":                     _GATED_DEFAULT_2,
     "trial":                    _GATED_DEFAULT_2,
     "starter_trial":            _GATED_DEFAULT_2,
+    "basic_trial":              _GATED_DEFAULT_2,
     "pro_trial":                _GATED_DEFAULT_2,
     "premium_trial":            _GATED_DEFAULT_2,
     # Real paying users → unlimited. `basic/pro/premium/enterprise` come from
@@ -420,15 +421,28 @@ class LimitsBulkUpdate(BaseModel):
     rows: List[LimitRow]
 
 
+HIDDEN_ADMIN_TIERS = {
+    "enterprise",
+    "beta",
+    "on_demand_bulk_buyer",
+    "on_demand_retail_buyer",
+    "paid",
+    "starter_trial",
+    "trial",
+}
+
+
 @router.get("/admin/module-limits")
 async def admin_get_limits(user: dict = Depends(require_super_admin)):
     await _ensure_seed()
     # Purge any obsolete module rows (e.g. on_demand_combo) from MongoDB
     await db.module_free_limits.delete_many({"module": {"$nin": GATED_MODULES}})
     rows = await db.module_free_limits.find({"module": {"$in": GATED_MODULES}}, {"_id": 0}).to_list(500)
-    tiers = sorted({r["tier"] for r in rows} | set(_DEFAULT_LIMITS.keys()))
+    visible_rows = [r for r in rows if r.get("tier") not in HIDDEN_ADMIN_TIERS]
+    all_known_tiers = {r["tier"] for r in rows} | set(_DEFAULT_LIMITS.keys())
+    tiers = sorted(t for t in all_known_tiers if t not in HIDDEN_ADMIN_TIERS)
     modules = [m for m in GATED_MODULES]
-    return {"rows": rows, "tiers": tiers, "modules": modules,
+    return {"rows": visible_rows, "tiers": tiers, "modules": modules,
             "gated_modules": GATED_MODULES}
 
 

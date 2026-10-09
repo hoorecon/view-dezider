@@ -34,7 +34,7 @@ def _require_admin(user: dict):
 # 1. ACM RESOLVER CONFIG (admin-tunable)
 # ============================================================
 DEFAULT_RESOLVER_CONFIG = {
-    "trial_days": {"starter_trial": 1, "pro_trial": 3, "premium_trial": 7},
+    "trial_days": {"basic_trial": 1, "starter_trial": 1, "pro_trial": 3, "premium_trial": 7},
     "plan_alias": {
         "basic": "starter", "enterprise": "premium",  # legacy → ACM
     },
@@ -112,7 +112,7 @@ async def create_trial_payment_instrument(request: Request, user: dict = Depends
     """
     body = await request.json()
     trial_type = body.get("trial_type")
-    if trial_type not in {"starter_trial", "pro_trial", "premium_trial"}:
+    if trial_type not in {"basic_trial", "starter_trial", "pro_trial", "premium_trial"}:
         raise HTTPException(400, "Invalid trial_type")
 
     cfg_row = await db.acm_meta.find_one({"key": "resolver_config"}, {"_id": 0}) or {}

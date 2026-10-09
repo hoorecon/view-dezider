@@ -31,6 +31,16 @@ const MODULE_LABEL: Record<string, string> = {
   expire_days: 'Expiry Days',
 };
 
+const HIDDEN_TIERS = new Set([
+  'enterprise',
+  'beta',
+  'on_demand_bulk_buyer',
+  'on_demand_retail_buyer',
+  'paid',
+  'starter_trial',
+  'trial',
+]);
+
 export default function AdminModuleLimitsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -49,7 +59,8 @@ export default function AdminModuleLimitsScreen() {
     try {
       const r = await api.get('/admin/module-limits');
       setRows(r.data?.rows || []);
-      setTiers(r.data?.tiers || []);
+      const allTiers: string[] = r.data?.tiers || [];
+      setTiers(allTiers.filter((t) => !HIDDEN_TIERS.has(t.toLowerCase())));
       setModules(r.data?.modules || []);
       setDirty({});
     } catch (e: any) {

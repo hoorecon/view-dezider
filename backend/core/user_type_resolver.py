@@ -33,6 +33,7 @@ RAZORPAY_TO_ACM_PLAN = {
 }
 
 TRIAL_DEFAULT_DAYS = {
+    "basic_trial":   1,
     "starter_trial": 1,
     "pro_trial":     3,
     "premium_trial": 7,

@@ -27,6 +27,7 @@ LEGACY_ACCESS_KEY_FALLBACK = {
     "paid_basic":              ["paid_starter", "free"],
     "paid_premium":            ["paid_enterprise"],
     "starter_trial":           ["trial", "paid_starter", "free"],
+    "basic_trial":             ["starter_trial", "trial", "paid_starter", "free"],
     "pro_trial":               ["trial", "paid_pro", "paid_starter", "free"],
     "premium_trial":           ["trial", "paid_enterprise", "paid_pro", "free"],
     "on_demand_retail_buyer":  ["paid_starter", "free"],
@@ -364,6 +365,73 @@ async def resolve_user_acm_profile(user: dict) -> dict:
         return get_user_acm_profile(user)
 
 
+MODULE_LIMIT_GOVERNED_MAP = {
+    "my_dezider_create": "my_dezider",
+    "my_dezider": "my_dezider",
+    "pros_cons": "pros_cons",
+    "pros_cons_create": "pros_cons",
+    "solution_finder": "solution_finder",
+    "solution_finder_create": "solution_finder",
+}
+
+
+async def _eval_module_limit_quota(user: dict, feature_id: str, feature_name: str, quota_unit: str) -> dict:
+    """Evaluate quota for features governed by Module Free-Use Limits."""
+    try:
+        from routes.module_limits import _resolve_tier, _get_limit, _get_usage, _get_combined_l2_usage
+        tier = await _resolve_tier(user)
+        module_key = MODULE_LIMIT_GOVERNED_MAP[feature_id]
+        limit = await _get_limit(tier, module_key)
+        uid = str(user.get("user_id") or "")
+
+        if limit < 0:
+            quota_used = await _get_usage(uid, module_key) if uid else 0
+            return {
+                "allowed": True,
+                "access_level": "full",
+                "quota_limit": -1,
+                "quota_used": quota_used,
+                "quota_remaining": -1,
+                "quota_unit": quota_unit,
+                "upgrade_message": "",
+            }
+
+        # Shared L1 / L2 bundle usage calculations
+        if tier == "on_demand_l1" and module_key in ("my_dezider", "pros_cons", "solution_finder"):
+            quota_used = (
+                await _get_usage(uid, "my_dezider") +
+                await _get_usage(uid, "pros_cons") +
+                await _get_usage(uid, "solution_finder")
+            ) if uid else 0
+        elif tier == "on_demand_l2":
+            quota_used = await _get_combined_l2_usage(uid) if uid else 0
+        else:
+            quota_used = await _get_usage(uid, module_key) if uid else 0
+
+        quota_remaining = max(0, limit - quota_used)
+        allowed = quota_used < limit
+        return {
+            "allowed": allowed,
+            "access_level": "full" if allowed else "quota_exceeded",
+            "quota_limit": limit,
+            "quota_used": quota_used,
+            "quota_remaining": quota_remaining,
+            "quota_unit": quota_unit,
+            "upgrade_message": f"You've used {quota_used}/{limit} free creation(s) for {feature_name}. Upgrade your plan for higher limits." if not allowed else "",
+        }
+    except Exception as e:
+        logger.warning(f"Error evaluating module free limit for {feature_id}: {e}")
+        return {
+            "allowed": True,
+            "access_level": "full",
+            "quota_limit": -1,
+            "quota_used": 0,
+            "quota_remaining": -1,
+            "quota_unit": quota_unit,
+            "upgrade_message": "",
+        }
+
+
 async def check_feature_access(
     user: dict, feature_id: str, check_quota: bool = True
 ) -> dict:
@@ -441,7 +509,11 @@ async def check_feature_access(
             "upgrade_message": f"{feature['feature_name']} is currently read-only for your tier.",
         }
 
-    # Full access — check quota
+    # Full access — if governed by Module Free-Use Limits, evaluate via module_free_limits
+    if feature_id in MODULE_LIMIT_GOVERNED_MAP:
+        return await _eval_module_limit_quota(user, feature_id, feature["feature_name"], quota_unit)
+
+    # Full access for other ACM features — check standard ACM quota
     if quota_limit == -1 or quota_unit == "toggle":
         return {
             "allowed": True, "access_level": "full",
@@ -451,7 +523,7 @@ async def check_feature_access(
 
     # Quota-based access — check usage
     quota_used = 0
-    if check_quota:
+    if check_quota and user.get("user_id"):
         quota_used = await get_usage_count(user["user_id"], feature_id, feature["quota_resets"])
 
     quota_remaining = max(0, quota_limit - quota_used)
@@ -472,9 +544,18 @@ async def check_and_consume(user: dict, feature_id: str) -> dict:
     """Check access AND increment usage if allowed. Use this before creating resources."""
     result = await check_feature_access(user, feature_id, check_quota=True)
     if result["allowed"] and result["access_level"] == "full" and result["quota_limit"] != -1:
-        # Increment usage
-        feature = _acm_cache.get(feature_id, {})
-        await increment_usage(user["user_id"], feature_id, feature.get("quota_resets", "monthly"))
+        if feature_id in MODULE_LIMIT_GOVERNED_MAP:
+            module_key = MODULE_LIMIT_GOVERNED_MAP[feature_id]
+            await db.module_usage_counters.update_one(
+                {"user_id": user["user_id"], "module": module_key},
+                {"$inc": {"count": 1},
+                 "$set": {"user_id": user["user_id"], "module": module_key,
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
+        else:
+            feature = _acm_cache.get(feature_id, {})
+            await increment_usage(user["user_id"], feature_id, feature.get("quota_resets", "monthly"))
         result["quota_used"] += 1
         result["quota_remaining"] = max(0, result["quota_remaining"] - 1)
     return result
@@ -573,23 +654,43 @@ async def get_all_feature_access(user: dict) -> dict:
             }
         return result
 
+    # Pre-resolve tier for module limits if needed
+    user_tier = None
+    try:
+        from routes.module_limits import _resolve_tier
+        user_tier = await _resolve_tier(user)
+    except Exception:
+        user_tier = "free"
+
     for feature_id, feature in _acm_cache.items():
         access_rule = _lookup_access_rule(feature["access"], access_key)
         level = access_rule.get("level", "hidden")
         quota_limit = access_rule.get("quota", 0)
         quota_unit = feature["quota_unit"]
 
+        if level == "full" and feature_id in MODULE_LIMIT_GOVERNED_MAP:
+            mod_res = await _eval_module_limit_quota(user, feature_id, feature["feature_name"], quota_unit)
+            result[feature_id] = {
+                "access_level": mod_res["access_level"],
+                "quota_limit": mod_res["quota_limit"],
+                "quota_used": mod_res["quota_used"],
+                "quota_remaining": mod_res["quota_remaining"],
+                "quota_unit": quota_unit,
+            }
+            continue
+
         # For quota features, get usage
         quota_used = 0
         if level == "full" and quota_limit > 0 and quota_unit != "toggle":
-            quota_used = await get_usage_count(
-                user["user_id"], feature_id, feature.get("quota_resets", "monthly")
-            )
+            if user.get("user_id"):
+                quota_used = await get_usage_count(
+                    user["user_id"], feature_id, feature.get("quota_resets", "monthly")
+                )
 
         quota_remaining = -1 if quota_limit == -1 else max(0, quota_limit - quota_used)
 
         result[feature_id] = {
-            "access_level": level,
+            "access_level": level if (quota_limit == -1 or quota_used < quota_limit) else "quota_exceeded",
             "quota_limit": quota_limit,
             "quota_used": quota_used,
             "quota_remaining": quota_remaining,

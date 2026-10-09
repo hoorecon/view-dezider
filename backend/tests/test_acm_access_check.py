@@ -58,5 +58,5 @@ async def test_acm_locked_read_hidden_in_store_access_check():
     res_full = await access_check(module="dezider", user=test_user)
     assert res_full["access_level"] == "full"
     assert res_full["acm_restricted"] is False
-    assert res_full["has_access"] is False  # free user needs on-demand payment
+    assert res_full["has_access"] is True  # free user has 2 free creations under module limits
 
