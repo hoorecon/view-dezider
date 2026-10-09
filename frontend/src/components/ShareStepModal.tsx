@@ -335,7 +335,7 @@ export default function ShareStepModal({
                     { id: 'contacts' as const, label: 'Contacts', icon: 'person-outline' },
                     { id: 'users' as const, label: 'Users', icon: 'people-outline' },
                     { id: 'experts' as const, label: 'Experts', icon: 'shield-checkmark-outline' },
-                    { id: 'faculty' as const, label: 'Faculty', icon: 'school-outline' },
+                    { id: 'faculty' as const, label: 'Facilitators', icon: 'school-outline' },
                   ].map((st) => (
                     <TouchableOpacity
                       key={st.id}
@@ -490,12 +490,12 @@ export default function ShareStepModal({
                     </View>
                   )}
 
-                  {/* Faculty */}
+                  {/* Facilitators */}
                   {shareSource === 'faculty' && (
                     <View>
                       <TextInput
                         style={[styles.emailInput, { marginBottom: 6 }]}
-                        placeholder="Search faculty by name, department, institution..."
+                        placeholder="Search facilitators by name, department, institution..."
                         placeholderTextColor={COLORS.textMuted}
                         value={facultySearch}
                         onChangeText={setFacultySearch}
@@ -503,7 +503,7 @@ export default function ShareStepModal({
                       />
                       {facultyLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginBottom: 6 }} />}
                       {faculty.length === 0 && !facultyLoading && (
-                        <Text style={{ fontSize: 12, color: COLORS.textMuted, padding: 8 }}>No faculty members found.</Text>
+                        <Text style={{ fontSize: 12, color: COLORS.textMuted, padding: 8 }}>No facilitators found.</Text>
                       )}
                       {faculty.map((fac) => (
                         <TouchableOpacity

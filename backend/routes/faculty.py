@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 from core.auth import ADMIN_ROLES, get_current_user, require_admin
 from core.database import db
 
-router = APIRouter(prefix="/faculty", tags=["Faculty"])
+router = APIRouter(prefix="/faculty", tags=["Facilitators"])
 
 
 # ---------------------------------------------------------------------------

@@ -94,7 +94,7 @@ const COMMON_DESIGNATIONS = [
   'Assistant Professor',
   'Dean / Director',
   'Head of Department (HOD)',
-  'Visiting Faculty',
+  'Visiting Facilitator',
   'Adjunct Professor',
   'Senior Lecturer',
   'Research Fellow',
@@ -204,22 +204,22 @@ export default function FacultyScreen() {
     try {
       if (editing) {
         await api.put(`/faculty/${editing.faculty_id}`, payload);
-        showAlert('Success', 'Faculty profile updated successfully');
+        showAlert('Success', 'Facilitator profile updated successfully');
       } else {
         await api.post('/faculty', payload);
-        showAlert('Success', 'Faculty member added successfully');
+        showAlert('Success', 'Facilitator added successfully');
       }
       setShowForm(false);
       fetchFaculty();
     } catch (err: any) {
-      showAlert('Error', err?.response?.data?.detail || 'Failed to save faculty');
+      showAlert('Error', err?.response?.data?.detail || 'Failed to save facilitator');
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = (f: Faculty) => {
-    showAlert('Delete Faculty', `Are you sure you want to remove ${f.name}?`, [
+    showAlert('Delete Facilitator', `Are you sure you want to remove ${f.name}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -251,7 +251,7 @@ export default function FacultyScreen() {
       parsed = JSON.parse(bulkText);
       if (!Array.isArray(parsed)) throw new Error('Not an array');
     } catch {
-      showAlert('Invalid JSON', 'Please paste a JSON array of faculty objects.');
+      showAlert('Invalid JSON', 'Please paste a JSON array of facilitator objects.');
       return;
     }
 
@@ -276,9 +276,9 @@ export default function FacultyScreen() {
             <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <View>
-            <Text style={styles.headerTitle}>Faculty Management</Text>
+            <Text style={styles.headerTitle}>Facilitators Management</Text>
             <Text style={styles.headerSub}>
-              {facultyList.length} faculty members · Academic, Research & Institutional directory
+              {facultyList.length} facilitators · Academic, Research & Institutional directory
             </Text>
           </View>
         </View>
@@ -297,7 +297,7 @@ export default function FacultyScreen() {
               end={{ x: 1, y: 0 }}
             >
               <Ionicons name="add" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>Add Faculty</Text>
+              <Text style={styles.primaryBtnText}>Add Facilitator</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -341,15 +341,15 @@ export default function FacultyScreen() {
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading faculty directory...</Text>
+          <Text style={styles.loadingText}>Loading facilitators directory...</Text>
         </View>
       ) : filteredFaculty.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="school-outline" size={56} color={COLORS.textMuted} />
-          <Text style={styles.emptyTitle}>No Faculty Members Found</Text>
+          <Text style={styles.emptyTitle}>No Facilitators Found</Text>
           <Text style={styles.emptySub}>
             {facultyList.length === 0
-              ? 'Click "Add Faculty" to create your first faculty profile.'
+              ? 'Click "Add Facilitator" to create your first facilitator profile.'
               : 'Try clearing your search query or department filter.'}
           </Text>
         </View>
@@ -437,7 +437,7 @@ export default function FacultyScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editing ? 'Edit Faculty Member' : 'Add New Faculty Member'}
+                {editing ? 'Edit Facilitator' : 'Add New Facilitator'}
               </Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
@@ -626,7 +626,7 @@ export default function FacultyScreen() {
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { maxHeight: '85%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Bulk Upload Faculty (JSON)</Text>
+              <Text style={styles.modalTitle}>Bulk Upload Facilitators (JSON)</Text>
               <TouchableOpacity onPress={() => { setShowBulk(false); setBulkResult(null); }}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -634,7 +634,7 @@ export default function FacultyScreen() {
 
             <ScrollView contentContainerStyle={styles.formBody}>
               <Text style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 8 }}>
-                Paste a JSON array of faculty objects. Example:
+                Paste a JSON array of facilitator objects. Example:
               </Text>
               <View style={styles.codeBox}>
                 <Text style={styles.codeText}>
@@ -668,7 +668,7 @@ export default function FacultyScreen() {
               {bulkResult && (
                 <View style={styles.bulkResultBox}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: '#10B981' }}>
-                    Uploaded {bulkResult.created_count} faculty profiles successfully!
+                    Uploaded {bulkResult.created_count} facilitator profiles successfully!
                   </Text>
                   {bulkResult.error_count > 0 && (
                     <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4 }}>
