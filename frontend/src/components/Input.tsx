@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ViewStyle,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
@@ -117,6 +118,13 @@ const styles = StyleSheet.create({
     height: 52,
     fontSize: 16,
     color: COLORS.textPrimary,
+    ...(Platform.OS === 'web'
+      ? ({
+          outlineStyle: 'none',
+          outlineWidth: 0,
+          outline: 'none',
+        } as any)
+      : {}),
   },
   multilineInput: {
     height: 'auto',

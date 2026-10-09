@@ -141,6 +141,36 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 
   // -------------------------------------------------------------------
+  // Web: remove browser default focus ring / black outline from all
+  // inputs and textareas so custom rounded borders display cleanly.
+  // -------------------------------------------------------------------
+  const INPUT_RESET_STYLE_ID = '__input_outline_reset__';
+  if (!document.getElementById(INPUT_RESET_STYLE_ID)) {
+    const inputStyle = document.createElement('style');
+    inputStyle.id = INPUT_RESET_STYLE_ID;
+    inputStyle.textContent = `
+      input, textarea, select, [contenteditable="true"] {
+        outline: none !important;
+        outline-style: none !important;
+        outline-width: 0 !important;
+        box-shadow: none !important;
+      }
+      input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus {
+        outline: none !important;
+        outline-style: none !important;
+        outline-width: 0 !important;
+        box-shadow: none !important;
+      }
+      input:focus-visible, textarea:focus-visible, select:focus-visible {
+        outline: none !important;
+        outline-style: none !important;
+        outline-width: 0 !important;
+      }
+    `;
+    document.head.appendChild(inputStyle);
+  }
+
+  // -------------------------------------------------------------------
   // Build-version cache buster.
   //
   // Big deploys (e.g. output:static → output:single, Stack route tree
