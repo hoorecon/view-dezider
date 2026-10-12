@@ -275,8 +275,32 @@ export default function SimpleSolutionFinder() {
   const loadEntry = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/solution-finders/${editId}`);
+      let activeId = editId;
+      let res;
+      try {
+        res = await api.get(`/solution-finders/${activeId}`);
+      } catch (loadErr: any) {
+        if (contributionMode && contribShareId) {
+          try {
+            const openRes = await api.post(`/shared-steps/${contribShareId}/open`, {});
+            const targetId = openRes.data?.target_id;
+            if (targetId && targetId !== activeId) {
+              activeId = targetId;
+              setSavedId(targetId);
+              router.replace(`/tools/solution-finder?id=${targetId}&contribShareId=${contribShareId}&contribStep=${contribStepNum}&access=${stepAccess}` as any);
+              res = await api.get(`/solution-finders/${targetId}`);
+            } else {
+              throw loadErr;
+            }
+          } catch {
+            throw loadErr;
+          }
+        } else {
+          throw loadErr;
+        }
+      }
       const d = res.data;
+      setSavedId(activeId || null);
       setIsSample(!!d.is_sample);
       setAreaOfLife(d.area_of_life || '');
       setSmartGoal(d.smart_goal || '');

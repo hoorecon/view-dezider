@@ -444,12 +444,17 @@ async def open_for_contribution(share_id: str, user: dict = Depends(get_current_
     if not share:
         raise HTTPException(status_code=404, detail="Shared step not found")
     rec = next((r for r in share.get("recipients", []) if r["user_id"] == user["user_id"]), None)
-    if not rec:
+    is_owner = share.get("owner_id") == user["user_id"]
+    if not rec and not is_owner:
         raise HTTPException(status_code=403, detail="You are not a recipient of this share")
     module = share.get("module", "decision")
     if module == "decision":
         return {"module": "decision", "target_id": share.get("module_id") or share.get("decision_id"),
                 "step_number": share.get("step_number"), "step_access": share.get("step_access", "hidden")}
+
+    if is_owner and not rec:
+        return {"module": module, "target_id": share.get("module_id"),
+                "step_number": share.get("step_number"), "step_access": share.get("step_access", "readonly")}
 
     meta = _MODULE_META.get(module)
     if not meta:

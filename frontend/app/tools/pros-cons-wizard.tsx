@@ -130,7 +130,31 @@ export default function ProsConsWizard() {
       return;
     }
     try {
-      const r = await api.get(`${base}/${id}`);
+      let activeId = id;
+      let r;
+      try {
+        r = await api.get(`${base}/${activeId}`);
+      } catch (loadErr: any) {
+        if (contributionMode && contribShareId) {
+          // If loading activeId failed (e.g. passed owner doc id instead of clone id),
+          // resolve the recipient's sandbox clone via POST /shared-steps/{contribShareId}/open
+          try {
+            const openRes = await api.post(`/shared-steps/${contribShareId}/open`, {});
+            const targetId = openRes.data?.target_id;
+            if (targetId && targetId !== activeId) {
+              activeId = targetId;
+              router.replace(`/tools/pros-cons-wizard?id=${targetId}&module=${module}&contribShareId=${contribShareId}&contribStep=${contribStep || 1}&access=${access || 'readonly'}` as any);
+              r = await api.get(`${base}/${targetId}`);
+            } else {
+              throw loadErr;
+            }
+          } catch {
+            throw loadErr;
+          }
+        } else {
+          throw loadErr;
+        }
+      }
       setAnalysis(r.data);
       setStep(r.data?.current_step || 1);
 
@@ -157,10 +181,10 @@ export default function ProsConsWizard() {
                   const k = String(n).trim().toLowerCase();
                   if (!k || seen.has(k)) continue;
                   seen.add(k);
-                  try { await api.post(`${base}/${id}/options`, { name: String(n).trim() }); } catch { /* skip */ }
+                  try { await api.post(`${base}/${activeId}/options`, { name: String(n).trim() }); } catch { /* skip */ }
                 }
                 await AsyncStorage.removeItem('embed_seed');
-                const r2 = await api.get(`${base}/${id}`);
+                const r2 = await api.get(`${base}/${activeId}`);
                 setAnalysis(r2.data);
                 setStep(2); // List Options + Pros & Cons
               } else {
@@ -173,7 +197,7 @@ export default function ProsConsWizard() {
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Failed to load analysis');
     } finally { setLoading(false); }
-  }, [id, base, module, router]);
+  }, [id, base, module, router, contributionMode, contribShareId, contribStep, access]);
 
   useEffect(() => { load(); }, [load]);
 

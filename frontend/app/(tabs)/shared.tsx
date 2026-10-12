@@ -156,7 +156,9 @@ export default function SharedWithMeTab() {
     }
   }, []);
 
-  const openSharedStep = (stepItem: SharedStepItem) => {
+  const [openingStepId, setOpeningStepId] = useState<string | null>(null);
+
+  const openSharedStep = async (stepItem: SharedStepItem) => {
     const access = stepItem.step_access || 'readonly';
     const mod = stepItem.module || 'decision';
     const qs = `contribShareId=${stepItem.id}&contribStep=${stepItem.step_number}&access=${access}`;
@@ -164,10 +166,20 @@ export default function SharedWithMeTab() {
       router.push(`/prr/${stepItem.decision_id}?${qs}` as any);
       return;
     }
-    if (mod === 'pros_cons') {
-      router.push(`/tools/pros-cons-wizard?id=${stepItem.decision_id}&${qs}` as any);
-    } else if (mod === 'solution_finder') {
-      router.push(`/tools/solution-finder?id=${stepItem.decision_id}&${qs}` as any);
+    setOpeningStepId(stepItem.id);
+    try {
+      const { data } = await api.post(`/shared-steps/${stepItem.id}/open`, {});
+      const targetId = data.target_id;
+      if (mod === 'pros_cons' || mod === 'swot') {
+        const modParam = mod === 'swot' ? 'swot' : 'pros-cons';
+        router.push(`/tools/pros-cons-wizard?id=${targetId}&module=${modParam}&${qs}` as any);
+      } else if (mod === 'solution_finder') {
+        router.push(`/tools/solution-finder?id=${targetId}&${qs}` as any);
+      }
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not open the flow for contribution');
+    } finally {
+      setOpeningStepId(null);
     }
   };
 
@@ -210,9 +222,19 @@ export default function SharedWithMeTab() {
             </View>
           </View>
         </View>
-        <TouchableOpacity style={s.openBtn} onPress={() => openSharedStep(item)}>
-          <Ionicons name="open-outline" size={15} color="#fff" />
-          <Text style={s.dlTxt}>Open</Text>
+        <TouchableOpacity
+          style={[s.openBtn, openingStepId === item.id && { opacity: 0.7 }]}
+          disabled={openingStepId === item.id}
+          onPress={() => openSharedStep(item)}
+        >
+          {openingStepId === item.id ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="open-outline" size={15} color="#fff" />
+              <Text style={s.dlTxt}>Open</Text>
+            </>
+          )}
         </TouchableOpacity>
       </TouchableOpacity>
     );

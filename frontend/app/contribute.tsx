@@ -39,8 +39,10 @@ export default function ContributeDeepLink() {
       }
       const { data } = await api.post(`/shared-steps/${share}/open`, {});
       const targetId = data.target_id;
-      if (a.module === 'pros_cons') router.replace(`/tools/pros-cons-wizard?id=${targetId}&${qs}` as any);
-      else router.replace(`/tools/solution-finder?id=${targetId}&${qs}` as any);
+      if (a.module === 'pros_cons' || a.module === 'swot') {
+        const modParam = a.module === 'swot' ? 'swot' : 'pros-cons';
+        router.replace(`/tools/pros-cons-wizard?id=${targetId}&module=${modParam}&${qs}` as any);
+      } else router.replace(`/tools/solution-finder?id=${targetId}&${qs}` as any);
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Could not open the flow for contribution');
       setPhase('error');

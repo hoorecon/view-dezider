@@ -89,8 +89,9 @@ export default function InboxScreen() {
     try {
       const { data } = await api.post(`/shared-steps/${item.id}/open`, {});
       const targetId = data.target_id;
-      if (mod === 'pros_cons') {
-        router.push(`/tools/pros-cons-wizard?id=${targetId}&${qs}` as any);
+      if (mod === 'pros_cons' || mod === 'swot') {
+        const modParam = mod === 'swot' ? 'swot' : 'pros-cons';
+        router.push(`/tools/pros-cons-wizard?id=${targetId}&module=${modParam}&${qs}` as any);
       } else if (mod === 'solution_finder') {
         router.push(`/tools/solution-finder?id=${targetId}&${qs}` as any);
       }
