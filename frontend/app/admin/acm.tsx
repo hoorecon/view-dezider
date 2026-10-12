@@ -42,17 +42,19 @@ const ACCESS_ICONS: Record<string, { icon: string; color: string; label: string 
   hidden: { icon: 'eye-off', color: COLORS.hidden, label: 'Hidden' },
 };
 
-const USER_TYPE_LABELS: Record<string, { short: string; color: string }> = {
-  unit_tester: { short: 'UT', color: '#EF4444' },
-  integration_tester: { short: 'IT', color: '#F97316' },
-  alpha: { short: 'α', color: '#8B5CF6' },
-  beta: { short: 'β', color: '#06B6D4' },
-  free: { short: 'FREE', color: '#6B7280' },
-  trial: { short: 'TRIAL', color: '#F59E0B' },
-  paid_starter: { short: 'S', color: '#10B981' },
-  paid_pro: { short: 'PRO', color: '#3B82F6' },
-  paid_enterprise: { short: 'ENT', color: '#8B5CF6' },
-  paid_api: { short: 'API', color: '#EC4899' },
+const USER_TYPE_LABELS: Record<string, { short: string; name: string; color: string }> = {
+  unit_tester: { short: 'UT', name: 'Unit Tester', color: '#EF4444' },
+  integration_tester: { short: 'IT', name: 'Integration Tester', color: '#F97316' },
+  alpha: { short: 'α', name: 'Alpha User', color: '#8B5CF6' },
+  beta: { short: 'β', name: 'Beta User', color: '#06B6D4' },
+  free: { short: 'FREE', name: 'Free User', color: '#6B7280' },
+  trial: { short: 'TRIAL', name: 'Trial User', color: '#F59E0B' },
+  paid_starter: { short: 'BASIC', name: 'Paid Basic', color: '#10B981' },
+  paid_basic: { short: 'BASIC', name: 'Paid Basic', color: '#10B981' },
+  paid_pro: { short: 'PRO', name: 'Paid Pro', color: '#3B82F6' },
+  paid_enterprise: { short: 'PREM', name: 'Paid Premium', color: '#8B5CF6' },
+  paid_premium: { short: 'PREM', name: 'Paid Premium', color: '#8B5CF6' },
+  paid_api: { short: 'API', name: 'Paid API', color: '#EC4899' },
 };
 
 interface Feature {
@@ -551,7 +553,7 @@ export default function ACMAdminScreen() {
                 <Text style={styles.modalSubtitle}>
                   Audience:{' '}
                   <Text style={{ color: USER_TYPE_LABELS[editing?.audienceKey || '']?.color || COLORS.accent, fontWeight: '700' }}>
-                    {USER_TYPE_LABELS[editing?.audienceKey || '']?.short || editing?.audienceKey}
+                    {USER_TYPE_LABELS[editing?.audienceKey || '']?.name || USER_TYPE_LABELS[editing?.audienceKey || '']?.short || editing?.audienceKey}
                   </Text>
                   {'  ·  '}
                   <Text style={{ color: COLORS.textMuted }}>
@@ -723,7 +725,7 @@ const styles = StyleSheet.create({
   colHeaderBadgeText: { fontSize: 9, fontWeight: '800' },
   featureNameCol: { width: 130, paddingRight: 8 },
   accessCells: { flexDirection: 'row' },
-  cellWrapper: { width: 36, alignItems: 'center', justifyContent: 'center' },
+  cellWrapper: { width: 44, alignItems: 'center', justifyContent: 'center' },
   accessCell: {
     width: 30, height: 30, borderRadius: 6,
     alignItems: 'center', justifyContent: 'center',

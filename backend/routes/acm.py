@@ -269,7 +269,7 @@ async def set_user_type(user_id: str, request: Request, user: dict = Depends(get
         "on_demand_retail_buyer", "on_demand_bulk_buyer",
         "unit_tester", "integration_tester", "alpha", "beta",
     ]
-    valid_plans = ["none", "starter", "pro", "premium", "enterprise", "api"]
+    valid_plans = ["none", "basic", "starter", "pro", "premium", "enterprise", "api"]
 
     if "user_type" in body:
         if body["user_type"] not in valid_types:

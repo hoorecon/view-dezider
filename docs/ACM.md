@@ -8,7 +8,7 @@ Every feature gated by a row in `acm_features`. Feature has `feature_id`,
 optional `quota`).
 
 ## Tier ladder
-`unit_tester < integration_tester < alpha < beta < free < trial < paid_starter < paid_pro < paid_enterprise < paid_api`
+`unit_tester < integration_tester < alpha < beta < free < trial < paid_starter (basic) < paid_pro < paid_enterprise (premium) < paid_api`
 
 ## Release stages
 `internal_only | alpha | beta | ga_free | ga_paid | ga_enterprise | deprecated`

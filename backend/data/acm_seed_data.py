@@ -14,13 +14,13 @@ Quota:
    N  → Specific limit per quota_unit period
 
 User Types: unit_tester, integration_tester, alpha, beta, free, trial, paid
-Subscription Plans (for paid): starter, pro, enterprise, api
+Subscription Plans (for paid): basic (starter), pro, premium (enterprise), api
 """
 
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-10-08-01"  # Validation & fix for public_pulse schema
+ACM_SEED_VERSION = "2026-10-12-01"  # Rename Starter to Basic and Enterprise to Premium
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -39,8 +39,8 @@ USER_TYPES = [
     {"id": "alpha", "name": "Alpha User", "description": "Closed group — internal/extended stakeholders", "order": 3},
     {"id": "beta", "name": "Beta User", "description": "Early adopters — unreleased features", "order": 4},
     {"id": "free", "name": "Free User", "description": "Public free tier", "order": 5},
-    {"id": "starter_trial", "name": "Starter Trial", "description": "Free→Starter trial (default 1 day)", "order": 6},
-    {"id": "pro_trial", "name": "Pro Trial", "description": "Starter→Pro trial (default 3 days)", "order": 7},
+    {"id": "starter_trial", "name": "Basic Trial", "description": "Free→Basic trial (default 1 day)", "order": 6},
+    {"id": "pro_trial", "name": "Pro Trial", "description": "Basic→Pro trial (default 3 days)", "order": 7},
     {"id": "premium_trial", "name": "Premium Trial", "description": "Pro→Premium trial (default 7 days)", "order": 8},
     {"id": "on_demand_retail_buyer", "name": "On-Demand Retail Buyer", "description": "Per-unit SKU purchases", "order": 9},
     {"id": "on_demand_bulk_buyer", "name": "On-Demand Bulk Buyer", "description": "Bulk/wallet/AI-credit SKU purchases", "order": 10},
@@ -49,9 +49,11 @@ USER_TYPES = [
 
 SUBSCRIPTION_PLANS = [
     {"id": "none", "name": "No Plan", "description": "Free tier — no subscription", "price": 0, "order": 0},
-    {"id": "starter", "name": "Starter", "description": "Basic paid features", "price": 499, "order": 1},
+    {"id": "basic", "name": "Basic", "description": "Basic paid features", "price": 499, "order": 1},
+    {"id": "starter", "name": "Basic", "description": "Basic paid features", "price": 499, "order": 1},
     {"id": "pro", "name": "Professional", "description": "Full feature access", "price": 1499, "order": 2},
     {"id": "premium", "name": "Premium", "description": "All-inclusive for startups/MSMEs/enterprises", "price": 4999, "order": 3},
+    {"id": "enterprise", "name": "Premium", "description": "All-inclusive for startups/MSMEs/enterprises", "price": 4999, "order": 3},
 ]
 
 

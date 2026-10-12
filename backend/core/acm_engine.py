@@ -23,15 +23,17 @@ logger = logging.getLogger(__name__)
 # This keeps the existing ~1500 hand-crafted access entries valid while
 # we roll out the new keys gradually.
 LEGACY_ACCESS_KEY_FALLBACK = {
-    "platform_admin":          ["paid_enterprise", "paid_pro"],
+    "platform_admin":          ["paid_premium", "paid_enterprise", "paid_pro"],
     "paid_basic":              ["paid_starter", "free"],
-    "paid_premium":            ["paid_enterprise"],
-    "starter_trial":           ["trial", "paid_starter", "free"],
-    "basic_trial":             ["starter_trial", "trial", "paid_starter", "free"],
-    "pro_trial":               ["trial", "paid_pro", "paid_starter", "free"],
-    "premium_trial":           ["trial", "paid_enterprise", "paid_pro", "free"],
-    "on_demand_retail_buyer":  ["paid_starter", "free"],
-    "on_demand_bulk_buyer":    ["paid_pro", "paid_starter", "free"],
+    "paid_starter":            ["paid_basic", "free"],
+    "paid_premium":            ["paid_enterprise", "paid_pro"],
+    "paid_enterprise":         ["paid_premium", "paid_pro"],
+    "starter_trial":           ["basic_trial", "trial", "paid_basic", "paid_starter", "free"],
+    "basic_trial":             ["starter_trial", "trial", "paid_basic", "paid_starter", "free"],
+    "pro_trial":               ["trial", "paid_pro", "paid_basic", "paid_starter", "free"],
+    "premium_trial":           ["trial", "paid_premium", "paid_enterprise", "paid_pro", "free"],
+    "on_demand_retail_buyer":  ["paid_basic", "paid_starter", "free"],
+    "on_demand_bulk_buyer":    ["paid_pro", "paid_basic", "paid_starter", "free"],
 }
 
 
