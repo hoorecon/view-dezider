@@ -61,6 +61,7 @@ function PRRDecisionDetailInner() {
     contribStep,
     contribShareId,
     stepAccess,
+    isOwner,
     submittingContribution,
     submitContribution,
   } = useDecision();
@@ -97,16 +98,25 @@ function PRRDecisionDetailInner() {
   // static title. Used heavily by the "Fresh Decision" path where the title
   // starts as a smart default (e.g. "Assets (Movable & Immovable) — 13 Jun
   // 2026, 16:22") and the user wants to overwrite it without leaving Step 2.
+  // Inline title editor — only the decision owner can edit their title.
+  // When shared with a third party (contributionMode) or viewed as read-only/sample,
+  // the title is strictly read-only and cannot be modified.
+  const canEditTitle = !contributionMode && (isOwner ?? true) && !decision?.is_sample;
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const titleInputRef = useRef<TextInput>(null);
 
   const beginTitleEdit = () => {
+    if (!canEditTitle) return;
     setTitleDraft(decision?.title || '');
     setEditingTitle(true);
     setTimeout(() => titleInputRef.current?.focus(), 60);
   };
   const commitTitleEdit = async () => {
+    if (!canEditTitle) {
+      setEditingTitle(false);
+      return;
+    }
     const next = titleDraft.trim();
     setEditingTitle(false);
     if (!next || next === decision?.title) return;
@@ -342,7 +352,7 @@ function PRRDecisionDetailInner() {
                 <Ionicons name="close" size={20} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
-          ) : (
+          ) : canEditTitle ? (
             <TouchableOpacity
               onPress={beginTitleEdit}
               style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}
@@ -352,6 +362,10 @@ function PRRDecisionDetailInner() {
               <Text style={styles.decisionTitle} numberOfLines={1}>{decision.title}</Text>
               <Ionicons name="pencil" size={14} color={COLORS.textSecondary} />
             </TouchableOpacity>
+          ) : (
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.decisionTitle} numberOfLines={1}>{decision.title}</Text>
+            </View>
           )}
           <View style={styles.headerStatusBadge}>
             <Text style={styles.headerStatusText}>

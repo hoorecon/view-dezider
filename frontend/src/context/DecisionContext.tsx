@@ -102,6 +102,7 @@ interface DecisionContextType {
   contribShareId?: string;
   contribStep: number;
   stepAccess: string;
+  isOwner: boolean;
   submittingContribution: boolean;
   submitContribution: (note?: string) => Promise<boolean>;
 }
@@ -128,6 +129,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [stepAccess, setStepAccess] = useState<string>(
     String((Array.isArray(params.access) ? params.access[0] : params.access) || 'readonly')
   );
+  const [isOwner, setIsOwner] = useState(true);
   const [submittingContribution, setSubmittingContribution] = useState(false);
   // Single-shot guard so the ?step=N override is consumed only on the
   // first fetchDecision() call (not on subsequent refreshes triggered by
@@ -224,6 +226,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (contributionMode) {
         const { data } = await api.get(`/shared-steps/${contribShareId}/decision`);
         setDecision(data.decision);
+        setIsOwner(data.is_owner ?? false);
         if (data.share?.step_access) {
           setStepAccess(data.share.step_access);
         }
@@ -235,6 +238,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       const response = await api.get(`/decisions/${id}`);
       setDecision(response.data);
+      setIsOwner(true);
 
       // Partner-embed pre-seed: if this is a fresh decision launched from an
       // embed, drop the carried options into Step 6 and land the user there.
@@ -318,6 +322,11 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (contributionMode && stepAccess === 'readonly') {
       showAlert('Read-only', 'This step was shared in read-only mode. You cannot edit fields.');
       return;
+    }
+    // Contributors and shared viewers cannot modify the decision title
+    if ((contributionMode || !isOwner) && 'title' in updates) {
+      delete (updates as any).title;
+      if (Object.keys(updates).length === 0) return;
     }
     // Contribution Mode or Sample Record: never write to the database — keep edits local.
     if (contributionMode || decision?.is_sample) {
@@ -876,6 +885,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     contribShareId: contribShareId as string | undefined,
     contribStep,
     stepAccess,
+    isOwner,
     submittingContribution,
     submitContribution,
   };
