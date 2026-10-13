@@ -102,7 +102,11 @@ export default function ExpertCallModal({
 
       [...legacy, ...platform].forEach((e: any) => {
         const id = e.id || e.expert_id;
-        const email = (e.email || '').toLowerCase();
+        const org = (Array.isArray(e.organizations) ? e.organizations : []).find(
+          (o: any) => o?.whatsapp || o?.mobile || o?.contact_email
+        );
+        const email = (e.email || org?.contact_email || '').toLowerCase();
+        const phone = e.whatsapp || e.phone || e.mobile || org?.whatsapp || org?.mobile || '';
         const key = id || email;
         if (!key || seen.has(key)) return;
         if (e.is_active === false) return;
@@ -110,9 +114,9 @@ export default function ExpertCallModal({
         merged.push({
           id,
           name: e.name || 'Unnamed Expert',
-          email: e.email || '',
-          phone: e.phone || e.whatsapp || e.mobile || '',
-          whatsapp: e.whatsapp || e.phone || e.mobile || '',
+          email: e.email || org?.contact_email || '',
+          phone,
+          whatsapp: phone,
           specialization: e.specialization || e.expert_type || (Array.isArray(e.specializations) ? e.specializations.join(', ') : '') || '',
           is_active: e.is_active !== false,
         });

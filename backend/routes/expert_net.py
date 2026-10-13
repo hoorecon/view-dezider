@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from core.auth import get_current_user, require_admin
 from core.database import db
 from core.notify import send_email, send_whatsapp
+from core.expert_contacts import choose_notify_phone, verified_whatsapp_for_email
 from routes.video_calls import (
     format_meeting_time,
     build_expert_call_email_html,
@@ -378,33 +379,24 @@ async def create_booking(body: BookingCreate, user: dict = Depends(get_current_u
     # Resolve expert details
     expert_name = e.get("name") or "Expert"
     expert_email = getattr(body, "expert_email", None) or e.get("email")
-    expert_phone = (
-        getattr(body, "expert_phone", None)
-        or e.get("whatsapp")
-        or e.get("phone")
-        or e.get("mobile")
-    )
+    stored_phone = e.get("whatsapp") or e.get("phone") or e.get("mobile")
     if e.get("user_id"):
         u_exp = await db.users.find_one({"user_id": e["user_id"]}, {"_id": 0})
         if u_exp:
             expert_email = expert_email or u_exp.get("email")
-            expert_phone = expert_phone or u_exp.get("whatsapp") or u_exp.get("phone") or u_exp.get("mobile")
+            stored_phone = stored_phone or u_exp.get("whatsapp_number") or u_exp.get("whatsapp") or u_exp.get("phone") or u_exp.get("mobile")
+
+    verified_phone = await verified_whatsapp_for_email(expert_email)
+    expert_phone = choose_notify_phone(getattr(body, "expert_phone", None), stored_phone, verified_phone)
 
     if not expert_phone and expert_email:
         u_match = await db.users.find_one({"email": {"$regex": f"^{re.escape(expert_email)}$", "$options": "i"}}, {"_id": 0})
         if u_match:
-            expert_phone = u_match.get("whatsapp") or u_match.get("phone") or u_match.get("mobile")
+            expert_phone = u_match.get("whatsapp_number") or u_match.get("whatsapp") or u_match.get("phone") or u_match.get("mobile")
         if not expert_phone:
             c_match = await db.contacts.find_one({"email": {"$regex": f"^{re.escape(expert_email)}$", "$options": "i"}}, {"_id": 0})
             if c_match:
                 expert_phone = c_match.get("whatsapp") or c_match.get("phone") or c_match.get("mobile")
-
-    # If client passed expert phone, update expert profile for future reuse
-    if getattr(body, "expert_phone", None) and body.expert_id:
-        await db.experts.update_one(
-            {"$or": [{"expert_id": body.expert_id}, {"id": body.expert_id}]},
-            {"$set": {"whatsapp": body.expert_phone, "phone": body.expert_phone}}
-        )
 
     # Client details
     u_client = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})

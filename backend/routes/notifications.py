@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user, ADMIN_ROLES
+from core.expert_contacts import apply_account_contacts
 
 router = APIRouter(tags=["Notifications"])
 
@@ -18,7 +19,7 @@ async def get_experts(include_inactive: bool = False):
     """Get list of authorized experts"""
     query = {} if include_inactive else {"is_active": True}
     experts = await db.experts.find(query, {"_id": 0}).sort("name", 1).to_list(100)
-    return experts
+    return await apply_account_contacts(experts)
 
 
 @router.post("/experts")

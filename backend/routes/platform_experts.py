@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from core.auth import ADMIN_ROLES, get_current_user, require_admin
 from core.database import db
+from core.expert_contacts import apply_account_contacts
 
 router = APIRouter(prefix="/platform-experts", tags=["Platform Experts"])
 
@@ -175,6 +176,7 @@ async def list_platform_experts(
         ]
     cur = db.platform_experts.find(q, {"_id": 0}).sort([("name", 1)])
     items = [_public(d) for d in await cur.to_list(limit)]
+    items = await apply_account_contacts(items)
     return {"items": items, "count": len(items)}
 
 

@@ -51,6 +51,7 @@ async def update_call_config(request: Request, user: dict = Depends(get_current_
 import logging
 import re
 from core.notify import send_email, send_whatsapp, PUBLIC_APP_URL
+from core.expert_contacts import choose_notify_phone, verified_whatsapp_for_email
 
 logger = logging.getLogger("video_calls")
 
@@ -312,38 +313,27 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
     expert_name = (expert.get("name") if expert else None) or body.get("expert_name") or "Expert"
     expert_email = body.get("expert_email") or (expert.get("email") if expert else None)
     
-    expert_phone = (
-        body.get("expert_phone")
-        or body.get("expert_whatsapp")
-        or (expert.get("whatsapp") if expert else None)
-        or (expert.get("phone") if expert else None)
-        or (expert.get("mobile") if expert else None)
-    )
+    stored_phone = None
+    if expert:
+        stored_phone = expert.get("whatsapp") or expert.get("phone") or expert.get("mobile")
+        if not stored_phone:
+            for org in expert.get("organizations") or []:
+                stored_phone = org.get("whatsapp") or org.get("mobile")
+                if stored_phone:
+                    break
 
-    if not expert_phone and expert and expert.get("organizations"):
-        for org in expert.get("organizations", []):
-            if org.get("whatsapp"):
-                expert_phone = org.get("whatsapp")
-                break
-            if org.get("mobile"):
-                expert_phone = org.get("mobile")
-                break
+    submitted_phone = body.get("expert_phone") or body.get("expert_whatsapp")
+    verified_phone = await verified_whatsapp_for_email(expert_email)
+    expert_phone = choose_notify_phone(submitted_phone, stored_phone, verified_phone)
 
     if not expert_phone and expert_email:
         u_match = await db.users.find_one({"email": {"$regex": f"^{re.escape(expert_email)}$", "$options": "i"}}, {"_id": 0})
         if u_match:
-            expert_phone = u_match.get("whatsapp") or u_match.get("phone") or u_match.get("mobile") or u_match.get("whatsapp_number")
+            expert_phone = u_match.get("whatsapp_number") or u_match.get("whatsapp") or u_match.get("phone") or u_match.get("mobile")
         if not expert_phone:
             c_match = await db.contacts.find_one({"email": {"$regex": f"^{re.escape(expert_email)}$", "$options": "i"}}, {"_id": 0})
             if c_match:
                 expert_phone = c_match.get("whatsapp") or c_match.get("mobile") or c_match.get("phone")
-
-    # If client passed phone, save to expert profile for future reuse
-    if expert_id and expert_phone:
-        await db.experts.update_one(
-            {"$or": [{"id": expert_id}, {"expert_id": expert_id}]},
-            {"$set": {"whatsapp": expert_phone, "phone": expert_phone}}
-        )
 
     # Determine timing
     now = datetime.now(timezone.utc)
