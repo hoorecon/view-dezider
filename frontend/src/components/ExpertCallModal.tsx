@@ -9,11 +9,24 @@ import {
   ScrollView,
   Modal,
   Linking,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
 import { showAlert } from '../utils/alert';
+
+function localDateTimeValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatAppointment(iso?: string) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
 
 interface Expert {
   id: string;
@@ -53,6 +66,11 @@ export default function ExpertCallModal({
   const [callConfig, setCallConfig] = useState<any>(null);
   const [activeSession, setActiveSession] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [meetingMode, setMeetingMode] = useState<'now' | 'appointment'>('now');
+  const [appointmentLocal, setAppointmentLocal] = useState(localDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [rescheduleId, setRescheduleId] = useState<string | null>(null);
+  const [rescheduleLocal, setRescheduleLocal] = useState('');
   const timerRef = useRef<any>(null);
 
   useEffect(() => {
@@ -60,6 +78,7 @@ export default function ExpertCallModal({
       setSearchQuery('');
       fetchExperts();
       fetchCallConfig();
+      fetchAppointments();
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -144,6 +163,17 @@ export default function ExpertCallModal({
     }
   };
 
+  const fetchAppointments = async () => {
+    if (!decisionId) return;
+    try {
+      const resp = await api.get('/call-sessions', { params: { decision_id: decisionId } });
+      const rows = Array.isArray(resp.data) ? resp.data : [];
+      setAppointments(rows.filter((row: any) => row.status === 'scheduled' && row.is_scheduled));
+    } catch (err) {
+      console.error('Failed to fetch appointments', err);
+    }
+  };
+
   const startCall = async () => {
     if (!selectedExpert) {
       showAlert('Select Expert', 'Please select an expert to call.');
@@ -155,6 +185,15 @@ export default function ExpertCallModal({
     if (dur < minDur || dur > maxDur) {
       showAlert('Invalid Duration', `Duration must be between ${minDur} and ${maxDur} minutes.`);
       return;
+    }
+    let scheduledAt: string | undefined;
+    if (meetingMode === 'appointment') {
+      const when = new Date(appointmentLocal);
+      if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 15 * 60 * 1000) {
+        showAlert('Pick a later time', 'Appointments must be at least 15 minutes from now.');
+        return;
+      }
+      scheduledAt = when.toISOString();
     }
     setLoading(true);
     try {
@@ -168,16 +207,50 @@ export default function ExpertCallModal({
         step_name: stepName,
         duration_minutes: dur,
         decision_title: decisionTitle,
+        ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
       });
       const data = resp.data;
       if (data?.room_url) {
         setActiveSession(data);
-        setTimeLeft(dur * 60);
+        setTimeLeft(data.is_scheduled ? null : dur * 60);
+        if (data.is_scheduled) fetchAppointments();
       } else {
         showAlert('Error', data?.detail || 'Failed to create call session');
       }
     } catch (err: any) {
       showAlert('Error', err?.response?.data?.detail || 'Failed to start call');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancelAppointment = async (sessionId: string) => {
+    try {
+      await api.post(`/call-sessions/${sessionId}/cancel`);
+      showAlert('Cancelled', 'The appointment was cancelled and the expert was notified.');
+      fetchAppointments();
+    } catch (err: any) {
+      showAlert('Error', err?.response?.data?.detail || 'Could not cancel the appointment');
+    }
+  };
+
+  const saveReschedule = async (sessionId: string, currentDuration: number) => {
+    const when = new Date(rescheduleLocal);
+    if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 15 * 60 * 1000) {
+      showAlert('Pick a later time', 'Appointments must be at least 15 minutes from now.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.post(`/call-sessions/${sessionId}/reschedule`, {
+        scheduled_at: when.toISOString(),
+        duration_minutes: currentDuration || parseInt(duration, 10) || 30,
+      });
+      setRescheduleId(null);
+      showAlert('Rescheduled', 'The new time was sent to the expert by email and WhatsApp. The join link is unchanged.');
+      fetchAppointments();
+    } catch (err: any) {
+      showAlert('Error', err?.response?.data?.detail || 'Could not reschedule the appointment');
     } finally {
       setLoading(false);
     }
@@ -230,19 +303,57 @@ export default function ExpertCallModal({
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>
-                {activeSession ? 'Expert Call Active' : 'Call an Expert'}
+                {activeSession?.is_scheduled ? 'Appointment booked' : activeSession ? 'Expert Call Active' : 'Call an Expert'}
               </Text>
               <Text style={styles.subtitle}>Step {stepNumber}: {stepName}</Text>
             </View>
-            {!activeSession && (
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            {(!activeSession || activeSession.is_scheduled) && (
+              <TouchableOpacity onPress={() => { setActiveSession(null); setTimeLeft(null); onClose(); }} style={styles.closeBtn}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
             )}
           </View>
 
           {/* Active Call View */}
-          {activeSession ? (
+          {activeSession?.is_scheduled ? (
+            <View style={styles.activeCallContainer}>
+              <View style={styles.timerCard}>
+                <Ionicons name="calendar-outline" size={24} color={COLORS.primary} />
+                <Text style={[styles.timerText, { fontSize: 18 }]}>{formatAppointment(activeSession.scheduled_at)}</Text>
+                <Text style={styles.timerLabel}>{activeSession.duration_minutes} min · same join link</Text>
+              </View>
+              <View style={styles.expertInfoCard}>
+                <View style={styles.expertAvatar}>
+                  <Ionicons name="person" size={24} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.expertNameLarge}>{activeSession.expert_name || selectedExpert?.name}</Text>
+                  <Text style={styles.expertSpecLarge}>Appointment notice sent</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {activeSession.notified_email && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}>
+                    <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#16A34A' }}>Email Sent</Text>
+                  </View>
+                )}
+                {activeSession.notified_whatsapp && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}>
+                    <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#16A34A' }}>WhatsApp Sent</Text>
+                  </View>
+                )}
+              </View>
+              <TouchableOpacity style={styles.openBrowserBtn} onPress={openCallInBrowser}>
+                <Ionicons name="open-outline" size={18} color="#FFF" />
+                <Text style={styles.openBrowserBtnText}>Open meeting link</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.startCallBtn, { marginTop: 8 }]} onPress={() => { setActiveSession(null); fetchAppointments(); }}>
+                <Text style={styles.startCallBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          ) : activeSession ? (
             <View style={styles.activeCallContainer}>
               {/* Timer */}
               <View style={[styles.timerCard, isUrgent && styles.timerCardUrgent]}>
@@ -345,6 +456,85 @@ export default function ExpertCallModal({
                   Consulting about: {decisionTitle}
                 </Text>
               </View>
+
+              <Text style={styles.sectionTitle}>Meeting type</Text>
+              <View style={styles.durationRow}>
+                <TouchableOpacity
+                  style={[styles.durationChip, meetingMode === 'now' && styles.durationChipActive]}
+                  onPress={() => setMeetingMode('now')}
+                >
+                  <Text style={[styles.durationChipText, meetingMode === 'now' && styles.durationChipTextActive]}>Start now</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.durationChip, meetingMode === 'appointment' && styles.durationChipActive]}
+                  onPress={() => setMeetingMode('appointment')}
+                >
+                  <Text style={[styles.durationChipText, meetingMode === 'appointment' && styles.durationChipTextActive]}>Book appointment</Text>
+                </TouchableOpacity>
+              </View>
+              {meetingMode === 'appointment' && (
+                <View style={{ gap: 6 }}>
+                  <Text style={styles.durationHint}>Date and time in your local timezone. At least 15 minutes from now.</Text>
+                  {Platform.OS === 'web' ? (
+                    <input
+                      type="datetime-local"
+                      value={appointmentLocal}
+                      onChange={(event: any) => setAppointmentLocal(event.target.value)}
+                      style={{ padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 10, fontSize: 14 }}
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.searchInput}
+                      value={appointmentLocal}
+                      onChangeText={setAppointmentLocal}
+                      placeholder="YYYY-MM-DDTHH:MM"
+                    />
+                  )}
+                </View>
+              )}
+
+              {appointments.length > 0 && (
+                <View style={{ gap: 8 }}>
+                  <Text style={styles.sectionTitle}>Upcoming appointments</Text>
+                  {appointments.map((appt) => (
+                    <View key={appt.id || appt.session_id} style={styles.expertCard}>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={styles.expertName}>{appt.expert_name}</Text>
+                        <Text style={styles.expertSpec}>{formatAppointment(appt.scheduled_at)} · {appt.duration_minutes} min</Text>
+                        {rescheduleId === (appt.id || appt.session_id) && (
+                          Platform.OS === 'web' ? (
+                            <input
+                              type="datetime-local"
+                              value={rescheduleLocal}
+                              onChange={(event: any) => setRescheduleLocal(event.target.value)}
+                              style={{ padding: '8px 10px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 13 }}
+                            />
+                          ) : (
+                            <TextInput style={styles.searchInput} value={rescheduleLocal} onChangeText={setRescheduleLocal} />
+                          )
+                        )}
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                          {rescheduleId === (appt.id || appt.session_id) ? (
+                            <TouchableOpacity onPress={() => saveReschedule(appt.id || appt.session_id, appt.duration_minutes)}>
+                              <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Save new time</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity onPress={() => {
+                              setRescheduleId(appt.id || appt.session_id);
+                              setRescheduleLocal(localDateTimeValue(new Date(appt.scheduled_at)));
+                            }}>
+                              <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Reschedule</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity onPress={() => cancelAppointment(appt.id || appt.session_id)}>
+                            <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 13 }}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               {/* Expert Selection */}
               <View style={styles.sectionHeaderRow}>
@@ -511,7 +701,7 @@ export default function ExpertCallModal({
                   <Ionicons name="videocam" size={22} color="#FFF" />
                 )}
                 <Text style={styles.startCallBtnText}>
-                  {loading ? 'Setting up call...' : 'Start Call'}
+                  {loading ? 'Setting up...' : meetingMode === 'appointment' ? 'Book appointment' : 'Start Call'}
                 </Text>
               </TouchableOpacity>
             </ScrollView>

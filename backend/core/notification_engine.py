@@ -394,6 +394,11 @@ async def tick() -> int:
         await _av_appointment_tick()
     except Exception as e:  # noqa: BLE001
         logger.warning("av appointment tick failed: %s", str(e)[:200])
+    try:
+        from routes.video_calls import tick_call_session_reminders
+        await tick_call_session_reminders()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("call session reminder tick failed: %s", str(e)[:200])
     return ran
 
 

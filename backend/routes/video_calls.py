@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user, ADMIN_ROLES
@@ -254,7 +255,7 @@ def _build_user_call_email_html(
   <div style="max-width:540px;margin:0 auto;background:#FFF;padding:24px;border-radius:14px;border:1px solid #E2E8F0;">
     <h2 style="color:#5E35B1;margin-top:0;">JELCOS AI Consultation Confirmation</h2>
     <p>Hello {creator_name},</p>
-    <p>Your expert consultation meeting with <strong>{expert_name}</strong> has been initiated and meeting invites have been dispatched.</p>
+    <p>{"Your appointment with <strong>" + expert_name + "</strong> is booked. The meeting link and time are below." if is_scheduled else "Your expert consultation meeting with <strong>" + expert_name + "</strong> has been initiated and meeting invites have been dispatched."}</p>
     <div style="background:#F8FAFC;padding:14px;border-radius:10px;margin:16px 0;border:1px solid #E2E8F0;">
       <p style="margin:4px 0;"><strong>Expert:</strong> {expert_name}</p>
       <p style="margin:4px 0;"><strong>Decision:</strong> {decision_title} (Step {step_number})</p>
@@ -266,6 +267,74 @@ def _build_user_call_email_html(
   </div>
 </body>
 </html>"""
+
+
+REMINDER_OFFSETS_MIN = (60, 15)
+MIN_LEAD_MINUTES = 15
+
+
+def _parse_future_meeting(raw, now: datetime) -> datetime:
+    """Parse an appointment time. It must be at least 15 minutes ahead."""
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Choose a valid appointment date and time")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    if parsed <= now + timedelta(minutes=MIN_LEAD_MINUTES):
+        raise HTTPException(status_code=400, detail="Appointment time must be at least 15 minutes from now")
+    return parsed
+
+
+def _as_aware(value) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _build_reschedule_email_html(expert_name, creator_name, decision_title, room_url, old_time, new_time, duration_minutes) -> str:
+    return f"""<!DOCTYPE html>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1E293B;padding:20px;background:#F8FAFC;">
+  <div style="max-width:540px;margin:0 auto;background:#FFF;padding:24px;border-radius:14px;border:1px solid #E2E8F0;">
+    <h2 style="color:#5E35B1;margin-top:0;">Appointment rescheduled</h2>
+    <p>The consultation between <strong>{creator_name}</strong> and <strong>{expert_name}</strong> has a new time.</p>
+    <p style="margin:4px 0;"><strong>Decision:</strong> {decision_title}</p>
+    <p style="margin:4px 0;"><strong>Previous time:</strong> {old_time}</p>
+    <p style="margin:4px 0;"><strong>New time:</strong> {new_time}</p>
+    <p style="margin:4px 0;"><strong>Duration:</strong> {duration_minutes} minutes</p>
+    <p><a href="{room_url}" style="display:inline-block;background:#16A34A;color:#FFF;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700;">Open the same meeting link</a></p>
+    <p style="font-size:12px;color:#64748B;">The join link has not changed: {room_url}</p>
+  </div>
+</body></html>"""
+
+
+def _build_reschedule_whatsapp_text(expert_name, creator_name, decision_title, room_url, old_time, new_time, duration_minutes) -> str:
+    return (
+        f"📅 *JELCOS AI — Appointment rescheduled*\n\n"
+        f"The consultation between *{creator_name}* and *{expert_name}* has moved.\n\n"
+        f"📋 *Decision:* {decision_title}\n"
+        f"↩️ *Previous time:* {old_time}\n"
+        f"✅ *New time:* {new_time}\n"
+        f"⏳ *Duration:* {duration_minutes} minutes\n\n"
+        f"🔗 *Same join link:*\n{room_url}\n\n"
+        f"_Sent via JELCOS AI Expert Network._"
+    )
+
+
+def _build_cancel_whatsapp_text(expert_name, creator_name, decision_title, when_text) -> str:
+    return (
+        f"❌ *JELCOS AI — Appointment cancelled*\n\n"
+        f"The consultation between *{creator_name}* and *{expert_name}* on *{decision_title}* "
+        f"scheduled for {when_text} has been cancelled.\n\n"
+        f"_Sent via JELCOS AI Expert Network._"
+    )
 
 
 format_meeting_time = _format_meeting_time
@@ -340,15 +409,8 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
     is_scheduled = False
     meeting_dt = now
     if scheduled_at_raw:
-        try:
-            parsed_dt = datetime.fromisoformat(str(scheduled_at_raw).replace('Z', '+00:00'))
-            if parsed_dt.tzinfo is None:
-                parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
-            if parsed_dt > now:
-                meeting_dt = parsed_dt
-                is_scheduled = True
-        except Exception:
-            pass
+        meeting_dt = _parse_future_meeting(scheduled_at_raw, now)
+        is_scheduled = True
 
     expires_at = meeting_dt + timedelta(minutes=duration_minutes)
     ist_time_str, utc_time_str = _format_meeting_time(meeting_dt)
@@ -408,7 +470,11 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
 
     # Dispatch User Confirmation Email
     if creator_email and creator_email != expert_email:
-        user_email_subj = f"Consultation Meeting Started with {expert_name} — {decision_title}"
+        user_email_subj = (
+            f"Appointment booked with {expert_name} — {decision_title}"
+            if is_scheduled else
+            f"Consultation Meeting Started with {expert_name} — {decision_title}"
+        )
         user_email_html = _build_user_call_email_html(
             expert_name=expert_name,
             creator_name=creator_name,
@@ -423,6 +489,25 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
         )
         try:
             await send_email(creator_email, user_email_subj, user_email_html)
+        except Exception:
+            pass
+
+    if is_scheduled and creator_phone and creator_phone != expert_phone:
+        caller_wa = _build_expert_call_whatsapp_text(
+            expert_name=expert_name,
+            creator_name=creator_name,
+            creator_email=creator_email,
+            decision_title=decision_title,
+            step_number=step_number,
+            step_name=step_name,
+            room_url=room_url,
+            duration_minutes=duration_minutes,
+            ist_time=ist_time_str,
+            utc_time=utc_time_str,
+            is_scheduled=True,
+        )
+        try:
+            await send_whatsapp(creator_phone, caller_wa)
         except Exception:
             pass
 
@@ -445,6 +530,9 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
         "created_at": now, "expires_at": expires_at, "ended_at": None,
         "notified_email": sent_expert_email,
         "notified_whatsapp": sent_expert_wa,
+        "creator_phone": creator_phone,
+        "reminders_sent": [],
+        "reschedule_history": [],
         "share_context": {
             "decision_title": decision_title,
             "step_data": body.get("step_data"),
@@ -481,6 +569,9 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
         "expert_name": expert_name,
         "expert_email": expert_email,
         "expert_phone": expert_phone,
+        "is_scheduled": is_scheduled,
+        "scheduled_at": meeting_dt.isoformat(),
+        "status": "scheduled" if is_scheduled else "active",
     }
 
 
@@ -589,6 +680,176 @@ async def end_call_session(session_id: str, user: dict = Depends(get_current_use
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"message": "Call session ended"}
+
+
+def _session_when(session) -> Optional[datetime]:
+    return _as_aware(session.get("scheduled_at")) or _as_aware(session.get("created_at"))
+
+
+async def _notify_party(email: Optional[str], phone: Optional[str], subject: str, html: str, wa_text: str) -> None:
+    if email:
+        try:
+            await send_email(email, subject, html)
+        except Exception as exc:
+            logger.warning("Appointment email failed: %s", exc)
+    if phone:
+        try:
+            await send_whatsapp(phone, wa_text)
+        except Exception as exc:
+            logger.warning("Appointment WhatsApp failed: %s", exc)
+
+
+@router.post("/call-sessions/{session_id}/cancel")
+async def cancel_call_session(session_id: str, user: dict = Depends(get_current_user)):
+    """Cancel a future appointment and tell the expert."""
+    session = await db.call_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the person who booked this appointment can cancel it")
+    if session.get("status") != "scheduled":
+        raise HTTPException(status_code=400, detail="Only a scheduled appointment can be cancelled")
+    when = _session_when(session)
+    now = datetime.now(timezone.utc)
+    if when and when <= now:
+        raise HTTPException(status_code=400, detail="This appointment has already started")
+
+    await db.call_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"status": "cancelled", "cancelled_at": now, "reminders_sent": ["cancelled"]}},
+    )
+    ist_time, _utc_time = _format_meeting_time(when or now)
+    title = (session.get("share_context") or {}).get("decision_title") or "Decision Consultation"
+    expert_name = session.get("expert_name") or "Expert"
+    creator_name = session.get("creator_name") or "User"
+    html = f"""<div style="font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+      <h2 style="color:#5E35B1">Appointment cancelled</h2>
+      <p>The consultation between <strong>{creator_name}</strong> and <strong>{expert_name}</strong>
+      on <strong>{title}</strong> scheduled for {ist_time} has been cancelled.</p>
+    </div>"""
+    wa = _build_cancel_whatsapp_text(expert_name, creator_name, title, ist_time)
+    await _notify_party(session.get("expert_email"), session.get("expert_phone"), f"Appointment cancelled — {title}", html, wa)
+    await _notify_party(session.get("creator_email"), session.get("creator_phone"), f"Appointment cancelled — {title}", html, wa)
+    return {"message": "Appointment cancelled", "session_id": session_id}
+
+
+@router.post("/call-sessions/{session_id}/reschedule")
+async def reschedule_call_session(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Move a future appointment. The join link stays the same."""
+    session = await db.call_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the person who booked this appointment can reschedule it")
+    if session.get("status") != "scheduled":
+        raise HTTPException(status_code=400, detail="Only a scheduled appointment can be rescheduled")
+
+    body = await request.json()
+    now = datetime.now(timezone.utc)
+    current = _session_when(session)
+    if current and current <= now:
+        raise HTTPException(status_code=400, detail="This appointment has already started")
+
+    new_dt = _parse_future_meeting(body.get("scheduled_at"), now)
+    config = await db.app_config.find_one({"key": "call_settings"}, {"_id": 0})
+    config_val = config.get("value", {}) if config else {}
+    max_dur = config_val.get("max_duration", MAX_CALL_DURATION)
+    min_dur = config_val.get("min_duration", MIN_CALL_DURATION)
+    duration_minutes = body.get("duration_minutes") or session.get("duration_minutes") or DEFAULT_CALL_DURATION
+    duration_minutes = max(min_dur, min(int(duration_minutes), max_dur))
+
+    old_ist, _old_utc = _format_meeting_time(current or now)
+    new_ist, new_utc = _format_meeting_time(new_dt)
+    title = (session.get("share_context") or {}).get("decision_title") or "Decision Consultation"
+    expert_name = session.get("expert_name") or "Expert"
+    creator_name = session.get("creator_name") or "User"
+    room_url = session.get("room_url") or ""
+    html = _build_reschedule_email_html(expert_name, creator_name, title, room_url, old_ist, new_ist, duration_minutes)
+    wa = _build_reschedule_whatsapp_text(expert_name, creator_name, title, room_url, old_ist, new_ist, duration_minutes)
+    subject = f"Appointment rescheduled — {title}"
+    await _notify_party(session.get("expert_email"), session.get("expert_phone"), subject, html, wa)
+    await _notify_party(session.get("creator_email"), session.get("creator_phone"), subject, html, wa)
+
+    history = {
+        "from": (current or now).isoformat(),
+        "to": new_dt.isoformat(),
+        "by": user["user_id"],
+        "at": now.isoformat(),
+    }
+    await db.call_sessions.update_one(
+        {"id": session_id},
+        {
+            "$set": {
+                "scheduled_at": new_dt.isoformat(),
+                "expires_at": new_dt + timedelta(minutes=duration_minutes),
+                "duration_minutes": duration_minutes,
+                "reminders_sent": [],
+                "updated_at": now,
+            },
+            "$push": {"reschedule_history": history},
+        },
+    )
+    return {
+        "message": "Appointment rescheduled",
+        "session_id": session_id,
+        "scheduled_at": new_dt.isoformat(),
+        "scheduled_at_label": f"{new_ist} ({new_utc})",
+        "duration_minutes": duration_minutes,
+        "room_url": room_url,
+    }
+
+
+async def tick_call_session_reminders() -> int:
+    """Send the 60-minute and 15-minute reminders for scheduled expert calls."""
+    now = datetime.now(timezone.utc)
+    sent_count = 0
+    cursor = db.call_sessions.find({"status": "scheduled", "is_scheduled": True}, {"_id": 0})
+    async for session in cursor:
+        when = _session_when(session)
+        if not when or when <= now:
+            continue
+        already = set(str(item) for item in (session.get("reminders_sent") or []))
+        due = []
+        for offset in REMINDER_OFFSETS_MIN:
+            if str(offset) in already:
+                continue
+            if now >= when - timedelta(minutes=offset):
+                due.append(offset)
+        if not due:
+            continue
+        ist_time, utc_time = _format_meeting_time(when)
+        title = (session.get("share_context") or {}).get("decision_title") or "Decision Consultation"
+        expert_name = session.get("expert_name") or "Expert"
+        creator_name = session.get("creator_name") or "User"
+        room_url = session.get("room_url") or ""
+        soonest = min(due)
+        subject = f"Reminder: consultation in {soonest} minutes — {title}"
+        html = _build_user_call_email_html(
+            expert_name=expert_name,
+            creator_name=creator_name,
+            decision_title=title,
+            step_number=session.get("step_number") or 0,
+            step_name=session.get("step_name") or "",
+            room_url=room_url,
+            duration_minutes=session.get("duration_minutes") or 30,
+            ist_time=ist_time,
+            utc_time=utc_time,
+            is_scheduled=True,
+        )
+        wa = (
+            f"⏰ *JELCOS AI reminder*\n\n"
+            f"Your consultation on *{title}* with *{expert_name}* starts in *{soonest} minutes*.\n"
+            f"⏰ {ist_time}\n\n"
+            f"🔗 Join:\n{room_url}"
+        )
+        await _notify_party(session.get("expert_email"), session.get("expert_phone"), subject, html, wa)
+        await _notify_party(session.get("creator_email"), session.get("creator_phone"), subject, html, wa)
+        await db.call_sessions.update_one(
+            {"id": session["id"]},
+            {"$set": {"reminders_sent": list(already.union(str(offset) for offset in due))}},
+        )
+        sent_count += 1
+    return sent_count
 
 
 @router.get("/call-sessions")
