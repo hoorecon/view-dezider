@@ -24,6 +24,8 @@ class ExpertProfileCreate(BaseModel):
     hourly_rate_inr: Optional[int] = Field(None, ge=0)
     intro_video_url: Optional[str] = None
     photo_url: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
     time_zone: str = "Asia/Kolkata"
     country: str = "IN"
     city: Optional[str] = None
@@ -35,6 +37,8 @@ class ExpertProfileCreate(BaseModel):
 class ExpertProfileUpdate(BaseModel):
     headline: Optional[str] = None
     bio: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
     specializations: Optional[List[str]] = None
     catalog_node_ids: Optional[List[str]] = None
     languages: Optional[List[str]] = None
@@ -88,6 +92,8 @@ class BookingCreate(BaseModel):
     note: Optional[str] = Field(None, max_length=1000)
     decision_id: Optional[str] = None    # link to MyDezider decision (multi-user)
     solution_id: Optional[str] = None    # context: consulting on this solution
+    expert_phone: Optional[str] = None
+    expert_email: Optional[str] = None
 
 
 # --- Phase C: Consultation sessions + recommendations + delivery -----------

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.auth import get_current_user, require_admin
 from core.database import db
+from core.notify import send_email, send_whatsapp
+from routes.video_calls import (
+    format_meeting_time,
+    build_expert_call_email_html,
+    build_expert_call_whatsapp_text,
+    build_user_call_email_html,
+)
 from models.expert_net_models import (
     AvailabilityUpdate,
     BookingCreate,
@@ -105,6 +113,8 @@ async def create_expert(body: ExpertProfileCreate, user: dict = Depends(get_curr
         "hourly_rate_inr": body.hourly_rate_inr,
         "intro_video_url": body.intro_video_url,
         "photo_url": body.photo_url,
+        "phone": body.phone or body.whatsapp,
+        "whatsapp": body.whatsapp or body.phone,
         "time_zone": body.time_zone,
         "country": body.country,
         "city": body.city,
@@ -362,12 +372,128 @@ async def create_booking(body: BookingCreate, user: dict = Depends(get_current_u
         raise HTTPException(409, "slot already booked")
 
     booking_id = f"bk_{uuid.uuid4().hex[:12]}"
+    room_id = f"prr-bk-{booking_id}"
+    room_url = f"https://meet.jit.si/{room_id}"
+
+    # Resolve expert details
+    expert_name = e.get("name") or "Expert"
+    expert_email = getattr(body, "expert_email", None) or e.get("email")
+    expert_phone = (
+        getattr(body, "expert_phone", None)
+        or e.get("whatsapp")
+        or e.get("phone")
+        or e.get("mobile")
+    )
+    if e.get("user_id"):
+        u_exp = await db.users.find_one({"user_id": e["user_id"]}, {"_id": 0})
+        if u_exp:
+            expert_email = expert_email or u_exp.get("email")
+            expert_phone = expert_phone or u_exp.get("whatsapp") or u_exp.get("phone") or u_exp.get("mobile")
+
+    if not expert_phone and expert_email:
+        u_match = await db.users.find_one({"email": {"$regex": f"^{re.escape(expert_email)}$", "$options": "i"}}, {"_id": 0})
+        if u_match:
+            expert_phone = u_match.get("whatsapp") or u_match.get("phone") or u_match.get("mobile")
+        if not expert_phone:
+            c_match = await db.contacts.find_one({"email": {"$regex": f"^{re.escape(expert_email)}$", "$options": "i"}}, {"_id": 0})
+            if c_match:
+                expert_phone = c_match.get("whatsapp") or c_match.get("phone") or c_match.get("mobile")
+
+    # If client passed expert phone, update expert profile for future reuse
+    if getattr(body, "expert_phone", None) and body.expert_id:
+        await db.experts.update_one(
+            {"$or": [{"expert_id": body.expert_id}, {"id": body.expert_id}]},
+            {"$set": {"whatsapp": body.expert_phone, "phone": body.expert_phone}}
+        )
+
+    # Client details
+    u_client = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    client_name = (u_client.get("name") if u_client else None) or user.get("name") or user.get("email") or "Client"
+    client_email = (u_client.get("email") if u_client else None) or user.get("email")
+
+    # Decision topic
+    decision_title = body.note or f"Consultation with {expert_name}"
+    if body.decision_id:
+        dec = await db.decisions.find_one({"id": body.decision_id}, {"_id": 0, "title": 1})
+        if dec and dec.get("title"):
+            decision_title = dec.get("title")
+
+    ist_time_str, utc_time_str = format_meeting_time(slot_start)
+
+    # Dispatch email to expert
+    sent_expert_email = False
+    if expert_email:
+        email_subj = f"Scheduled Consultation with {client_name} — {decision_title}"
+        email_html = build_expert_call_email_html(
+            expert_name=expert_name,
+            creator_name=client_name,
+            creator_email=client_email,
+            decision_title=decision_title,
+            step_number=0,
+            step_name="Scheduled Session",
+            room_url=room_url,
+            duration_minutes=body.duration_minutes,
+            ist_time=ist_time_str,
+            utc_time=utc_time_str,
+            is_scheduled=True,
+        )
+        try:
+            sent_expert_email = await send_email(expert_email, email_subj, email_html)
+            logger.info("Expert booking email dispatched to %s: %s", expert_email, sent_expert_email)
+        except Exception as err:
+            logger.warning("Failed to send booking email to expert: %s", err)
+
+    # Dispatch WhatsApp to expert
+    sent_expert_wa = False
+    if expert_phone:
+        wa_text = build_expert_call_whatsapp_text(
+            expert_name=expert_name,
+            creator_name=client_name,
+            creator_email=client_email,
+            decision_title=decision_title,
+            step_number=0,
+            step_name="Scheduled Session",
+            room_url=room_url,
+            duration_minutes=body.duration_minutes,
+            ist_time=ist_time_str,
+            utc_time=utc_time_str,
+            is_scheduled=True,
+        )
+        try:
+            sent_expert_wa = await send_whatsapp(expert_phone, wa_text)
+            logger.info("Expert booking WhatsApp dispatched to %s: %s", expert_phone, sent_expert_wa)
+        except Exception as err:
+            logger.warning("Failed to send booking WhatsApp to expert: %s", err)
+
+    # Dispatch confirmation email to client
+    if client_email and client_email != expert_email:
+        client_email_subj = f"Meeting Confirmed with {expert_name} — {decision_title}"
+        client_email_html = build_user_call_email_html(
+            expert_name=expert_name,
+            creator_name=client_name,
+            decision_title=decision_title,
+            step_number=0,
+            step_name="Scheduled Session",
+            room_url=room_url,
+            duration_minutes=body.duration_minutes,
+            ist_time=ist_time_str,
+            utc_time=utc_time_str,
+            is_scheduled=True,
+        )
+        try:
+            await send_email(client_email, client_email_subj, client_email_html)
+        except Exception:
+            pass
+
     doc = {
         "booking_id": booking_id,
         "expert_id": body.expert_id,
-        "expert_name": e.get("name"),
+        "expert_name": expert_name,
+        "expert_email": expert_email,
+        "expert_phone": expert_phone,
         "user_id": user["user_id"],
-        "user_name": user.get("name") or user.get("email"),
+        "user_name": client_name,
+        "client_email": client_email,
         "slot_start": slot_start,
         "slot_end": slot_end,
         "duration_minutes": body.duration_minutes,
@@ -378,7 +504,10 @@ async def create_booking(body: BookingCreate, user: dict = Depends(get_current_u
         "decision_id": body.decision_id,
         "solution_id": body.solution_id,
         "status": "pending" if e.get("hourly_rate_inr") else "confirmed",
-        "video_session_id": None,
+        "video_session_id": room_id,
+        "room_url": room_url,
+        "notified_expert_email": sent_expert_email,
+        "notified_expert_whatsapp": sent_expert_wa,
         "created_at": _now(),
         "updated_at": _now(),
     }
@@ -387,8 +516,8 @@ async def create_booking(body: BookingCreate, user: dict = Depends(get_current_u
     # Notify expert + user (in-app)
     try:
         for uid, msg in (
-            (e.get("user_id"), f"New booking by {doc['user_name']} on {slot_start.strftime('%Y-%m-%d %H:%M UTC')}"),
-            (user["user_id"], f"Booking with {e.get('name')} {'pending payment' if doc['status'] == 'pending' else 'confirmed'} for {slot_start.strftime('%Y-%m-%d %H:%M UTC')}"),
+            (e.get("user_id"), f"New booking by {doc['user_name']} on {slot_start.strftime('%Y-%m-%d %H:%M UTC')}. Meeting Link: {room_url}"),
+            (user["user_id"], f"Booking with {e.get('name')} {'pending payment' if doc['status'] == 'pending' else 'confirmed'} for {slot_start.strftime('%Y-%m-%d %H:%M UTC')}. Meeting Link: {room_url}"),
         ):
             if uid:
                 await db.notifications.insert_one({

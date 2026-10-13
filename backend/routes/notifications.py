@@ -27,10 +27,13 @@ async def create_expert(request: Request, user: dict = Depends(get_current_user)
     if user.get("role") not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
     body = await request.json()
+    phone_val = body.get("phone", "") or body.get("whatsapp", "")
     expert = {
         "id": str(uuid.uuid4()),
         "name": body.get("name", ""),
         "email": body.get("email", ""),
+        "phone": phone_val,
+        "whatsapp": body.get("whatsapp", "") or phone_val,
         "specialization": body.get("specialization", ""),
         "bio": body.get("bio", ""),
         "is_active": True,
@@ -47,7 +50,11 @@ async def update_expert(expert_id: str, request: Request, user: dict = Depends(g
     if user.get("role") not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
     body = await request.json()
-    update_fields = {k: v for k, v in body.items() if k in ["name", "email", "specialization", "bio", "is_active"]}
+    update_fields = {k: v for k, v in body.items() if k in ["name", "email", "phone", "whatsapp", "specialization", "bio", "is_active"]}
+    if "phone" in update_fields and "whatsapp" not in update_fields:
+        update_fields["whatsapp"] = update_fields["phone"]
+    elif "whatsapp" in update_fields and "phone" not in update_fields:
+        update_fields["phone"] = update_fields["whatsapp"]
     result = await db.experts.update_one({"id": expert_id}, {"$set": update_fields})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Expert not found")

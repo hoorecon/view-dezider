@@ -36,6 +36,8 @@ def _get_resend_from() -> str:
 
 def _norm_phone(p: Optional[str]) -> Optional[str]:
     digits = re.sub(r"\D", "", p or "")
+    if len(digits) == 10 and digits[0] in "6789":
+        digits = "91" + digits
     return digits or None
 
 

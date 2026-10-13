@@ -22,6 +22,8 @@ interface Expert {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  whatsapp?: string;
   specialization: string;
   bio: string;
   is_active: boolean;
@@ -33,7 +35,7 @@ export default function ExpertsScreen() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null);
-  const [form, setForm] = useState({ name: '', email: '', specialization: '', bio: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', whatsapp: '', specialization: '', bio: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -51,13 +53,20 @@ export default function ExpertsScreen() {
 
   const openAdd = () => {
     setEditingExpert(null);
-    setForm({ name: '', email: '', specialization: '', bio: '' });
+    setForm({ name: '', email: '', phone: '', whatsapp: '', specialization: '', bio: '' });
     setShowForm(true);
   };
 
   const openEdit = (expert: Expert) => {
     setEditingExpert(expert);
-    setForm({ name: expert.name, email: expert.email, specialization: expert.specialization, bio: expert.bio });
+    setForm({
+      name: expert.name,
+      email: expert.email,
+      phone: expert.phone || expert.whatsapp || '',
+      whatsapp: expert.whatsapp || expert.phone || '',
+      specialization: expert.specialization,
+      bio: expert.bio,
+    });
     setShowForm(true);
   };
 
@@ -138,7 +147,18 @@ export default function ExpertsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.expertName}>{expert.name}</Text>
-                  <Text style={styles.expertEmail}>{expert.email}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Ionicons name="mail-outline" size={12} color={COLORS.textMuted} />
+                    <Text style={styles.expertEmail}>{expert.email}</Text>
+                  </View>
+                  {(expert.whatsapp || expert.phone) ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <Ionicons name="logo-whatsapp" size={12} color="#16A34A" />
+                      <Text style={[styles.expertEmail, { color: '#16A34A', fontWeight: '500' }]}>
+                        {expert.whatsapp || expert.phone}
+                      </Text>
+                    </View>
+                  ) : null}
                   {expert.specialization ? (
                     <View style={styles.specBadge}>
                       <Text style={styles.specText}>{expert.specialization}</Text>
@@ -180,6 +200,18 @@ export default function ExpertsScreen() {
               <TextInput style={styles.input} value={form.name} onChangeText={(t) => setForm({ ...form, name: t })} placeholder="Expert name" placeholderTextColor={COLORS.textMuted} />
               <Text style={styles.inputLabel}>Email *</Text>
               <TextInput style={styles.input} value={form.email} onChangeText={(t) => setForm({ ...form, email: t })} placeholder="expert@email.com" placeholderTextColor={COLORS.textMuted} keyboardType="email-address" autoCapitalize="none" />
+              <Text style={styles.inputLabel}>WhatsApp / Phone Number</Text>
+              <TextInput
+                style={styles.input}
+                value={form.whatsapp}
+                onChangeText={(t) => setForm({ ...form, whatsapp: t, phone: t })}
+                placeholder="+91 98765 43210 (with country code)"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="phone-pad"
+              />
+              <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
+                Used to automatically dispatch meeting details & WhatsApp alerts
+              </Text>
               <Text style={styles.inputLabel}>Specialization</Text>
               <TextInput style={styles.input} value={form.specialization} onChangeText={(t) => setForm({ ...form, specialization: t })} placeholder="e.g., Career Coaching, Finance" placeholderTextColor={COLORS.textMuted} />
               <Text style={styles.inputLabel}>Bio</Text>

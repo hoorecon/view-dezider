@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Modal,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
@@ -18,6 +19,8 @@ interface Expert {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  whatsapp?: string;
   specialization: string;
   is_active: boolean;
 }
@@ -44,6 +47,8 @@ export default function ExpertCallModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
+  const [expertPhone, setExpertPhone] = useState('');
+  const [expertEmail, setExpertEmail] = useState('');
   const [duration, setDuration] = useState('30');
   const [callConfig, setCallConfig] = useState<any>(null);
   const [activeSession, setActiveSession] = useState<any>(null);
@@ -106,6 +111,8 @@ export default function ExpertCallModal({
           id,
           name: e.name || 'Unnamed Expert',
           email: e.email || '',
+          phone: e.phone || e.whatsapp || e.mobile || '',
+          whatsapp: e.whatsapp || e.phone || e.mobile || '',
           specialization: e.specialization || e.expert_type || (Array.isArray(e.specializations) ? e.specializations.join(', ') : '') || '',
           is_active: e.is_active !== false,
         });
@@ -149,6 +156,9 @@ export default function ExpertCallModal({
     try {
       const resp = await api.post('/call-sessions', {
         expert_id: selectedExpert.id,
+        expert_name: selectedExpert.name,
+        expert_email: expertEmail || selectedExpert.email,
+        expert_phone: expertPhone || selectedExpert.whatsapp || selectedExpert.phone,
         decision_id: decisionId,
         step_number: stepNumber,
         step_name: stepName,
@@ -254,6 +264,28 @@ export default function ExpertCallModal({
                 </View>
               </View>
 
+              {/* Notification delivery badges */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {activeSession.notified_email && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}>
+                    <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#16A34A' }}>Email Sent</Text>
+                  </View>
+                )}
+                {activeSession.notified_whatsapp && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}>
+                    <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#16A34A' }}>WhatsApp Sent</Text>
+                  </View>
+                )}
+                {!activeSession.notified_email && !activeSession.notified_whatsapp && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}>
+                    <Ionicons name="warning-outline" size={14} color="#D97706" />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#D97706' }}>No contact info — share link manually</Text>
+                  </View>
+                )}
+              </View>
+
               {/* Context shared */}
               <View style={styles.sharedContextCard}>
                 <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
@@ -275,6 +307,23 @@ export default function ExpertCallModal({
               <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginTop: 4 }}>
                 Join with audio, video & screen sharing enabled
               </Text>
+
+              {/* WhatsApp Share Button */}
+              {(activeSession.expert_phone || expertPhone) && (
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#25D366', borderRadius: 12, paddingVertical: 12 }}
+                  onPress={() => {
+                    const phone = (activeSession.expert_phone || expertPhone || '').replace(/[^0-9]/g, '');
+                    const msg = `Hi ${selectedExpert?.name || 'Expert'},\n\nYour JELCOS AI consultation meeting is ready!\n\n🔗 Join here: ${activeSession.room_url}\n\nNo download needed — opens directly in your browser.`;
+                    const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+                    if (typeof window !== 'undefined') window.open(url, '_blank');
+                    else Linking.openURL(url).catch(() => {});
+                  }}
+                >
+                  <Ionicons name="logo-whatsapp" size={18} color="#FFF" />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>Share via WhatsApp</Text>
+                </TouchableOpacity>
+              )}
 
               {/* End Call */}
               <TouchableOpacity style={styles.endCallBtn} onPress={handleEndCall}>
@@ -341,7 +390,11 @@ export default function ExpertCallModal({
                   <TouchableOpacity
                     key={expert.id}
                     style={[styles.expertCard, selectedExpert?.id === expert.id && styles.expertCardSelected]}
-                    onPress={() => setSelectedExpert(expert)}
+                    onPress={() => {
+                      setSelectedExpert(expert);
+                      setExpertPhone(expert.whatsapp || expert.phone || '');
+                      setExpertEmail(expert.email || '');
+                    }}
                   >
                     <View style={[styles.expertDot, selectedExpert?.id === expert.id && styles.expertDotSelected]}>
                       {selectedExpert?.id === expert.id ? (
@@ -408,6 +461,39 @@ export default function ExpertCallModal({
                   <Text style={styles.featureText}>Auto-End</Text>
                 </View>
               </View>
+
+              {/* Expert Contact — for WhatsApp & Email notifications */}
+              {selectedExpert && (
+                <View style={{ gap: 8, marginTop: 4 }}>
+                  <Text style={styles.sectionTitle}>Expert Notification Details</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+                    <TextInput
+                      style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary, padding: 0 }}
+                      placeholder="WhatsApp number (e.g. 919876543210)"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={expertPhone}
+                      onChangeText={setExpertPhone}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Ionicons name="mail-outline" size={16} color={COLORS.primary} />
+                    <TextInput
+                      style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary, padding: 0 }}
+                      placeholder="Expert email"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={expertEmail}
+                      onChangeText={setExpertEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <Text style={{ fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic' }}>
+                    Meeting link, date & joining instructions will be sent automatically to the expert via email and WhatsApp.
+                  </Text>
+                </View>
+              )}
 
               {/* Start Call Button */}
               <TouchableOpacity
