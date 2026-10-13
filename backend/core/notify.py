@@ -70,14 +70,52 @@ async def send_email(to: str, subject: str, html: str) -> bool:
 
 
 async def send_whatsapp(phone: str, body: str) -> bool:
+    """Send a WhatsApp chat via UltraMsg.
+
+    Credentials come from the Admin integration first, then environment
+    variables, so a profile saved in the admin UI is used without a restart.
+    HTTP 200 with sent=false or an error body is a failure — a stopped or
+    disconnected instance used to look like success.
+    """
     phone = _norm_phone(phone)
-    if not (ULTRAMSG_INSTANCE and ULTRAMSG_TOKEN and phone):
+    if not phone:
+        log.warning("send_whatsapp skipped: phone number missing or invalid")
+        return False
+    instance_id = ""
+    token = ""
+    source = "none"
+    try:
+        from core.integrations import resolve_ultramsg_creds
+        instance_id, token, source = await resolve_ultramsg_creds()
+    except Exception as e:
+        log.warning("send_whatsapp credential lookup failed: %s", str(e)[:160])
+        instance_id = (os.getenv("ULTRAMSG_INSTANCE_ID") or ULTRAMSG_INSTANCE or "").strip()
+        token = (os.getenv("ULTRAMSG_API_TOKEN") or ULTRAMSG_TOKEN or "").strip()
+        source = "env"
+    if not (instance_id and token):
+        log.warning("send_whatsapp skipped: UltraMsg is not configured")
         return False
     try:
-        url = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/chat"
+        url = f"https://api.ultramsg.com/{instance_id}/messages/chat"
         async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.post(url, data={"token": ULTRAMSG_TOKEN, "to": phone, "body": body})
-        return r.status_code < 300
+            r = await client.post(url, data={"token": token, "to": phone, "body": body})
+        detail = (r.text or "")[:300]
+        if r.status_code >= 300:
+            log.warning("UltraMsg HTTP %s to %s: %s", r.status_code, phone, detail)
+            return False
+        try:
+            data = r.json()
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            if data.get("error"):
+                log.warning("UltraMsg rejected message to %s: %s", phone, str(data.get("error"))[:300])
+                return False
+            if str(data.get("sent", "true")).lower() in ("false", "0", "none", ""):
+                log.warning("UltraMsg did not deliver to %s: %s", phone, detail)
+                return False
+        log.info("WhatsApp sent to %s via %s", phone, source)
+        return True
     except Exception as e:
         log.warning(f"send_whatsapp failed: {str(e)[:160]}")
     return False
