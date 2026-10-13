@@ -160,7 +160,7 @@ export default function Step9() {
   const downloadActionPlan = async () => {
     try {
       const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
       const url = `${baseUrl}/api/decisions/${decision.id}/mpps-action-plan`;
       if (typeof window !== 'undefined') {
         const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -293,7 +293,7 @@ export default function Step9() {
           onPress={async () => {
             try {
               const token = await AsyncStorage.getItem('session_token');
-              const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+              const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
               const resp = await fetch(`${baseUrl}/api/tepfi-auto-map`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -554,7 +554,7 @@ export default function Step9() {
             setPdfBusy(true);
             try {
               const token = await AsyncStorage.getItem('session_token');
-              const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+              const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
               const url = `${baseUrl}/api/decisions/${decision.id}/mpps-action-plan-pdf`;
               if (typeof window !== 'undefined') {
                 const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -596,7 +596,7 @@ export default function Step9() {
         onPress={async () => {
           try {
             const token = await AsyncStorage.getItem('session_token');
-            const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+            const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
             const r = await fetch(`${baseUrl}/api/action-items/import-from-mpps/${decision.id}`, {
               method: 'POST',
               headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

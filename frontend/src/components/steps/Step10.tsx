@@ -36,7 +36,7 @@ export default function Step10() {
     (async () => {
       try {
         const token = await AsyncStorage.getItem('session_token');
-        const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+        const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
         await fetch(`${baseUrl}/api/action-items/import-from-mpps/${decision.id}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

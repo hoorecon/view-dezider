@@ -174,7 +174,7 @@ export default function Step7() {
     setFetchingStore(prev => ({ ...prev, [fetchKey]: true }));
     try {
       const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
       const resp = await fetch(`${baseUrl}/api/solutions-store/apply-to-option`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -280,7 +280,7 @@ export default function Step7() {
     setFetchingData(prev => ({ ...prev, [fetchKey]: true }));
     try {
       const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
       const resp = await fetch(`${baseUrl}/api/factors/fetch-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -487,7 +487,7 @@ export default function Step7() {
     setAiAssessBusy(prev => ({ ...prev, [key]: true }));
     try {
       const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
       const resp = await fetch(`${baseUrl}/api/decisions/${decision.id}/factors/${factorId}/ai-assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

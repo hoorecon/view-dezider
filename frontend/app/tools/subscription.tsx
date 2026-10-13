@@ -21,7 +21,7 @@ const PLAN_COLORS: Record<string, string[]> = {
   enterprise: ['#DC2626', '#EF4444'],
 };
 
-const BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
 
 export default function SubscriptionScreen() {
   const router = useRouter();

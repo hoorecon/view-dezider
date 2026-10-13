@@ -67,7 +67,15 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
     duration_minutes = max(min_dur, min(duration_minutes, max_dur))
 
     if expert_id:
-        expert = await db.experts.find_one({"id": expert_id, "is_active": True}, {"_id": 0})
+        expert = await db.experts.find_one(
+            {"$or": [{"id": expert_id}, {"expert_id": expert_id}], "is_active": True},
+            {"_id": 0}
+        )
+        if not expert:
+            expert = await db.platform_experts.find_one(
+                {"$or": [{"id": expert_id}, {"expert_id": expert_id}], "is_active": True},
+                {"_id": 0}
+            )
         if not expert:
             raise HTTPException(status_code=404, detail="Expert not found or inactive")
 
@@ -97,7 +105,9 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
     await db.call_sessions.insert_one(session_doc)
 
     if expert_id:
-        expert = await db.experts.find_one({"id": expert_id}, {"_id": 0})
+        expert = await db.experts.find_one({"$or": [{"id": expert_id}, {"expert_id": expert_id}]}, {"_id": 0})
+        if not expert:
+            expert = await db.platform_experts.find_one({"$or": [{"id": expert_id}, {"expert_id": expert_id}]}, {"_id": 0})
         if expert and expert.get("email"):
             notif = {
                 "id": str(uuid.uuid4()),

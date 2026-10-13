@@ -5,16 +5,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Modal,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { COLORS } from '../constants/colors';
+import api from '../utils/api';
+import { showAlert } from '../utils/alert';
 
 interface Expert {
   id: string;
@@ -42,6 +40,8 @@ export default function ExpertCallModal({
   stepName,
 }: ExpertCallModalProps) {
   const [experts, setExperts] = useState<Expert[]>([]);
+  const [expertsLoading, setExpertsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
   const [duration, setDuration] = useState('30');
@@ -52,6 +52,7 @@ export default function ExpertCallModal({
 
   useEffect(() => {
     if (visible) {
+      setSearchQuery('');
       fetchExperts();
       fetchCallConfig();
     }
@@ -77,71 +78,92 @@ export default function ExpertCallModal({
   }, [activeSession]);
 
   const fetchExperts = async () => {
+    setExpertsLoading(true);
     try {
-      const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
-      const resp = await fetch(`${baseUrl}/api/experts`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const [lRes, pRes] = await Promise.allSettled([
+        api.get('/experts'),
+        api.get('/platform-experts'),
+      ]);
+
+      const legacy = lRes.status === 'fulfilled'
+        ? (Array.isArray(lRes.value.data) ? lRes.value.data : lRes.value.data?.items || [])
+        : [];
+      const platform = pRes.status === 'fulfilled'
+        ? (pRes.value.data?.items || (Array.isArray(pRes.value.data) ? pRes.value.data : []))
+        : [];
+
+      const merged: Expert[] = [];
+      const seen = new Set<string>();
+
+      [...legacy, ...platform].forEach((e: any) => {
+        const id = e.id || e.expert_id;
+        const email = (e.email || '').toLowerCase();
+        const key = id || email;
+        if (!key || seen.has(key)) return;
+        if (e.is_active === false) return;
+        seen.add(key);
+        merged.push({
+          id,
+          name: e.name || 'Unnamed Expert',
+          email: e.email || '',
+          specialization: e.specialization || e.expert_type || (Array.isArray(e.specializations) ? e.specializations.join(', ') : '') || '',
+          is_active: e.is_active !== false,
+        });
       });
-      const data = await resp.json();
-      setExperts(data || []);
+
+      setExperts(merged);
     } catch (err) {
-      console.error('Failed to fetch experts');
+      console.error('Failed to fetch experts', err);
+      setExperts([]);
+    } finally {
+      setExpertsLoading(false);
     }
   };
 
   const fetchCallConfig = async () => {
     try {
-      const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
-      const resp = await fetch(`${baseUrl}/api/call-config`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await resp.json();
+      const resp = await api.get('/call-config');
+      const data = resp.data || {};
       setCallConfig(data);
-      setDuration(String(data.default_duration || 30));
+      if (data.default_duration) {
+        setDuration(String(data.default_duration));
+      }
     } catch (err) {
-      console.error('Failed to fetch call config');
+      console.error('Failed to fetch call config', err);
     }
   };
 
   const startCall = async () => {
     if (!selectedExpert) {
-      Alert.alert('Select Expert', 'Please select an expert to call.');
+      showAlert('Select Expert', 'Please select an expert to call.');
       return;
     }
     const dur = parseInt(duration) || 30;
     const minDur = callConfig?.min_duration || 5;
     const maxDur = callConfig?.max_duration || 120;
     if (dur < minDur || dur > maxDur) {
-      Alert.alert('Invalid Duration', `Duration must be between ${minDur} and ${maxDur} minutes.`);
+      showAlert('Invalid Duration', `Duration must be between ${minDur} and ${maxDur} minutes.`);
       return;
     }
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
-      const resp = await fetch(`${baseUrl}/api/call-sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          expert_id: selectedExpert.id,
-          decision_id: decisionId,
-          step_number: stepNumber,
-          step_name: stepName,
-          duration_minutes: dur,
-          decision_title: decisionTitle,
-        }),
+      const resp = await api.post('/call-sessions', {
+        expert_id: selectedExpert.id,
+        decision_id: decisionId,
+        step_number: stepNumber,
+        step_name: stepName,
+        duration_minutes: dur,
+        decision_title: decisionTitle,
       });
-      const data = await resp.json();
-      if (data.room_url) {
+      const data = resp.data;
+      if (data?.room_url) {
         setActiveSession(data);
         setTimeLeft(dur * 60);
       } else {
-        Alert.alert('Error', data.detail || 'Failed to create call session');
+        showAlert('Error', data?.detail || 'Failed to create call session');
       }
-    } catch (err) {
-      Alert.alert('Error', 'Failed to start call');
+    } catch (err: any) {
+      showAlert('Error', err?.response?.data?.detail || 'Failed to start call');
     } finally {
       setLoading(false);
     }
@@ -150,20 +172,16 @@ export default function ExpertCallModal({
   const handleEndCall = async () => {
     if (activeSession) {
       try {
-        const token = await AsyncStorage.getItem('session_token');
-        const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
-        await fetch(`${baseUrl}/api/call-sessions/${activeSession.session_id}/end`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const sessionId = activeSession.session_id || activeSession.id;
+        await api.put(`/call-sessions/${sessionId}/end`);
       } catch (err) {
-        console.error('Failed to end session');
+        console.error('Failed to end session', err);
       }
     }
     if (timerRef.current) clearInterval(timerRef.current);
     setActiveSession(null);
     setTimeLeft(null);
-    Alert.alert('Call Ended', 'The expert consultation session has ended.');
+    showAlert('Call Ended', 'The expert consultation session has ended.');
   };
 
   const openCallInBrowser = () => {
@@ -179,6 +197,16 @@ export default function ExpertCallModal({
   };
 
   const isUrgent = timeLeft !== null && timeLeft < 120; // Less than 2 min
+
+  const filteredExperts = experts.filter(e => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (e.name && e.name.toLowerCase().includes(q)) ||
+      (e.specialization && e.specialization.toLowerCase().includes(q)) ||
+      (e.email && e.email.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -266,15 +294,50 @@ export default function ExpertCallModal({
               </View>
 
               {/* Expert Selection */}
-              <Text style={styles.sectionTitle}>Select Expert</Text>
-              {experts.length === 0 ? (
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Select Expert</Text>
+                {experts.length > 0 && (
+                  <Text style={styles.expertCountBadge}>{filteredExperts.length} available</Text>
+                )}
+              </View>
+
+              {experts.length > 3 && (
+                <View style={styles.searchWrap}>
+                  <Ionicons name="search" size={16} color={COLORS.textMuted} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search by name or specialization..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {expertsLoading ? (
+                <View style={styles.loadingExperts}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Text style={styles.loadingText}>Loading experts...</Text>
+                </View>
+              ) : filteredExperts.length === 0 ? (
                 <View style={styles.emptyExperts}>
                   <Ionicons name="people-outline" size={32} color={COLORS.textMuted} />
-                  <Text style={styles.emptyText}>No experts available</Text>
-                  <Text style={styles.emptySubtext}>Admins can add experts in Profile → Authorized Experts</Text>
+                  <Text style={styles.emptyText}>
+                    {searchQuery.trim() ? `No experts matching "${searchQuery}"` : 'No experts available'}
+                  </Text>
+                  <Text style={styles.emptySubtext}>
+                    {searchQuery.trim()
+                      ? 'Try another search term'
+                      : 'Admins can add experts in Profile → Authorized Experts'}
+                  </Text>
                 </View>
               ) : (
-                experts.map((expert) => (
+                filteredExperts.map((expert) => (
                   <TouchableOpacity
                     key={expert.id}
                     style={[styles.expertCard, selectedExpert?.id === expert.id && styles.expertCardSelected]}
@@ -403,7 +466,13 @@ const styles = StyleSheet.create({
   setupContainer: { padding: 16, paddingBottom: 32, gap: 12 },
   contextBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F5F3FF', borderRadius: 10, padding: 12 },
   contextBannerText: { fontSize: 13, color: COLORS.primary, fontWeight: '500', flex: 1 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginTop: 4 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  expertCountBadge: { fontSize: 12, fontWeight: '600', color: COLORS.primary, backgroundColor: '#F5F3FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  searchInput: { flex: 1, fontSize: 13, color: COLORS.textPrimary, padding: 0 },
+  loadingExperts: { alignItems: 'center', paddingVertical: 24, gap: 8 },
+  loadingText: { fontSize: 12, color: COLORS.textMuted },
   emptyExperts: { alignItems: 'center', paddingVertical: 24, gap: 6 },
   emptyText: { fontSize: 14, color: COLORS.textMuted },
   emptySubtext: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center' },

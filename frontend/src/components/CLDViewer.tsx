@@ -117,7 +117,7 @@ const DIAGRAM_SIZE = 380;
 // ========================
 
 const getBaseUrl = () => {
-  return Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+  return process.env.EXPO_PUBLIC_BACKEND_URL || (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || '';
 };
 
 const getAuthHeaders = async () => {
