@@ -139,6 +139,9 @@ export default function NotificationsScreen() {
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
+        <TouchableOpacity onPress={() => router.push('/expert-appointments')} style={styles.markAllBtn}>
+          <Text style={styles.markAllText}>Appointments</Text>
+        </TouchableOpacity>
         {unreadCount > 0 && (
           <TouchableOpacity onPress={handleMarkAllRead} style={styles.markAllBtn}>
             <Text style={styles.markAllText}>Mark all read</Text>

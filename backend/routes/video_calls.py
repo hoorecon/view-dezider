@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone, timedelta
+from urllib.parse import quote
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
@@ -52,7 +53,7 @@ async def update_call_config(request: Request, user: dict = Depends(get_current_
 import logging
 import re
 from core.notify import send_email, send_whatsapp, PUBLIC_APP_URL
-from core.expert_contacts import choose_notify_phone, verified_whatsapp_for_email
+from core.expert_contacts import _account_phone, choose_notify_phone, verified_whatsapp_for_email
 
 logger = logging.getLogger("video_calls")
 
@@ -63,6 +64,77 @@ def _format_meeting_time(dt: datetime) -> tuple[str, str]:
     ist_dt = dt + timedelta(hours=5, minutes=30)
     ist_str = ist_dt.strftime("%d %b %Y, %I:%M %p IST")
     return ist_str, utc_str
+
+
+def _google_calendar_template(title: str, start: datetime, end: datetime, details: str, location: str) -> str:
+    """A Google Calendar link that works even when nobody has connected OAuth."""
+    def stamp(dt: datetime) -> str:
+        aware = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return aware.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    return (
+        "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        f"&text={quote(title)}"
+        f"&dates={stamp(start)}/{stamp(end)}"
+        f"&details={quote(details)}"
+        f"&location={quote(location)}"
+    )
+
+
+async def _calendar_owner_ids(booker_id: str, expert_email: Optional[str]) -> list:
+    ids = []
+    if booker_id:
+        ids.append(booker_id)
+    if expert_email:
+        expert_user = await db.users.find_one(
+            {"email": {"$regex": f"^{re.escape(expert_email)}$", "$options": "i"}},
+            {"_id": 0, "user_id": 1},
+        )
+        uid = (expert_user or {}).get("user_id")
+        if uid and uid not in ids:
+            ids.append(uid)
+    return ids
+
+
+async def _sync_appointment_calendar(session_like: dict, action: str) -> dict:
+    """Write the appointment onto the connected Google Calendar. Empty dict if nobody is connected."""
+    from routes.google_calendar import write_appointment_event
+
+    when = _as_aware(session_like.get("scheduled_at"))
+    if not when:
+        return {}
+    duration = int(session_like.get("duration_minutes") or DEFAULT_CALL_DURATION)
+    title = (
+        (session_like.get("share_context") or {}).get("decision_title")
+        or session_like.get("decision_title")
+        or "Expert consultation"
+    )
+    room = session_like.get("room_url") or ""
+    summary = f"JELCOS consultation — {title}"
+    description = (
+        f"Consultation with {session_like.get('expert_name') or 'Expert'}.\n"
+        f"Requested by {session_like.get('creator_name') or 'User'}.\n"
+        f"Join: {room}\n"
+        f"Reschedule or cancel: {PUBLIC_APP_URL}/expert-appointments"
+    )
+    owners = await _calendar_owner_ids(session_like.get("created_by") or "", session_like.get("expert_email"))
+    attendees = [email for email in [session_like.get("expert_email"), session_like.get("creator_email")] if email]
+    try:
+        return await write_appointment_event(
+            owners,
+            event_id=session_like.get("google_calendar_event_id"),
+            calendar_owner_id=session_like.get("google_calendar_user_id"),
+            action=action,
+            summary=summary,
+            description=description,
+            start=when,
+            end=when + timedelta(minutes=duration),
+            location=room,
+            attendee_emails=attendees,
+        )
+    except Exception as exc:
+        logger.warning("Google Calendar sync failed: %s", exc)
+        return {}
 
 
 def _build_expert_call_email_html(
@@ -77,11 +149,31 @@ def _build_expert_call_email_html(
     ist_time: str,
     utc_time: str,
     is_scheduled: bool = False,
+    manage_url: str = "",
+    calendar_url: str = "",
+    calendar_synced: bool = False,
 ) -> str:
     meeting_title = "Scheduled Expert Consultation" if is_scheduled else "Live Expert Consultation Request"
     badge_bg = "#EDE9FE" if is_scheduled else "#DCFCE7"
     badge_color = "#6D28D9" if is_scheduled else "#15803D"
     badge_text = "Scheduled Meeting" if is_scheduled else "LIVE Consultation"
+    manage_block = ""
+    if is_scheduled and manage_url:
+        manage_block = f"""
+              <p style="text-align:center;margin:0 0 8px 0;">
+                <a href="{manage_url}" style="display:inline-block;background:#5E35B1;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;padding:10px 18px;border-radius:10px;margin-right:8px;">Reschedule</a>
+                <a href="{manage_url}" style="display:inline-block;background:#FFFFFF;color:#DC2626;text-decoration:none;font-size:14px;font-weight:700;padding:10px 18px;border-radius:10px;border:1px solid #FECACA;">Cancel</a>
+              </p>
+              <p style="text-align:center;font-size:12px;color:#64748B;margin:0 0 20px 0;">Sign in with this expert email address to reschedule or cancel.</p>
+"""
+    calendar_block = ""
+    if calendar_url:
+        calendar_label = "Open in Google Calendar" if calendar_synced else "Add to Google Calendar"
+        calendar_block = f"""
+              <p style="text-align:center;margin:0 0 20px 0;">
+                <a href="{calendar_url}" style="display:inline-block;background:#FFFFFF;color:#1A73E8;text-decoration:none;font-size:14px;font-weight:700;padding:10px 18px;border-radius:10px;border:1px solid #BFDBFE;">{calendar_label}</a>
+              </p>
+"""
 
     return f"""<!DOCTYPE html>
 <html>
@@ -165,6 +257,9 @@ def _build_expert_call_email_html(
                 </tr>
               </table>
 
+              {manage_block}
+              {calendar_block}
+
               <!-- Joining Instructions -->
               <div style="background-color:#F5F3FF;border-left:4px solid #7C3AED;border-radius:6px;padding:14px 16px;margin-bottom:20px;">
                 <h3 style="margin:0 0 8px 0;font-size:13px;font-weight:700;color:#5E35B1;text-transform:uppercase;letter-spacing:0.5px;">Joining Instructions</h3>
@@ -210,8 +305,18 @@ def _build_expert_call_whatsapp_text(
     ist_time: str,
     utc_time: str,
     is_scheduled: bool = False,
+    manage_url: str = "",
+    calendar_url: str = "",
 ) -> str:
     status_header = "📅 *SCHEDULED CONSULTATION MEETING*" if is_scheduled else "🔴 *LIVE CONSULTATION MEETING REQUEST*"
+    manage_block = ""
+    if is_scheduled and manage_url:
+        manage_block = (
+            f"📅 *RESCHEDULE*\n{manage_url}\n\n"
+            f"❌ *CANCEL*\n{manage_url}\n\n"
+            f"_Sign in with this expert email, then choose the meeting._\n\n"
+        )
+    calendar_block = f"📅 *GOOGLE CALENDAR:*\n{calendar_url}\n\n" if calendar_url else ""
     return (
         f"🔔 *JELCOS AI — Expert Consultation Request*\n\n"
         f"Hello *{expert_name}*,\n\n"
@@ -227,6 +332,8 @@ def _build_expert_call_whatsapp_text(
         f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🔗 *JOIN VIDEO CALL LINK:*\n"
         f"{room_url}\n\n"
+        f"{manage_block}"
+        f"{calendar_block}"
         f"📌 *Joining Instructions:*\n"
         f"1. Tap the link above to open the video call directly in your phone or desktop browser.\n"
         f"2. Allow microphone and camera access when prompted.\n"
@@ -247,6 +354,7 @@ def _build_user_call_email_html(
     ist_time: str,
     utc_time: str,
     is_scheduled: bool = False,
+    calendar_url: str = "",
 ) -> str:
     return f"""<!DOCTYPE html>
 <html>
@@ -263,6 +371,7 @@ def _build_user_call_email_html(
       <p style="margin:4px 0;"><strong>Duration:</strong> {duration_minutes} Minutes</p>
     </div>
     <p><a href="{room_url}" style="display:inline-block;background:#16A34A;color:#FFF;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700;">Open Video Meeting Room</a></p>
+    {f'<p><a href="{calendar_url}" style="color:#1A73E8;font-weight:700;">Google Calendar</a></p>' if calendar_url else ''}
     <p style="font-size:12px;color:#64748B;margin-top:16px;">Meeting Link: {room_url}</p>
   </div>
 </body>
@@ -324,6 +433,9 @@ def _build_reschedule_whatsapp_text(expert_name, creator_name, decision_title, r
         f"✅ *New time:* {new_time}\n"
         f"⏳ *Duration:* {duration_minutes} minutes\n\n"
         f"🔗 *Same join link:*\n{room_url}\n\n"
+        f"📅 *RESCHEDULE*\n{PUBLIC_APP_URL}/expert-appointments\n\n"
+        f"❌ *CANCEL*\n{PUBLIC_APP_URL}/expert-appointments\n\n"
+        f"_Sign in with the expert email, then choose the meeting._\n\n"
         f"_Sent via JELCOS AI Expert Network._"
     )
 
@@ -421,7 +533,35 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
     user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
     creator_name = user_doc.get("name", "User") if user_doc else "User"
     creator_email = user_doc.get("email", "") if user_doc else ""
-    creator_phone = (user_doc.get("whatsapp") or user_doc.get("phone") or user_doc.get("mobile") or user_doc.get("whatsapp_number")) if user_doc else None
+    creator_phone = _account_phone(user_doc)
+
+    calendar_link = ""
+    calendar_synced = False
+    calendar_event_id = ""
+    calendar_owner_id = ""
+    if is_scheduled:
+        calendar_draft = {
+            "scheduled_at": meeting_dt.isoformat(),
+            "duration_minutes": duration_minutes,
+            "decision_title": decision_title,
+            "room_url": room_url,
+            "expert_name": expert_name,
+            "expert_email": expert_email,
+            "creator_name": creator_name,
+            "creator_email": creator_email,
+            "created_by": user["user_id"],
+        }
+        calendar_result = await _sync_appointment_calendar(calendar_draft, "create")
+        calendar_event_id = calendar_result.get("event_id") or ""
+        calendar_owner_id = calendar_result.get("owner_user_id") or ""
+        calendar_synced = bool(calendar_event_id)
+        calendar_link = calendar_result.get("html_link") or _google_calendar_template(
+            f"JELCOS consultation — {decision_title or 'Expert consultation'}",
+            meeting_dt,
+            meeting_dt + timedelta(minutes=duration_minutes),
+            f"Join: {room_url}\nReschedule or cancel: {PUBLIC_APP_URL}/expert-appointments",
+            room_url,
+        )
 
     # Dispatch Email to Expert
     sent_expert_email = False
@@ -439,6 +579,9 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
             ist_time=ist_time_str,
             utc_time=utc_time_str,
             is_scheduled=is_scheduled,
+            manage_url=f"{PUBLIC_APP_URL}/expert-appointments" if is_scheduled else "",
+            calendar_url=calendar_link,
+            calendar_synced=calendar_synced,
         )
         try:
             sent_expert_email = await send_email(expert_email, email_subj, email_html)
@@ -461,6 +604,8 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
             ist_time=ist_time_str,
             utc_time=utc_time_str,
             is_scheduled=is_scheduled,
+            manage_url=f"{PUBLIC_APP_URL}/expert-appointments" if is_scheduled else "",
+            calendar_url=calendar_link,
         )
         try:
             sent_expert_wa = await send_whatsapp(expert_phone, wa_text)
@@ -486,6 +631,7 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
             ist_time=ist_time_str,
             utc_time=utc_time_str,
             is_scheduled=is_scheduled,
+            calendar_url=calendar_link,
         )
         try:
             await send_email(creator_email, user_email_subj, user_email_html)
@@ -506,6 +652,8 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
             utc_time=utc_time_str,
             is_scheduled=True,
         )
+        if calendar_link:
+            caller_wa += f"\n\n📅 Google Calendar:\n{calendar_link}"
         try:
             await send_whatsapp(creator_phone, caller_wa)
         except Exception:
@@ -533,6 +681,10 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
         "creator_phone": creator_phone,
         "reminders_sent": [],
         "reschedule_history": [],
+        "google_calendar_event_id": calendar_event_id,
+        "google_calendar_link": calendar_link,
+        "google_calendar_user_id": calendar_owner_id,
+        "google_calendar_synced": calendar_synced,
         "share_context": {
             "decision_title": decision_title,
             "step_data": body.get("step_data"),
@@ -572,6 +724,8 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
         "is_scheduled": is_scheduled,
         "scheduled_at": meeting_dt.isoformat(),
         "status": "scheduled" if is_scheduled else "active",
+        "google_calendar_link": calendar_link,
+        "google_calendar_synced": calendar_synced,
     }
 
 
@@ -629,6 +783,8 @@ async def resend_call_invitation(session_id: str, request: Request, user: dict =
             ist_time=ist_time_str,
             utc_time=utc_time_str,
             is_scheduled=session.get("is_scheduled", False),
+            manage_url=f"{PUBLIC_APP_URL}/expert-appointments" if session.get("is_scheduled") else "",
+            calendar_url=session.get("google_calendar_link") or "",
         )
         sent_wa = await send_whatsapp(expert_phone, wa_text)
 
@@ -686,6 +842,42 @@ def _session_when(session) -> Optional[datetime]:
     return _as_aware(session.get("scheduled_at")) or _as_aware(session.get("created_at"))
 
 
+async def _profile_phone(user_id: Optional[str] = None, email: Optional[str] = None) -> Optional[str]:
+    """Verified profile WhatsApp, then any number saved on the account."""
+    fields = {"_id": 0, "whatsapp_number": 1, "whatsapp_verified": 1, "whatsapp": 1, "phone": 1, "mobile": 1}
+    user = None
+    if user_id:
+        user = await db.users.find_one({"user_id": user_id}, fields)
+    if not _account_phone(user) and email:
+        user = await db.users.find_one(
+            {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}},
+            fields,
+        )
+    return _account_phone(user)
+
+
+async def _party_phone(stored: Optional[str], user_id: Optional[str] = None, email: Optional[str] = None) -> Optional[str]:
+    """Use the number saved on the appointment, or the person's current profile number."""
+    if stored:
+        return stored
+    return await _profile_phone(user_id, email)
+
+
+async def _session_phones(session: dict) -> tuple[Optional[str], Optional[str]]:
+    """Expert phone, then the booker's phone. Fills a missing number from the profile."""
+    expert_phone = await _party_phone(session.get("expert_phone"), None, session.get("expert_email"))
+    creator_phone = await _party_phone(session.get("creator_phone"), session.get("created_by"), session.get("creator_email"))
+    updates = {}
+    if creator_phone and not session.get("creator_phone"):
+        updates["creator_phone"] = creator_phone
+    if expert_phone and not session.get("expert_phone"):
+        updates["expert_phone"] = expert_phone
+    if updates and session.get("id"):
+        await db.call_sessions.update_one({"id": session["id"]}, {"$set": updates})
+        session.update(updates)
+    return expert_phone, creator_phone
+
+
 async def _notify_party(email: Optional[str], phone: Optional[str], subject: str, html: str, wa_text: str) -> None:
     if email:
         try:
@@ -694,9 +886,21 @@ async def _notify_party(email: Optional[str], phone: Optional[str], subject: str
             logger.warning("Appointment email failed: %s", exc)
     if phone:
         try:
-            await send_whatsapp(phone, wa_text)
+            sent = await send_whatsapp(phone, wa_text)
+            if not sent:
+                logger.warning("Appointment WhatsApp was not accepted for %s", phone[-4:])
         except Exception as exc:
             logger.warning("Appointment WhatsApp failed: %s", exc)
+    else:
+        logger.warning("Appointment WhatsApp skipped: no phone for %s", email or "unknown")
+
+
+def _can_manage_session(session: dict, user: dict) -> bool:
+    if session.get("created_by") == user.get("user_id"):
+        return True
+    expert_email = (session.get("expert_email") or "").strip().lower()
+    user_email = (user.get("email") or "").strip().lower()
+    return bool(expert_email and user_email and expert_email == user_email)
 
 
 @router.post("/call-sessions/{session_id}/cancel")
@@ -705,18 +909,17 @@ async def cancel_call_session(session_id: str, user: dict = Depends(get_current_
     session = await db.call_sessions.find_one({"id": session_id}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if session.get("created_by") != user["user_id"]:
-        raise HTTPException(status_code=403, detail="Only the person who booked this appointment can cancel it")
-    if session.get("status") != "scheduled":
-        raise HTTPException(status_code=400, detail="Only a scheduled appointment can be cancelled")
+    if not _can_manage_session(session, user):
+        raise HTTPException(status_code=403, detail="Only the person who booked this appointment, or the expert, can cancel it")
     when = _session_when(session)
     now = datetime.now(timezone.utc)
     if when and when <= now:
         raise HTTPException(status_code=400, detail="This appointment has already started")
 
+    await _sync_appointment_calendar(session, "delete")
     await db.call_sessions.update_one(
         {"id": session_id},
-        {"$set": {"status": "cancelled", "cancelled_at": now, "reminders_sent": ["cancelled"]}},
+        {"$set": {"status": "cancelled", "cancelled_at": now, "reminders_sent": ["cancelled"], "google_calendar_event_id": ""}},
     )
     ist_time, _utc_time = _format_meeting_time(when or now)
     title = (session.get("share_context") or {}).get("decision_title") or "Decision Consultation"
@@ -728,8 +931,9 @@ async def cancel_call_session(session_id: str, user: dict = Depends(get_current_
       on <strong>{title}</strong> scheduled for {ist_time} has been cancelled.</p>
     </div>"""
     wa = _build_cancel_whatsapp_text(expert_name, creator_name, title, ist_time)
-    await _notify_party(session.get("expert_email"), session.get("expert_phone"), f"Appointment cancelled — {title}", html, wa)
-    await _notify_party(session.get("creator_email"), session.get("creator_phone"), f"Appointment cancelled — {title}", html, wa)
+    expert_phone, creator_phone = await _session_phones(session)
+    await _notify_party(session.get("expert_email"), expert_phone, f"Appointment cancelled — {title}", html, wa)
+    await _notify_party(session.get("creator_email"), creator_phone, f"Appointment cancelled — {title}", html, wa)
     return {"message": "Appointment cancelled", "session_id": session_id}
 
 
@@ -739,10 +943,8 @@ async def reschedule_call_session(session_id: str, request: Request, user: dict 
     session = await db.call_sessions.find_one({"id": session_id}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if session.get("created_by") != user["user_id"]:
-        raise HTTPException(status_code=403, detail="Only the person who booked this appointment can reschedule it")
-    if session.get("status") != "scheduled":
-        raise HTTPException(status_code=400, detail="Only a scheduled appointment can be rescheduled")
+    if not _can_manage_session(session, user):
+        raise HTTPException(status_code=403, detail="Only the person who booked this appointment, or the expert, can reschedule it")
 
     body = await request.json()
     now = datetime.now(timezone.utc)
@@ -767,8 +969,9 @@ async def reschedule_call_session(session_id: str, request: Request, user: dict 
     html = _build_reschedule_email_html(expert_name, creator_name, title, room_url, old_ist, new_ist, duration_minutes)
     wa = _build_reschedule_whatsapp_text(expert_name, creator_name, title, room_url, old_ist, new_ist, duration_minutes)
     subject = f"Appointment rescheduled — {title}"
-    await _notify_party(session.get("expert_email"), session.get("expert_phone"), subject, html, wa)
-    await _notify_party(session.get("creator_email"), session.get("creator_phone"), subject, html, wa)
+    expert_phone, creator_phone = await _session_phones(session)
+    await _notify_party(session.get("expert_email"), expert_phone, subject, html, wa)
+    await _notify_party(session.get("creator_email"), creator_phone, subject, html, wa)
 
     history = {
         "from": (current or now).isoformat(),
@@ -776,6 +979,24 @@ async def reschedule_call_session(session_id: str, request: Request, user: dict 
         "by": user["user_id"],
         "at": now.isoformat(),
     }
+    updated_session = {
+        **session,
+        "scheduled_at": new_dt.isoformat(),
+        "duration_minutes": duration_minutes,
+        "decision_title": title,
+    }
+    calendar_result = await _sync_appointment_calendar(
+        updated_session,
+        "update" if session.get("google_calendar_event_id") else "create",
+    )
+    calendar_fields = {}
+    if calendar_result.get("event_id"):
+        calendar_fields = {
+            "google_calendar_event_id": calendar_result["event_id"],
+            "google_calendar_link": calendar_result.get("html_link") or session.get("google_calendar_link") or "",
+            "google_calendar_user_id": calendar_result.get("owner_user_id") or session.get("google_calendar_user_id") or "",
+            "google_calendar_synced": True,
+        }
     await db.call_sessions.update_one(
         {"id": session_id},
         {
@@ -785,6 +1006,7 @@ async def reschedule_call_session(session_id: str, request: Request, user: dict 
                 "duration_minutes": duration_minutes,
                 "reminders_sent": [],
                 "updated_at": now,
+                **calendar_fields,
             },
             "$push": {"reschedule_history": history},
         },
@@ -796,6 +1018,7 @@ async def reschedule_call_session(session_id: str, request: Request, user: dict 
         "scheduled_at_label": f"{new_ist} ({new_utc})",
         "duration_minutes": duration_minutes,
         "room_url": room_url,
+        "google_calendar_link": calendar_fields.get("google_calendar_link") or session.get("google_calendar_link") or "",
     }
 
 
@@ -842,8 +1065,9 @@ async def tick_call_session_reminders() -> int:
             f"⏰ {ist_time}\n\n"
             f"🔗 Join:\n{room_url}"
         )
-        await _notify_party(session.get("expert_email"), session.get("expert_phone"), subject, html, wa)
-        await _notify_party(session.get("creator_email"), session.get("creator_phone"), subject, html, wa)
+        expert_phone, creator_phone = await _session_phones(session)
+        await _notify_party(session.get("expert_email"), expert_phone, subject, html, wa)
+        await _notify_party(session.get("creator_email"), creator_phone, subject, html, wa)
         await db.call_sessions.update_one(
             {"id": session["id"]},
             {"$set": {"reminders_sent": list(already.union(str(offset) for offset in due))}},
@@ -853,10 +1077,18 @@ async def tick_call_session_reminders() -> int:
 
 
 @router.get("/call-sessions")
-async def list_call_sessions(user: dict = Depends(get_current_user), decision_id: str = None):
-    """List call sessions for the current user"""
-    query = {"created_by": user["user_id"]}
-    if decision_id:
-        query["decision_id"] = decision_id
+async def list_call_sessions(user: dict = Depends(get_current_user), decision_id: str = None, role: str = None):
+    """List call sessions for the booker, or for the signed-in expert."""
+    if role == "expert":
+        email = (user.get("email") or "").strip()
+        query = {
+            "status": "scheduled",
+            "is_scheduled": True,
+            "expert_email": {"$regex": f"^{re.escape(email)}$", "$options": "i"},
+        }
+    else:
+        query = {"created_by": user["user_id"]}
+        if decision_id:
+            query["decision_id"] = decision_id
     sessions = await db.call_sessions.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
     return sessions

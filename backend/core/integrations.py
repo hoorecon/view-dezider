@@ -207,3 +207,21 @@ async def resolve_scraperapi() -> Dict[str, str]:
                 "country_code": os.getenv("SCRAPERAPI_COUNTRY", "") or "in",
                 "source": "env"}
     return {"api_key": "", "country_code": "", "source": "none"}
+
+
+# ── Google Calendar OAuth client resolution ──────────────────────────────────
+async def resolve_google_calendar_creds() -> Tuple[str, str, str]:
+    """Return (client_id, client_secret, source) for Google Calendar OAuth.
+
+    Priority: Admin UI (db.integrations, enabled) → .env fallback.
+    source ∈ {"admin_ui", "env", "none"}.
+    """
+    admin = await get_integration("google_calendar")
+    if admin.get("client_id") and admin.get("client_secret"):
+        return admin["client_id"], admin["client_secret"], "admin_ui"
+
+    env_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+    env_secret = os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+    if env_id and env_secret:
+        return env_id, env_secret, "env"
+    return "", "", "none"

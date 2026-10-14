@@ -484,6 +484,12 @@ export default function RootLayout() {
             headerShown: false,
           }} 
         />
+        <Stack.Screen
+          name="expert-appointments"
+          options={{
+            headerShown: false,
+          }}
+        />
         <Stack.Screen 
           name="analytics" 
           options={{ 

@@ -21,9 +21,14 @@ router = APIRouter()
 
 # Accept both naming conventions — production EC2 uses GOOGLE_OAUTH_CLIENT_ID /
 # GOOGLE_OAUTH_CLIENT_SECRET while the dev pod uses GOOGLE_CLIENT_ID / _SECRET.
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
+
+async def oauth_client_pair() -> tuple[str, str]:
+    """OAuth client from the admin Google Calendar card, then environment."""
+    from core.integrations import resolve_google_calendar_creds
+    client_id, client_secret, _source = await resolve_google_calendar_creds()
+    return client_id, client_secret
 
 # Determine redirect URI dynamically
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "")
@@ -48,13 +53,14 @@ def get_redirect_uri(request: Request) -> str:
 @router.get("/oauth/calendar/start")
 async def start_calendar_oauth(request: Request, user: dict = Depends(get_current_user)):
     """Start Google Calendar OAuth flow. Returns the authorization URL."""
-    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+    client_id, _client_secret = await oauth_client_pair()
+    if not client_id or not _client_secret:
         raise HTTPException(
             status_code=503,
             detail=(
                 "Google Calendar sync is not configured on this server. "
-                "Ask the administrator to set GOOGLE_OAUTH_CLIENT_ID and "
-                "GOOGLE_OAUTH_CLIENT_SECRET in the backend .env and restart."
+                "Turn on Google Calendar in Admin settings, or set "
+                "GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET."
             ),
         )
 
@@ -71,7 +77,7 @@ async def start_calendar_oauth(request: Request, user: dict = Depends(get_curren
 
     auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
-        f"client_id={GOOGLE_CLIENT_ID}"
+        f"client_id={client_id}"
         f"&redirect_uri={redirect_uri}"
         f"&response_type=code"
         f"&scope={'%20'.join(SCOPES)}%20https://www.googleapis.com/auth/userinfo.email"
@@ -101,10 +107,11 @@ async def calendar_oauth_callback(request: Request, code: str = "", state: str =
     redirect_uri = state_doc.get("redirect_uri", get_redirect_uri(request))
 
     # Exchange code for tokens
+    client_id, client_secret = await oauth_client_pair()
     token_resp = http_requests.post("https://oauth2.googleapis.com/token", data={
         "code": code,
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
+        "client_id": client_id,
+        "client_secret": client_secret,
         "redirect_uri": redirect_uri,
         "grant_type": "authorization_code",
     })
@@ -180,12 +187,16 @@ async def get_google_credentials(user_id: str):
     if not token_doc:
         return None
 
+    client_id, client_secret = await oauth_client_pair()
+    if not client_id or not client_secret:
+        return None
+
     creds = Credentials(
         token=token_doc["access_token"],
         refresh_token=token_doc.get("refresh_token"),
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
+        client_id=client_id,
+        client_secret=client_secret,
     )
 
     if creds.expired and creds.refresh_token:
@@ -473,3 +484,80 @@ async def sync_ctt_task_to_calendar(request: Request, user: dict = Depends(get_c
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Calendar sync error: {str(e)}")
+
+
+async def write_appointment_event(
+    owner_user_ids: list,
+    *,
+    event_id: Optional[str],
+    calendar_owner_id: Optional[str],
+    action: str,
+    summary: str,
+    description: str,
+    start: datetime,
+    end: datetime,
+    location: str,
+    attendee_emails: list,
+) -> dict:
+    """Create, update, or delete an expert appointment on a connected Google Calendar.
+
+    Uses the booker's calendar when that account is connected, otherwise the expert's.
+    Returns {} when nobody has connected Google Calendar. Never raises.
+    """
+    from googleapiclient.discovery import build
+
+    ordered = []
+    if calendar_owner_id:
+        ordered.append(calendar_owner_id)
+    for uid in owner_user_ids or []:
+        if uid and uid not in ordered:
+            ordered.append(uid)
+
+    creds = None
+    owner = None
+    for uid in ordered:
+        creds = await get_google_credentials(uid)
+        if creds:
+            owner = uid
+            break
+    if not creds or not owner:
+        return {}
+
+    body = {
+        "summary": summary,
+        "description": description,
+        "location": location,
+        "start": {"dateTime": start.isoformat(), "timeZone": "UTC"},
+        "end": {"dateTime": end.isoformat(), "timeZone": "UTC"},
+        "attendees": [{"email": email} for email in attendee_emails if email],
+        "reminders": {
+            "useDefault": False,
+            "overrides": [
+                {"method": "email", "minutes": 60},
+                {"method": "popup", "minutes": 15},
+            ],
+        },
+    }
+    try:
+        service = build("calendar", "v3", credentials=creds)
+        if action == "delete" and event_id:
+            service.events().delete(
+                calendarId="primary", eventId=event_id, sendUpdates="all"
+            ).execute()
+            return {"event_id": "", "html_link": "", "owner_user_id": owner, "deleted": True}
+        if action == "update" and event_id and (not calendar_owner_id or calendar_owner_id == owner):
+            event = service.events().patch(
+                calendarId="primary", eventId=event_id, body=body, sendUpdates="all"
+            ).execute()
+        else:
+            event = service.events().insert(
+                calendarId="primary", body=body, sendUpdates="all"
+            ).execute()
+        return {
+            "event_id": event.get("id") or "",
+            "html_link": event.get("htmlLink") or "",
+            "owner_user_id": owner,
+        }
+    except Exception as exc:
+        print(f"Appointment calendar write failed: {exc}")
+        return {}

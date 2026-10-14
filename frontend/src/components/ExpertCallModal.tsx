@@ -15,6 +15,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
 import { showAlert } from '../utils/alert';
+import AppointmentCalendar from './AppointmentCalendar';
+
+const DISPLAY_FONT = Platform.OS === 'web' ? 'Fraunces, Georgia, "Times New Roman", serif' : undefined;
 
 function localDateTimeValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -26,6 +29,30 @@ function formatAppointment(iso?: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function nextBookableSlot() {
+  const date = new Date(Date.now() + 20 * 60 * 1000);
+  const remainder = date.getMinutes() % 30;
+  if (remainder !== 0) date.setMinutes(date.getMinutes() + (30 - remainder));
+  date.setSeconds(0, 0);
+  const minutes = date.getHours() * 60 + date.getMinutes();
+  if (minutes < 8 * 60) date.setHours(8, 0, 0, 0);
+  if (minutes > 23 * 60 + 30) {
+    date.setDate(date.getDate() + 1);
+    date.setHours(8, 0, 0, 0);
+  }
+  return localDateTimeValue(date);
+}
+
+function meetingStatus(row: any) {
+  const when = row?.scheduled_at ? new Date(row.scheduled_at).getTime() : 0;
+  if (row?.status === 'scheduled' && row?.is_scheduled && when > Date.now()) return 'upcoming';
+  if (row?.status === 'cancelled') return 'Cancelled';
+  if (row?.status === 'ended') return 'Completed';
+  if (row?.status === 'expired') return 'Expired';
+  if (row?.status === 'active') return 'Live';
+  return 'Past';
 }
 
 interface Expert {
@@ -67,7 +94,8 @@ export default function ExpertCallModal({
   const [activeSession, setActiveSession] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [meetingMode, setMeetingMode] = useState<'now' | 'appointment'>('now');
-  const [appointmentLocal, setAppointmentLocal] = useState(localDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [panel, setPanel] = useState<'new' | 'history'>('new');
+  const [appointmentLocal, setAppointmentLocal] = useState(nextBookableSlot);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
   const [rescheduleLocal, setRescheduleLocal] = useState('');
@@ -76,6 +104,7 @@ export default function ExpertCallModal({
   useEffect(() => {
     if (visible) {
       setSearchQuery('');
+      setPanel('new');
       fetchExperts();
       fetchCallConfig();
       fetchAppointments();
@@ -168,7 +197,7 @@ export default function ExpertCallModal({
     try {
       const resp = await api.get('/call-sessions', { params: { decision_id: decisionId } });
       const rows = Array.isArray(resp.data) ? resp.data : [];
-      setAppointments(rows.filter((row: any) => row.status === 'scheduled' && row.is_scheduled));
+      setAppointments(rows);
     } catch (err) {
       console.error('Failed to fetch appointments', err);
     }
@@ -345,6 +374,19 @@ export default function ExpertCallModal({
                   </View>
                 )}
               </View>
+              {!!activeSession.google_calendar_link && (
+                <TouchableOpacity
+                  style={[styles.openBrowserBtn, { backgroundColor: '#1A73E8' }]}
+                  onPress={() => {
+                    if (typeof window !== 'undefined') window.open(activeSession.google_calendar_link, '_blank', 'noopener,noreferrer');
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={18} color="#FFF" />
+                  <Text style={styles.openBrowserBtnText}>
+                    {activeSession.google_calendar_synced ? 'Open in Google Calendar' : 'Add to Google Calendar'}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity style={styles.openBrowserBtn} onPress={openCallInBrowser}>
                 <Ionicons name="open-outline" size={18} color="#FFF" />
                 <Text style={styles.openBrowserBtnText}>Open meeting link</Text>
@@ -457,6 +499,81 @@ export default function ExpertCallModal({
                 </Text>
               </View>
 
+              <View style={styles.tabRow}>
+                <TouchableOpacity
+                  style={[styles.tab, panel === 'new' && styles.tabActive]}
+                  onPress={() => setPanel('new')}
+                >
+                  <Text style={[styles.tabText, panel === 'new' && styles.tabTextActive]}>New meeting</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tab, panel === 'history' && styles.tabActive]}
+                  onPress={() => setPanel('history')}
+                >
+                  <Text style={[styles.tabText, panel === 'history' && styles.tabTextActive]}>
+                    Meeting history{appointments.length ? ` (${appointments.length})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {panel === 'history' ? (
+                appointments.length === 0 ? (
+                  <Text style={styles.emptySubtext}>No meetings for this decision yet.</Text>
+                ) : (
+                  <>
+                    {appointments.some((row) => meetingStatus(row) === 'upcoming') && (
+                      <Text style={styles.sectionTitle}>Upcoming</Text>
+                    )}
+                    {appointments.filter((row) => meetingStatus(row) === 'upcoming').map((appt) => (
+                      <View key={appt.id || appt.session_id} style={styles.expertCard}>
+                        <View style={{ flex: 1, gap: 4 }}>
+                          <Text style={styles.expertName}>{appt.expert_name}</Text>
+                          <Text style={styles.expertSpec}>{formatAppointment(appt.scheduled_at)} · {appt.duration_minutes} min</Text>
+                          {rescheduleId === (appt.id || appt.session_id) && (
+                            <AppointmentCalendar value={rescheduleLocal} onChange={setRescheduleLocal} />
+                          )}
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                            {rescheduleId === (appt.id || appt.session_id) ? (
+                              <TouchableOpacity onPress={() => saveReschedule(appt.id || appt.session_id, appt.duration_minutes)}>
+                                <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Save new time</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity onPress={() => {
+                                setRescheduleId(appt.id || appt.session_id);
+                                setRescheduleLocal(localDateTimeValue(new Date(appt.scheduled_at)));
+                              }}>
+                                <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Reschedule</Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity onPress={() => cancelAppointment(appt.id || appt.session_id)}>
+                              <Text style={{ color: COLORS.error, fontWeight: '700', fontSize: 13 }}>Cancel</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                    {appointments.some((row) => meetingStatus(row) !== 'upcoming') && (
+                      <Text style={styles.sectionTitle}>Earlier</Text>
+                    )}
+                    {appointments.filter((row) => meetingStatus(row) !== 'upcoming').map((appt) => (
+                      <View key={`history-${appt.id || appt.session_id}`} style={styles.expertCard}>
+                        <View style={{ flex: 1, gap: 4 }}>
+                          <Text style={styles.expertName}>{appt.expert_name || 'Expert'}</Text>
+                          <Text style={styles.expertSpec}>
+                            {formatAppointment(appt.scheduled_at || appt.created_at)} · {appt.duration_minutes || 30} min
+                          </Text>
+                          <View style={[styles.historyPill, appt.status === 'cancelled' && styles.historyPillCancelled, appt.status === 'ended' && styles.historyPillDone]}>
+                            <Text style={[styles.historyPillText, appt.status === 'cancelled' && styles.historyPillTextCancelled, appt.status === 'ended' && styles.historyPillTextDone]}>
+                              {meetingStatus(appt)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )
+              ) : (
+              <>
               <Text style={styles.sectionTitle}>Meeting type</Text>
               <View style={styles.durationRow}>
                 <TouchableOpacity
@@ -473,67 +590,13 @@ export default function ExpertCallModal({
                 </TouchableOpacity>
               </View>
               {meetingMode === 'appointment' && (
-                <View style={{ gap: 6 }}>
-                  <Text style={styles.durationHint}>Date and time in your local timezone. At least 15 minutes from now.</Text>
-                  {Platform.OS === 'web' ? (
-                    <input
-                      type="datetime-local"
-                      value={appointmentLocal}
-                      onChange={(event: any) => setAppointmentLocal(event.target.value)}
-                      style={{ padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 10, fontSize: 14 }}
-                    />
-                  ) : (
-                    <TextInput
-                      style={styles.searchInput}
-                      value={appointmentLocal}
-                      onChangeText={setAppointmentLocal}
-                      placeholder="YYYY-MM-DDTHH:MM"
-                    />
-                  )}
-                </View>
-              )}
-
-              {appointments.length > 0 && (
-                <View style={{ gap: 8 }}>
-                  <Text style={styles.sectionTitle}>Upcoming appointments</Text>
-                  {appointments.map((appt) => (
-                    <View key={appt.id || appt.session_id} style={styles.expertCard}>
-                      <View style={{ flex: 1, gap: 4 }}>
-                        <Text style={styles.expertName}>{appt.expert_name}</Text>
-                        <Text style={styles.expertSpec}>{formatAppointment(appt.scheduled_at)} · {appt.duration_minutes} min</Text>
-                        {rescheduleId === (appt.id || appt.session_id) && (
-                          Platform.OS === 'web' ? (
-                            <input
-                              type="datetime-local"
-                              value={rescheduleLocal}
-                              onChange={(event: any) => setRescheduleLocal(event.target.value)}
-                              style={{ padding: '8px 10px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 13 }}
-                            />
-                          ) : (
-                            <TextInput style={styles.searchInput} value={rescheduleLocal} onChangeText={setRescheduleLocal} />
-                          )
-                        )}
-                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                          {rescheduleId === (appt.id || appt.session_id) ? (
-                            <TouchableOpacity onPress={() => saveReschedule(appt.id || appt.session_id, appt.duration_minutes)}>
-                              <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Save new time</Text>
-                            </TouchableOpacity>
-                          ) : (
-                            <TouchableOpacity onPress={() => {
-                              setRescheduleId(appt.id || appt.session_id);
-                              setRescheduleLocal(localDateTimeValue(new Date(appt.scheduled_at)));
-                            }}>
-                              <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Reschedule</Text>
-                            </TouchableOpacity>
-                          )}
-                          <TouchableOpacity onPress={() => cancelAppointment(appt.id || appt.session_id)}>
-                            <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 13 }}>Cancel</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  ))}
-                </View>
+                <AppointmentCalendar
+                  value={appointmentLocal}
+                  onChange={setAppointmentLocal}
+                  bookedDates={appointments
+                    .filter((row) => meetingStatus(row) === 'upcoming' && row.scheduled_at)
+                    .map((row) => localDateTimeValue(new Date(row.scheduled_at)).slice(0, 10))}
+                />
               )}
 
               {/* Expert Selection */}
@@ -704,6 +767,8 @@ export default function ExpertCallModal({
                   {loading ? 'Setting up...' : meetingMode === 'appointment' ? 'Book appointment' : 'Start Call'}
                 </Text>
               </TouchableOpacity>
+              </>
+              )}
             </ScrollView>
           )}
         </View>
@@ -747,7 +812,13 @@ const styles = StyleSheet.create({
   contextBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F5F3FF', borderRadius: 10, padding: 12 },
   contextBannerText: { fontSize: 13, color: COLORS.primary, fontWeight: '500', flex: 1 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#16132A', letterSpacing: -0.3, fontFamily: DISPLAY_FONT },
+  historyPill: { alignSelf: 'flex-start', backgroundColor: '#F5F3FF', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  historyPillCancelled: { backgroundColor: '#FEE2E2' },
+  historyPillDone: { backgroundColor: '#D1FAE5' },
+  historyPillText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
+  historyPillTextCancelled: { color: COLORS.error },
+  historyPillTextDone: { color: '#047857' },
   expertCountBadge: { fontSize: 12, fontWeight: '600', color: COLORS.primary, backgroundColor: '#F5F3FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   searchWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   searchInput: { flex: 1, fontSize: 13, color: COLORS.textPrimary, padding: 0 },
@@ -762,6 +833,11 @@ const styles = StyleSheet.create({
   expertDotSelected: { backgroundColor: COLORS.primary },
   expertName: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
   expertSpec: { fontSize: 12, color: COLORS.textMuted },
+  tabRow: { flexDirection: 'row', gap: 8 },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1.5, borderColor: COLORS.border },
+  tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  tabText: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary },
+  tabTextActive: { color: COLORS.white },
   durationRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   durationChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1.5, borderColor: COLORS.border },
   durationChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

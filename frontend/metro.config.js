@@ -30,4 +30,21 @@ config.cacheStores = [
 // Reduce the number of workers to decrease resource usage
 config.maxWorkers = 2;
 
+// react-native-calendars imports lodash/isEmpty and other deep paths.
+// Metro's package-exports resolver does not accept those paths, so map them
+// straight to the files in node_modules/lodash.
+const defaultResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName.startsWith('lodash/')) {
+    return {
+      type: 'sourceFile',
+      filePath: path.join(__dirname, 'node_modules', `${moduleName}.js`),
+    };
+  }
+  if (defaultResolveRequest) {
+    return defaultResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;
