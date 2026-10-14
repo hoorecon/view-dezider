@@ -516,6 +516,9 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
             if c_match:
                 expert_phone = c_match.get("whatsapp") or c_match.get("mobile") or c_match.get("phone")
 
+    from routes.sku_store import consume_expert_booking
+    await consume_expert_booking(user["user_id"], decision_id=decision_id)
+
     # Determine timing
     now = datetime.now(timezone.utc)
     is_scheduled = False

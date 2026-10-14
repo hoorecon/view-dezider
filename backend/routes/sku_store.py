@@ -75,12 +75,12 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "layer": "L2",
         "name": "5-Decision Family Bundle",
         "tagline": "Main scalable product",
-        "description": "5 units spendable across Pros & Cons, My Dezider, Solution Finder, Book Expert, or Expert Review.",
+        "description": "5 shared units for the decision bundle, an instant meeting, or an appointment. Share Step with an expert uses one of those units. Expert review is not included.",
         "price_paise": 99900,        # ₹999
         "gst_percent": 18,
         "quota": 5,
         "kind": "bundle",
-        "applies_to_modules": ["dezider", "pros_cons", "solution_finder", "book_expert", "expert_review"],
+        "applies_to_modules": ["dezider", "pros_cons", "solution_finder", "book_expert"],
         "fulfilment": "auto",
         "active": True,
         "display_order": 2,
@@ -92,7 +92,7 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "layer": "L3",
         "name": "Professional Guided Session",
         "tagline": "Main assisted revenue",
-        "description": "Book a 1-on-1 expert call (1 unit). Filter by life-area & sub-area.",
+        "description": "One expert booking, used for Start now, Book appointment, or Share Step with an expert.",
         "price_paise": 199900,       # ₹1,999
         "gst_percent": 18,
         "quota": 1,
@@ -109,7 +109,7 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "layer": "L4",
         "name": "Expert Review",
         "tagline": "Scarce premium escalation",
-        "description": "Have a domain expert review your completed decision (1 unit).",
+        "description": "One expert review of a completed decision. One booking is included for Start now, Book appointment, or Share Step.",
         "price_paise": 280000,       # ₹2,800
         "quota": 1,
         "kind": "review",
@@ -160,6 +160,15 @@ async def ensure_sku_catalog_seeded():
                         "description": sku["description"],
                         "applies_to_modules": sku["applies_to_modules"],
                         "updated_at": _now()
+                    }}
+                )
+            elif sku["code"] in ("L3", "L4"):
+                await db.sku_catalog.update_one(
+                    {"code": sku["code"]},
+                    {"$set": {
+                        "description": sku["description"],
+                        "applies_to_modules": sku["applies_to_modules"],
+                        "updated_at": _now(),
                     }}
                 )
             else:
@@ -631,7 +640,7 @@ async def access_check(
                     "remaining": 0,
                 }
             used = diy_used
-        elif tier == "on_demand_l2" and mod_key in ("my_dezider", "pros_cons", "solution_finder", "group_decision", "book_expert", "expert_review"):
+        elif tier == "on_demand_l2" and mod_key in ("my_dezider", "pros_cons", "solution_finder", "group_decision", "book_expert"):
             l2_used = await _get_combined_l2_usage(user["user_id"])
             if l2_used >= limit:
                 return {
@@ -639,7 +648,7 @@ async def access_check(
                     "access_level": "locked",
                     "acm_restricted": False,
                     "tier": tier,
-                    "message": f"You've used all {limit} L2 bundle units across My Dezider, Pros & Cons, Solution Finder, Book Expert, or Expert Review. Upgrade your plan or purchase another package to continue.",
+                    "message": f"You've used all {limit} L2 units across the decision bundle, instant meetings, and appointment bookings. Purchase another bundle or an L3 booking to continue.",
                     "via": None,
                     "balance": 0,
                     "limit": limit,
@@ -769,6 +778,74 @@ async def consume_for_decision(
         status_code=402,
         detail="No active entitlement. Purchase a plan or single decision report to continue.",
     )
+
+
+_BOOKING_REQUIRED = (
+    "This expert meeting needs an unused booking. "
+    "Use one L2 bundle unit, the L3 expert booking, or the booking included with an L4 expert review."
+)
+
+
+async def expert_booking_slots(user_id: str) -> Optional[int]:
+    """How many expert bookings are left. None means a subscription or admin skip, which is not metered."""
+    access = await has_any_paid_access(user_id, module="book_expert")
+    if access.get("via") in {"admin_skip", "subscription"}:
+        return None
+    included = await db.user_entitlements.count_documents({
+        "user_id": user_id,
+        "sku_code": "L4",
+        "status": "active",
+        "balance": {"$gt": 0},
+        "included_booking_used": {"$ne": True},
+    })
+    return (
+        await get_active_balance(user_id, "L3")
+        + await get_active_balance(user_id, "L2")
+        + included
+    )
+
+
+async def consume_expert_booking(user_id: str, *, decision_id: Optional[str] = None) -> Dict[str, Any]:
+    """Spend one expert booking for Start now, Book appointment, or Share Step with an expert.
+
+    A subscription or admin skip is not charged. Otherwise the order is L3, then one L2
+    bundle unit, then the single booking included with an unused L4 review.
+    """
+    access = await has_any_paid_access(user_id, module="book_expert")
+    if access.get("via") in {"admin_skip", "subscription"}:
+        return {"consumed_sku": None, "via": access.get("via")}
+
+    if await consume_one(user_id, "L3", decision_id=decision_id, module="book_expert"):
+        return {"consumed_sku": "L3", "balance_after": await get_active_balance(user_id, "L3")}
+    if await consume_one(user_id, "L2", decision_id=decision_id, module="book_expert"):
+        return {"consumed_sku": "L2", "balance_after": await get_active_balance(user_id, "L2")}
+
+    included = await db.user_entitlements.find_one_and_update(
+        {
+            "user_id": user_id,
+            "sku_code": "L4",
+            "status": "active",
+            "balance": {"$gt": 0},
+            "included_booking_used": {"$ne": True},
+        },
+        {"$set": {"included_booking_used": True, "included_booking_used_at": _now()}},
+        sort=[("granted_at", 1)],
+        return_document=True,
+    )
+    if included:
+        await db.entitlement_consumption_log.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "sku_code": "L4",
+            "entitlement_id": included.get("id"),
+            "decision_id": decision_id,
+            "module": "book_expert",
+            "included_booking": True,
+            "at": _now(),
+        })
+        return {"consumed_sku": "L4", "included_booking": True}
+
+    raise HTTPException(status_code=402, detail=_BOOKING_REQUIRED)
 
 
 async def ensure_decision_entitlement(

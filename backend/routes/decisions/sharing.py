@@ -1,5 +1,6 @@
 """Step-sharing / collaboration routes — share a decision step, contribute, merge."""
 
+import re
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Body
@@ -15,6 +16,39 @@ router = APIRouter(tags=["Decisions"])
 STEP_NAMES = {1: 'Context & Options', 2: 'List Factors', 3: 'Classify Factors', 4: 'Prioritize Factors',
               5: 'Calculate Ratings', 6: 'Define Options', 7: 'Assess & Calculate', 8: 'Case-1 Results',
               9: 'MPPS Analysis', 10: 'Final Decision'}
+
+
+async def _email_is_expert(email: str) -> bool:
+    key = (email or "").strip().lower()
+    if "@" not in key:
+        return False
+    query = {"email": {"$regex": f"^{re.escape(key)}$", "$options": "i"}}
+    if await db.experts.find_one(query, {"_id": 1}):
+        return True
+    return bool(await db.platform_experts.find_one(query, {"_id": 1}))
+
+
+async def _charge_expert_share(user_id: str, emails: list, decision_id: str) -> None:
+    """Share Step with an expert spends the same booking as Call an Expert."""
+    from routes.sku_store import consume_expert_booking, expert_booking_slots
+    expert_emails = []
+    for raw in emails:
+        email = (raw or "").strip().lower()
+        if email and await _email_is_expert(email):
+            expert_emails.append(email)
+    if not expert_emails:
+        return
+    slots = await expert_booking_slots(user_id)
+    if slots is not None and slots < len(expert_emails):
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "Sharing this step with an expert needs an unused booking. "
+                "Use one L2 bundle unit, the L3 expert booking, or the booking included with an L4 expert review."
+            ),
+        )
+    for _ in expert_emails:
+        await consume_expert_booking(user_id, decision_id=decision_id)
 
 
 def _share_email_html(sender: str, step_number: int, step_name: str, title: str, message: str, link: str) -> str:
@@ -163,6 +197,7 @@ async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_cu
     recipients, pending = await _resolve_recipients(data.get("recipient_emails", []), user["user_id"])
     if not recipients and not pending:
         raise HTTPException(status_code=400, detail="No valid recipient emails provided")
+    await _charge_expert_share(user["user_id"], data.get("recipient_emails", []), module_id)
     share_id = str(uuid.uuid4())
     share_doc = {
         "id": share_id, "decision_id": module_id, "module": module, "module_id": module_id,
@@ -507,6 +542,7 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
             pending_invites.append({"email": email, "invited_by": None, "invited_by_name": None})
     if not recipients and not pending_invites:
         raise HTTPException(status_code=400, detail="No valid recipient emails provided")
+    await _charge_expert_share(user["user_id"], data.recipient_emails, decision_id)
 
     share_doc = {
         "id": str(uuid.uuid4()), "decision_id": decision_id, "owner_id": user["user_id"],

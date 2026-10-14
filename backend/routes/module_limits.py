@@ -87,7 +87,7 @@ _DEFAULT_LIMITS: Dict[str, Dict[str, int]] = {
     },
     "on_demand_l2": {
         "my_dezider": 5, "pros_cons": 5, "solution_finder": 5,
-        "group_decision": 5, "book_expert": 5, "expert_review": 5,
+        "group_decision": 5, "book_expert": 5, "expert_review": 0,
         "expire_days": 365,
     },
     "on_demand_l3": {
@@ -249,9 +249,8 @@ async def _get_combined_l2_usage(user_id: str) -> int:
     p_cnt = await _get_usage(user_id, "pros_cons")
     s_cnt = await _get_usage(user_id, "solution_finder")
     b_cnt = await _get_usage(user_id, "book_expert")
-    e_cnt = await _get_usage(user_id, "expert_review")
     g_cnt = await _get_usage(user_id, "group_decision")
-    return m_cnt + p_cnt + s_cnt + b_cnt + e_cnt + g_cnt
+    return m_cnt + p_cnt + s_cnt + b_cnt + g_cnt
 
 
 # ─────────────────── public helpers used by create endpoints ───────────────────
@@ -359,14 +358,14 @@ async def check_and_reserve_usage(user: dict, module_key: str) -> None:
                     f"Upgrade to L2 (5-decision bundle) or Basic / Pro for higher limits."
                 ),
             )
-    elif tier == "on_demand_l2" and module_key in ("my_dezider", "dezider", "pros_cons", "solution_finder", "group_decision", "book_expert", "expert_review"):
+    elif tier == "on_demand_l2" and module_key in ("my_dezider", "dezider", "pros_cons", "solution_finder", "group_decision", "book_expert"):
         l2_used = await _get_combined_l2_usage(user["user_id"])
         if l2_used >= limit:
             raise HTTPException(
                 status_code=402,
                 detail=(
-                    f"You've used all {limit} L2 bundle units across My Dezider, Pros & Cons, Solution Finder, Book Expert, or Expert Review. "
-                    f"Upgrade your plan or purchase another package to continue."
+                    f"You've used all {limit} L2 units across the decision bundle, instant meetings, and appointment bookings. "
+                    f"Purchase another bundle or an L3 booking to continue."
                 ),
             )
     else:
