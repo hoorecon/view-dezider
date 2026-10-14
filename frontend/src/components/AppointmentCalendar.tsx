@@ -59,7 +59,7 @@ interface AppointmentCalendarProps {
   bookedDates?: string[];
 }
 
-/** Next three weeks as day chips, with half-hour time slots underneath. */
+/** The next 25 days as day chips, with half-hour time slots underneath. */
 export default function AppointmentCalendar({ value, onChange, bookedDates = [] }: AppointmentCalendarProps) {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
@@ -76,7 +76,7 @@ export default function AppointmentCalendar({ value, onChange, bookedDates = [] 
   const days = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    return Array.from({ length: 21 }, (_, index) => {
+    return Array.from({ length: 25 }, (_, index) => {
       const day = new Date(start);
       day.setDate(start.getDate() + index);
       return day;
