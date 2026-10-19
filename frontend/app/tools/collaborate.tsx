@@ -3,7 +3,7 @@ import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +19,14 @@ const STATUS_COLORS: Record<string, {bg: string; text: string; label: string}> =
   active: { bg: '#ECFDF5', text: '#059669', label: 'Active' },
   completed: { bg: '#EFF6FF', text: '#2563EB', label: 'Completed' },
   cancelled: { bg: '#FEF2F2', text: '#DC2626', label: 'Cancelled' },
+};
+
+const EXPERT_STATUS: Record<string, {bg: string; text: string; label: string}> = {
+  active: { bg: '#ECFDF5', text: '#059669', label: 'Live' },
+  scheduled: { bg: '#EFF6FF', text: '#2563EB', label: 'Scheduled' },
+  cancelled: { bg: '#FEF2F2', text: '#DC2626', label: 'Cancelled' },
+  ended: { bg: '#F3F4F6', text: '#6B7280', label: 'Ended' },
+  expired: { bg: '#F3F4F6', text: '#6B7280', label: 'Ended' },
 };
 
 const AUTH_METHODS = [
@@ -41,6 +49,7 @@ export default function CollaborateScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const [sessions, setSessions] = useState<any[]>([]);
+  const [expertMeetings, setExpertMeetings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [detailSession, setDetailSession] = useState<any>(null);
@@ -106,14 +115,47 @@ export default function CollaborateScreen() {
     } finally { setLoading(false); }
   };
 
+  const fetchExpertMeetings = async () => {
+    try {
+      const [mine, asExpert] = await Promise.all([
+        api.get('/call-sessions').catch(() => ({ data: [] })),
+        api.get('/call-sessions', { params: { role: 'expert' } }).catch(() => ({ data: [] })),
+      ]);
+      const rows = [
+        ...(Array.isArray(mine.data) ? mine.data : []),
+        ...(Array.isArray(asExpert.data) ? asExpert.data : []),
+      ];
+      const byId = new Map<string, any>();
+      rows.forEach((row) => { if (row?.id) byId.set(row.id, row); });
+      setExpertMeetings(Array.from(byId.values()));
+    } catch (err) {
+      console.error('Error fetching expert meetings:', err);
+      setExpertMeetings([]);
+    }
+  };
+
   useFocusEffect(useCallback(() => {
     fetchSessions();
+    fetchExpertMeetings();
     api.get('/collaboration/auth-config')
       .then(r => setAdvancedAuthEnabled(!!r.data?.advanced_methods_enabled))
       .catch(() => {});
   }, []));
 
-  const onRefresh = async () => { setRefreshing(true); await fetchSessions(); setRefreshing(false); };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchSessions(), fetchExpertMeetings()]);
+    setRefreshing(false);
+  };
+
+  const openExpertRoom = (url: string) => {
+    if (!url) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    Linking.openURL(url).catch(() => {});
+  };
 
   const startCreate = async () => {
     setShowCreate(true);
@@ -618,6 +660,11 @@ export default function CollaborateScreen() {
     );
   };
 
+  const hubItems = [
+    ...sessions.map((s) => ({ kind: 'group' as const, at: String(s.created_at || ''), data: s })),
+    ...expertMeetings.map((m) => ({ kind: 'expert' as const, at: String(m.scheduled_at || m.created_at || ''), data: m })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={['#7C3AED', '#A855F7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
@@ -626,7 +673,7 @@ export default function CollaborateScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Group Decisions</Text>
-          <Text style={styles.headerSub}>Multi-user collaboration sessions</Text>
+          <Text style={styles.headerSub}>Group sessions and expert meetings</Text>
         </View>
         <TouchableOpacity style={styles.createHdrBtn} onPress={startCreate}>
           <Ionicons name="add" size={22} color="#7C3AED" />
@@ -640,7 +687,7 @@ export default function CollaborateScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           showsVerticalScrollIndicator={false}>
           
-          {sessions.length === 0 ? (
+          {hubItems.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="git-network-outline" size={48} color="#D1D5DB" />
               <Text style={styles.emptyTitle}>No Collaboration Sessions</Text>
@@ -651,7 +698,57 @@ export default function CollaborateScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            sessions.map((s: any) => {
+            hubItems.map((item) => {
+              if (item.kind === 'expert') {
+                const m = item.data;
+                const status = EXPERT_STATUS[m.status] || EXPERT_STATUS.ended;
+                const title = m.share_context?.decision_title || 'Expert meeting';
+                const when = m.is_scheduled ? m.scheduled_at : m.created_at;
+                const canJoin = !!m.room_url && (m.status === 'active' || m.status === 'scheduled');
+                return (
+                  <TouchableOpacity key={`expert-${m.id}`} style={styles.sessionCard} activeOpacity={0.7}
+                    onPress={() => { if (m.decision_id) router.push(`/prr/${m.decision_id}` as any); }}>
+                    <View style={styles.sessionHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.sessionTitle} numberOfLines={1}>{title}</Text>
+                        <Text style={styles.sessionMeta}>
+                          My Dezider • {m.expert_name || 'Expert'}{m.step_name ? ` • ${m.step_name}` : ''}
+                        </Text>
+                      </View>
+                      <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+                        <Text style={[styles.statusText, { color: status.text }]}>{status.label}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.participantBar}>
+                      <Ionicons name="videocam" size={14} color={COLORS.textMuted} />
+                      <Text style={styles.participantText}>Expert meeting</Text>
+                      <View style={[styles.modeBadge, { backgroundColor: '#F5F3FF' }]}>
+                        <Ionicons name="person" size={10} color="#7C3AED" />
+                        <Text style={[styles.modeBadgeText, { color: '#7C3AED' }]}>Expert</Text>
+                      </View>
+                      <View style={{ flex: 1 }} />
+                      <Text style={styles.sessionDate}>{formatAbsolute(when)}</Text>
+                    </View>
+                    {canJoin && (
+                      <TouchableOpacity style={styles.joinCallBtn} onPress={(e: any) => { e?.stopPropagation?.(); openExpertRoom(m.room_url); }}>
+                        <View style={styles.joinCallIcon}>
+                          <Ionicons name="videocam" size={16} color="#FFF" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.joinCallTitle}>
+                            {m.status === 'scheduled' ? 'Join appointment' : 'Join Video Call'}
+                          </Text>
+                          <Text style={styles.joinCallSub}>
+                            {m.duration_minutes ? `${m.duration_minutes} min • ` : ''}Opens the meeting link
+                          </Text>
+                        </View>
+                        <Ionicons name="arrow-forward" size={16} color="#059669" />
+                      </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                );
+              }
+              const s = item.data;
               const status = STATUS_COLORS[s.status] || STATUS_COLORS.active;
               const contributed = (s.participants || []).filter((p: any) => p.status === 'contributed').length;
               return (
