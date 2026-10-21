@@ -156,7 +156,7 @@ export default function ProsConsWizard() {
         }
       }
       setAnalysis(r.data);
-      setStep(r.data?.current_step || 1);
+      setStep(contributionMode ? (contribStepNum || 1) : (r.data?.current_step || 1));
 
       // ── Partner-embed pre-seed (pros_cons) ──────────────────────────────
       // Carried-over comparison options from /embed were stashed in
@@ -211,6 +211,7 @@ export default function ProsConsWizard() {
   }, [contributionMode, analysis, contribStepNum]);
 
   const persistStep = async (n: number) => {
+    if (contributionMode && n !== contribStepNum) return;
     setStep(n);
     if (id && !analysis?.is_sample) { try { await api.post(`${base}/${id}/step`, { step: n }); } catch { /* non-fatal */ } }
   };
@@ -873,7 +874,7 @@ export default function ProsConsWizard() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#EEF2FF' }}>
           <Ionicons name="people-circle-outline" size={18} color="#4338CA" />
           <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: '#3730A3' }}>
-            Contribution Mode — add your input to Step {contribStepNum}. {stepAccess === 'readonly' ? 'Other steps are reference-only.' : 'Only this step is shown.'}
+            Contribution Mode — {stepAccess === 'readonly' ? 'view only' : 'edit'} Step {contribStepNum}. Other steps stay closed.
           </Text>
           <TouchableOpacity
             onPress={submitContribution}
@@ -891,9 +892,9 @@ export default function ProsConsWizard() {
       {/* Step strip */}
       <View style={styles.stepStrip}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
-          {(contributionMode && stepAccess === 'hidden' ? STEPS.filter(s => s.n === contribStepNum) : STEPS).map(s => (
+          {(contributionMode ? STEPS.filter(s => s.n === contribStepNum) : STEPS).map(s => (
             <TouchableOpacity key={s.n} style={[styles.stepChip, step === s.n && styles.stepChipActive]}
-              onPress={() => { if (!(contributionMode && stepAccess === 'hidden')) persistStep(s.n); }}>
+              onPress={() => { if (!contributionMode) persistStep(s.n); }}>
               <Text style={[styles.stepChipNum, step === s.n && { color: '#fff' }]}>{s.n}</Text>
               <Text style={[styles.stepChipLabel, step === s.n && { color: '#fff' }]}>{s.label}</Text>
             </TouchableOpacity>
@@ -918,9 +919,13 @@ export default function ProsConsWizard() {
               opacity: 0.96,
               pointerEvents: 'none',
               userSelect: 'none',
-            } as any)
+            } as any),
+            contributionMode && stepAccess === 'readonly' && ({
+              pointerEvents: 'none',
+              userSelect: 'none',
+            } as any),
           ]}
-          pointerEvents={analysis?.is_sample ? 'none' : 'auto'}
+          pointerEvents={(analysis?.is_sample || (contributionMode && stepAccess === 'readonly')) ? 'none' : 'auto'}
         >
 
           {/* Collab affordance — share this step or schedule discussion. */}
@@ -929,7 +934,7 @@ export default function ProsConsWizard() {
               module={module === 'swot' ? 'swot' : 'pros-cons'}
               decisionId={id}
               stepId={`s${step}`}
-              stepLabel={`${module === 'swot' ? 'SWOT' : 'P&C'} Step ${step}`}
+              stepLabel={`Step ${step}: ${STEPS.find(s => s.n === step)?.label || (module === 'swot' ? 'SWOT' : 'Pros & Cons')}`}
               decisionTitle={analysis.title || 'Pros & Cons analysis'}
               useShareStep
               stepNumber={step}

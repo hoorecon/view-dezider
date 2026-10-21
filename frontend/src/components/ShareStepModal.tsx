@@ -103,6 +103,10 @@ export default function ShareStepModal({
   const [liveInviteFor, setLiveInviteFor] = useState<string | null>(null);
   const [liveEmails, setLiveEmails] = useState('');
   const router = useRouter();
+  const isSolutionFinder = (shareModule || '') === 'solution-finder';
+  const useGivenStepName = ['pros-cons', 'swot', 'solution-finder'].includes(shareModule || '');
+  const shownStep = isSolutionFinder ? stepNumber + 1 : stepNumber;
+  const shownName = useGivenStepName ? stepName : (STEP_NAMES[stepNumber] || stepName);
 
   const askPublic = async () => {
     try {
@@ -299,8 +303,8 @@ export default function ShareStepModal({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.headerTitle}>Share Step {stepNumber}</Text>
-              <Text style={styles.headerSubtitle}>{STEP_NAMES[stepNumber] || stepName}</Text>
+              <Text style={styles.headerTitle}>Share Step {shownStep}</Text>
+              <Text style={styles.headerSubtitle}>{shownName}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={22} color={COLORS.textSecondary} />
@@ -621,15 +625,17 @@ export default function ShareStepModal({
                   />
                 </View>
 
-                {/* Other-steps access for the contributor's flow */}
                 <View style={{ paddingVertical: 8 }}>
-                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 }}>
-                    Contributor's view of other steps
+                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 }}>
+                    This person can only open this step
+                  </Text>
+                  <Text style={{ fontSize: 11.5, color: COLORS.textSecondary, marginBottom: 8, lineHeight: 16 }}>
+                    Other steps stay closed. Choose whether they can change this step.
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     {([
-                      { id: 'readonly', label: 'Read-only', icon: 'eye-outline', desc: 'View others for context' },
-                      { id: 'edit', label: 'Edit', icon: 'create-outline', desc: 'Can edit other steps' },
+                      { id: 'readonly', label: 'View only', icon: 'eye-outline', desc: 'See this step, cannot change it' },
+                      { id: 'edit', label: 'Edit', icon: 'create-outline', desc: 'Change this step only' },
                     ] as const).map((opt) => (
                       <TouchableOpacity
                         key={opt.id}
@@ -698,7 +704,7 @@ export default function ShareStepModal({
                   ) : (
                     <>
                       <Ionicons name="share-outline" size={18} color="#FFF" />
-                      <Text style={styles.shareBtnText}>Share Step {stepNumber}</Text>
+                      <Text style={styles.shareBtnText}>Share Step {shownStep}</Text>
                     </>
                   )}
                 </TouchableOpacity>

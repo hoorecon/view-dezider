@@ -1247,7 +1247,7 @@ export default function SimpleSolutionFinder() {
     <View style={s.stepIndicator}>
       {STEPS.map((st, i) => {
         const isCurrent = i === step;
-        const isReachable = i <= reachableMax;      // unlocked → tappable (fwd + back)
+        const isReachable = contributionMode ? i === contribStepNum : i <= reachableMax;
         return (
           <View key={st.title} style={s.stepDotWrap}>
             <WebTitle title={`${i + 1}. ${STEPS[i].title} — ${STEPS[i].desc}`}>
@@ -2030,7 +2030,7 @@ export default function SimpleSolutionFinder() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#EEF2FF' }}>
           <Ionicons name="people-circle-outline" size={18} color="#4338CA" />
           <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: '#3730A3' }}>
-            Contribution Mode — add your input to Step {contribStepNum + 1}.
+            Contribution Mode — {stepAccess === 'readonly' ? 'view only' : 'edit'} Step {contribStepNum + 1}: {STEPS[contribStepNum]?.title || 'this step'}. Other steps stay closed.
           </Text>
           <TouchableOpacity
             onPress={submitContribution}
@@ -2057,7 +2057,7 @@ export default function SimpleSolutionFinder() {
             module="solution-finder"
             decisionId={(savedId || editId) as string}
             stepId={`s${step}`}
-            stepLabel={`${STEPS[step]?.title || 'Step'} (Solution Finder)`}
+            stepLabel={`Step ${step + 1}: ${STEPS[step]?.title || 'Solution Finder'}`}
             decisionTitle={smartGoal || 'Solution Finder'}
             useShareStep
             stepNumber={step}
@@ -2073,9 +2073,13 @@ export default function SimpleSolutionFinder() {
             opacity: 0.96,
             pointerEvents: 'none',
             userSelect: 'none',
-          } as any)
+          } as any),
+          contributionMode && stepAccess === 'readonly' && ({
+            pointerEvents: 'none',
+            userSelect: 'none',
+          } as any),
         ]}
-        pointerEvents={isSample ? 'none' : 'auto'}
+        pointerEvents={(isSample || (contributionMode && stepAccess === 'readonly')) ? 'none' : 'auto'}
       >
         {step === 0 && renderStep0()}
         {step === 1 && renderStep1()}
@@ -2085,6 +2089,12 @@ export default function SimpleSolutionFinder() {
         {step === 5 && renderStep5()}
       </KeyboardAvoidingView>
       <View style={s.footer}>
+        {contributionMode ? (
+          <Text style={{ flex: 1, fontSize: 12, color: '#64748B', paddingHorizontal: 8 }}>
+            {stepAccess === 'readonly' ? 'View only. This step cannot be changed.' : 'You can edit this step only.'}
+          </Text>
+        ) : (
+        <>
         <TouchableOpacity style={s.backBtn} onPress={onBack} disabled={step === 0}>
           <Ionicons name="arrow-back" size={16} color={step === 0 ? '#CBD5E1' : '#475569'} />
           <Text style={[s.backBtnText, step === 0 && { color: '#CBD5E1' }]}>Back</Text>
@@ -2146,6 +2156,8 @@ export default function SimpleSolutionFinder() {
             <Ionicons name="checkmark" size={16} color="#FFF" />
             <Text style={s.nextBtnText}>Save & Close</Text>
           </TouchableOpacity>
+        )}
+        </>
         )}
       </View>
 
