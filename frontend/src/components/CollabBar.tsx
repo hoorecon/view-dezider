@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StepShareModal } from './StepShareModal';
 import ShareStepModal from './ShareStepModal';
 import { AppointmentSchedulerModal } from './AppointmentSchedulerModal';
+import ExpertCallModal from './ExpertCallModal';
 import { useFeatureGate } from '../utils/useFeatureGate';
 
 interface CollabBarProps {
@@ -43,6 +44,8 @@ export const CollabBar: React.FC<CollabBarProps> = ({
   // Combine caller's prop with the central ACM toggle (Collaboration module).
   const showShareBtn = !hideShare && isOn('collab_share');
   const showCallBtn = !hideCall && isOn('collab_expert_call');
+  const useExpertPicker = module === 'pros-cons' || module === 'solution-finder';
+  const expertStepNumber = module === 'solution-finder' ? (stepNumber ?? 0) + 1 : (stepNumber ?? 1);
   const openShareStep = (sent: boolean) => { setShareStepSent(sent); setShowShareStep(true); };
   return (
     <>
@@ -68,7 +71,7 @@ export const CollabBar: React.FC<CollabBarProps> = ({
         {showCallBtn && (
           <TouchableOpacity testID="collab-call-btn" style={[s.btn, { borderColor: '#10B981' }]} onPress={() => setShowCall(true)}>
             <Ionicons name="videocam" size={14} color="#10B981" />
-            <Text style={[s.btnText, { color: '#10B981' }]}>Schedule call</Text>
+            <Text style={[s.btnText, { color: '#10B981' }]}>{useExpertPicker ? 'Call an Expert' : 'Schedule call'}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -91,11 +94,23 @@ export const CollabBar: React.FC<CollabBarProps> = ({
           onShareSuccess={() => {}}
         />
       )}
-      <AppointmentSchedulerModal
-        visible={showCall} onClose={() => setShowCall(false)}
-        module={module} decisionId={decisionId} stepId={stepId}
-        defaultTitle={`${decisionTitle || stepLabel} — discussion`}
-      />
+      {useExpertPicker ? (
+        <ExpertCallModal
+          visible={showCall}
+          onClose={() => setShowCall(false)}
+          decisionId={decisionId}
+          decisionTitle={decisionTitle || stepLabel}
+          stepNumber={expertStepNumber}
+          stepName={stepLabel}
+          sourceModule={module === 'solution-finder' ? 'solution_finder' : 'pros_cons'}
+        />
+      ) : (
+        <AppointmentSchedulerModal
+          visible={showCall} onClose={() => setShowCall(false)}
+          module={module} decisionId={decisionId} stepId={stepId}
+          defaultTitle={`${decisionTitle || stepLabel} — discussion`}
+        />
+      )}
     </>
   );
 };

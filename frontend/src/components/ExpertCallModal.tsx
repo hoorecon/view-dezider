@@ -72,6 +72,7 @@ interface ExpertCallModalProps {
   decisionTitle: string;
   stepNumber: number;
   stepName: string;
+  sourceModule?: 'decision' | 'pros_cons' | 'solution_finder';
 }
 
 export default function ExpertCallModal({
@@ -81,6 +82,7 @@ export default function ExpertCallModal({
   decisionTitle,
   stepNumber,
   stepName,
+  sourceModule = 'decision',
 }: ExpertCallModalProps) {
   const [experts, setExperts] = useState<Expert[]>([]);
   const [expertsLoading, setExpertsLoading] = useState(false);
@@ -236,6 +238,7 @@ export default function ExpertCallModal({
         step_name: stepName,
         duration_minutes: dur,
         decision_title: decisionTitle,
+        source_module: sourceModule,
         ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
       });
       const data = resp.data;

@@ -662,6 +662,10 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
         except Exception:
             pass
 
+    source_module = body.get("source_module") or "decision"
+    if source_module not in {"decision", "pros_cons", "solution_finder"}:
+        source_module = "decision"
+
     session_doc = {
         "id": str(uuid.uuid4()), "room_id": room_id, "room_url": room_url,
         "provider": provider, "created_by": user["user_id"],
@@ -672,6 +676,7 @@ async def create_call_session(request: Request, user: dict = Depends(get_current
         "expert_email": expert_email,
         "expert_phone": expert_phone,
         "decision_id": decision_id,
+        "source_module": source_module,
         "step_number": step_number,
         "step_name": step_name,
         "duration_minutes": duration_minutes,

@@ -705,14 +705,23 @@ export default function CollaborateScreen() {
                 const title = m.share_context?.decision_title || 'Expert meeting';
                 const when = m.is_scheduled ? m.scheduled_at : m.created_at;
                 const canJoin = !!m.room_url && (m.status === 'active' || m.status === 'scheduled');
+                const source = m.source_module === 'pros_cons' ? 'Pros & Cons'
+                  : m.source_module === 'solution_finder' ? 'Solution Finder'
+                  : 'My Dezider';
+                const openSource = () => {
+                  if (!m.decision_id) return;
+                  if (m.source_module === 'pros_cons') router.push(`/tools/pros-cons-wizard?id=${m.decision_id}` as any);
+                  else if (m.source_module === 'solution_finder') router.push(`/tools/solution-finder?id=${m.decision_id}` as any);
+                  else router.push(`/prr/${m.decision_id}` as any);
+                };
                 return (
                   <TouchableOpacity key={`expert-${m.id}`} style={styles.sessionCard} activeOpacity={0.7}
-                    onPress={() => { if (m.decision_id) router.push(`/prr/${m.decision_id}` as any); }}>
+                    onPress={openSource}>
                     <View style={styles.sessionHeader}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.sessionTitle} numberOfLines={1}>{title}</Text>
                         <Text style={styles.sessionMeta}>
-                          My Dezider • {m.expert_name || 'Expert'}{m.step_name ? ` • ${m.step_name}` : ''}
+                          {source} • {m.expert_name || 'Expert'}{m.step_name ? ` • ${m.step_name}` : ''}
                         </Text>
                       </View>
                       <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
