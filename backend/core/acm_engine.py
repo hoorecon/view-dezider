@@ -300,8 +300,25 @@ def get_user_acm_profile(user: dict) -> dict:
     user_type = user.get("user_type", "free")
     subscription_plan = user.get("subscription_plan", "none")
 
-    # If resolver has already stamped an effective key, trust it.
+    try:
+        from core.user_type_resolver import _is_trial_active
+        active_trial = _is_trial_active(user)
+    except Exception:
+        active_trial = None
+    if active_trial:
+        return {
+            "user_type": active_trial,
+            "subscription_plan": subscription_plan,
+            "access_key": active_trial,
+        }
+
+    # If resolver has already stamped an effective key, trust it — unless it is
+    # a trial key whose date has passed.
     eff = user.get("effective_access_key")
+    if eff in {"basic_trial", "starter_trial", "pro_trial", "premium_trial"}:
+        eff = None
+    if user_type in {"basic_trial", "starter_trial", "pro_trial", "premium_trial"}:
+        user_type = "paid" if subscription_plan not in ("", "none", "free", None) else "free"
     if eff:
         return {
             "user_type": user_type,
@@ -380,9 +397,15 @@ MODULE_LIMIT_GOVERNED_MAP = {
 async def _eval_module_limit_quota(user: dict, feature_id: str, feature_name: str, quota_unit: str) -> dict:
     """Evaluate quota for features governed by Module Free-Use Limits."""
     try:
-        from routes.module_limits import _resolve_tier, _get_limit, _get_usage, _get_combined_l2_usage
+        from routes.module_limits import (
+            _resolve_tier, _get_limit, _get_usage, _get_combined_l2_usage,
+            _active_trial_type, TRIAL_COUNT_MODULES,
+        )
         tier = await _resolve_tier(user)
         module_key = MODULE_LIMIT_GOVERNED_MAP[feature_id]
+        trial_tier = await _active_trial_type(user)
+        if trial_tier and module_key in TRIAL_COUNT_MODULES:
+            tier = trial_tier
         limit = await _get_limit(tier, module_key)
         uid = str(user.get("user_id") or "")
 

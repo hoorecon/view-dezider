@@ -149,17 +149,19 @@ async def resolve_user_type(user: Dict[str, Any]) -> Tuple[str, str, str, str]:
 
     user_id = user.get("user_id") or user.get("id") or ""
 
-    # 2a. Active Razorpay subscription
+    # An active trial is the access key for every feature that is not one of
+    # the three counted modules. The paid plan, when there is one, stays in
+    # `plan` so the subscription itself is not replaced.
+    trial_type = _is_trial_active(user)
     rzp_plan = await _razorpay_active_plan(user_id) if user_id else None
+    if trial_type:
+        return (trial_type, rzp_plan or "none", trial_type,
+                f"trial {trial_type} active until {user.get('trial_expires_at')}")
+
+    # 2a. Active Razorpay subscription
     if rzp_plan:
         return ("paid", rzp_plan, f"paid_{rzp_plan}",
                 f"razorpay_sub.active → user_type=paid plan={rzp_plan}")
-
-    # 2b. Active trial
-    trial_type = _is_trial_active(user)
-    if trial_type:
-        return (trial_type, "none", trial_type,
-                f"trial active until {user.get('trial_expires_at')}")
 
     # 2c. On-demand buyer status
     if user_id:

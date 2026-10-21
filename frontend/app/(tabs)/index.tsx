@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Image,
   Platform,
+  Switch,
   useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -20,6 +21,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import api from '../../src/utils/api';
+import { showAlert } from '../../src/utils/alert';
 import { FontScaleButton } from '../../src/components/FontScaleButton';
 import { useCompany } from '../../src/contexts/FontFamilyContext';
 import { useDashboardTiles } from '../../src/utils/useDashboardTiles';
@@ -104,6 +106,8 @@ export default function HomeScreen() {
   const [quotaSkus, setQuotaSkus] = useState<any[]>([]);
   const [quotaEnts, setQuotaEnts] = useState<Record<string, { granted: number; consumed: number; balance: number }>>({});
   const [quotaOpen, setQuotaOpen] = useState(false);
+  const [planName, setPlanName] = useState('Free');
+  const [trialOffer, setTrialOffer] = useState<any>(null);
 
   // WOWO Dashboard Tile gating — single hook gates every tile on this
   // screen via the ACM `dashboard_tiles` module. Admin toggles in
@@ -432,6 +436,49 @@ export default function HomeScreen() {
     }
   };
 
+  const fetchPlanAndTrial = async () => {
+    try {
+      const [me, offer] = await Promise.all([
+        api.get('/subscriptions/me').catch(() => ({ data: null })),
+        api.get('/subscriptions/trial-offer').catch(() => ({ data: null })),
+      ]);
+      const planDoc = me.data?.plan;
+      const raw = [planDoc?.tier, planDoc?.name, me.data?.current_plan, offer.data?.plan_tier]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const label = raw.includes('premium') || raw.includes('enterprise') ? 'Premium'
+        : raw.includes('basic') || raw.includes('starter') ? 'Basic'
+        : /(^|[^a-z])pro([^a-z]|$)/.test(raw) ? 'Pro'
+        : raw.startsWith('on_demand') || raw.includes('on-demand') || raw.includes('on demand') ? 'On-demand'
+        : 'Free';
+      setPlanName(label);
+      setTrialOffer(offer.data);
+    } catch {
+      setPlanName('Free');
+    }
+  };
+
+  const startHomeTrial = async () => {
+    try {
+      const res = await api.post('/subscriptions/start-trial', {});
+      setTrialOffer(res.data);
+      await fetchPlanAndTrial();
+    } catch (err: any) {
+      showAlert('Trial', err?.response?.data?.detail || 'Could not start the trial.');
+    }
+  };
+
+  const stopHomeTrial = async () => {
+    try {
+      const res = await api.post('/subscriptions/stop-trial', {});
+      setTrialOffer(res.data);
+      await fetchPlanAndTrial();
+    } catch (err: any) {
+      showAlert('Trial', err?.response?.data?.detail || 'Could not turn the trial off.');
+    }
+  };
+
   const fetchQuota = async () => {
     try {
       const [s, e] = await Promise.all([
@@ -480,7 +527,7 @@ export default function HomeScreen() {
   };
 
   const fetchAll = async () => {
-    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats(), fetchJournalReminders(), fetchQuota(), fetchLayout()]);
+    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats(), fetchJournalReminders(), fetchQuota(), fetchLayout(), fetchPlanAndTrial()]);
   };
 
   useFocusEffect(
@@ -612,6 +659,52 @@ export default function HomeScreen() {
             </View>
           ) : (
           <>
+          {trialOffer?.eligible ? (
+          <LinearGradient
+            colors={GRADIENTS.primary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.planTrialCard, isNarrow && styles.planTrialCardNarrow]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.planTrialKicker}>Current plan</Text>
+              <Text style={styles.planTrialName}>{planName}</Text>
+              <View style={styles.planTrialChips}>
+                  <View style={styles.planTrialChip}>
+                    <Text style={styles.planTrialChipText}>{trialOffer.name}</Text>
+                  </View>
+                  <View style={styles.planTrialChip}>
+                    <Text style={styles.planTrialChipText}>
+                      {trialOffer.active
+                        ? `${trialOffer.remaining_days ?? 0} days left`
+                        : `${Number(trialOffer.expire_days) > 0 ? trialOffer.expire_days : 0} days`}
+                    </Text>
+                  </View>
+                  {[
+                    ['My Dezider', trialOffer.limits?.my_dezider],
+                    ['Pros & Cons', trialOffer.limits?.pros_cons],
+                    ['Solution Finder', trialOffer.limits?.solution_finder],
+                  ].map(([label, row]) => (
+                    <View key={String(label)} style={styles.planTrialChip}>
+                      <Text style={styles.planTrialChipText}>
+                        {label} {row && Number(row.limit) >= 0 ? `${Math.max(0, Number(row.remaining ?? 0))} left` : 'Unlimited'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+            </View>
+            <View style={styles.planTrialSwitch}>
+              <Text style={styles.planTrialSwitchLabel}>{trialOffer.active ? 'On' : 'Off'}</Text>
+              <Switch
+                value={!!trialOffer.active}
+                onValueChange={(on) => { if (on) startHomeTrial(); else stopHomeTrial(); }}
+                trackColor={{ false: 'rgba(255,255,255,0.35)', true: '#FFFFFF' }}
+                thumbColor={trialOffer.active ? '#8E24AA' : '#F3E8FF'}
+                accessibilityLabel={trialOffer.active ? 'Turn trial off' : 'Turn trial on'}
+              />
+            </View>
+          </LinearGradient>
+          ) : null}
           {/* ════════ Report Quota Summary (glanceable for everyone) ════════ */}
           {isTileOn('report_quota') && (
           <View style={styles.quotaCard}>
@@ -1534,6 +1627,46 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.primary,
   },
+
+  planTrialCard: {
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    overflow: 'hidden',
+    ...cardShadow,
+  },
+  planTrialCardNarrow: { flexDirection: 'column', alignItems: 'flex-start' },
+  planTrialKicker: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  planTrialName: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: DISPLAY_FONT,
+    letterSpacing: -0.4,
+    marginTop: 2,
+  },
+  planTrialSub: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 8, fontStyle: 'italic' },
+  planTrialChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  planTrialChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.32)',
+  },
+  planTrialChipText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' },
+  planTrialSwitch: { alignItems: 'center', gap: 4 },
+  planTrialSwitchLabel: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', fontFamily: DISPLAY_FONT },
 
   // Report Quota card
   quotaCard: {

@@ -43,6 +43,7 @@ export default function SubscriptionPlansScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
+  const [trial, setTrial] = useState<any>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // Auto-renew (Razorpay recurring) is gated centrally via ACM › Credits &
@@ -54,12 +55,14 @@ export default function SubscriptionPlansScreen() {
       // Self-heal: pull any captured Razorpay payments the webhook may have
       // missed BEFORE we render the current plan. Silent — never blocks UI.
       try { await api.post('/subscriptions/reconcile', {}); } catch { /* silent */ }
-      const [pRes, mRes] = await Promise.all([
+      const [pRes, mRes, tRes] = await Promise.all([
         api.get('/subscriptions/plans'),
         api.get('/subscriptions/me'),
+        api.get('/subscriptions/trial-offer').catch(() => ({ data: null })),
       ]);
       setPlans(pRes.data?.plans || []);
       setMe(mRes.data);
+      setTrial(tRes.data);
     } catch { /* silent */ } finally {
       setLoading(false);
       setRefreshing(false);
@@ -67,6 +70,34 @@ export default function SubscriptionPlansScreen() {
   };
 
   useFocusEffect(useCallback(() => { fetchData(); }, []));
+
+  const startTrial = async () => {
+    setBusyId('trial');
+    try {
+      const res = await api.post('/subscriptions/start-trial', {});
+      setTrial(res.data);
+      showAlert(res.data?.already_active ? 'Trial already running' : 'Trial started',
+        `${res.data?.name || 'Trial'} is active. My Dezider, Pros & Cons, and Solution Finder use this trial's limits.`);
+      await fetchData();
+    } catch (err: any) {
+      showAlert('Trial', err?.response?.data?.detail || 'Could not start the trial.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const stopTrial = async () => {
+    setBusyId('trial');
+    try {
+      const res = await api.post('/subscriptions/stop-trial', {});
+      setTrial(res.data);
+      await fetchData();
+    } catch (err: any) {
+      showAlert('Trial', err?.response?.data?.detail || 'Could not turn the trial off.');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const openCheckout = async (data: any) => {
     const token = (await AsyncStorage.getItem('session_token')) || '';
@@ -167,6 +198,42 @@ export default function SubscriptionPlansScreen() {
               )}
             </View>
 
+            {trial?.eligible && (
+              <View style={styles.trialCard}>
+                <Text style={styles.trialKicker}>Your trial</Text>
+                <Text style={styles.trialName}>{trial.name}</Text>
+                <Text style={styles.trialHint}>
+                  Only this trial is shown for your plan. My Dezider, Pros & Cons, and Solution Finder use the Module Free-Use Limits. Other features follow this trial in the access matrix.
+                </Text>
+                {[
+                  ['My Dezider', trial.limits?.my_dezider],
+                  ['Pros & Cons', trial.limits?.pros_cons],
+                  ['Solution Finder', trial.limits?.solution_finder],
+                ].map(([label, row]) => (
+                  <View key={String(label)} style={styles.featureRow}>
+                    <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                    <Text style={styles.featureText}>
+                      {label}: {row && Number(row.limit) >= 0 ? `${Math.max(0, Number(row.remaining ?? 0))} left` : 'Unlimited'}
+                    </Text>
+                  </View>
+                ))}
+                <Text style={styles.trialDays}>
+                  {trial.active
+                    ? `${trial.remaining_days ?? 0} days left`
+                    : (Number(trial.expire_days) > 0 ? `${trial.expire_days} days when you turn it on` : 'No expiry day is set on this trial')}
+                </Text>
+                {trial.active ? (
+                  <TouchableOpacity style={[styles.subBtn, { backgroundColor: '#6D28D9' }]} onPress={stopTrial} disabled={busyId !== null}>
+                    {busyId === 'trial' ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.subBtnText}>Turn trial off</Text>}
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={[styles.subBtn, { backgroundColor: '#5E35B1' }]} onPress={startTrial} disabled={busyId !== null}>
+                    {busyId === 'trial' ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.subBtnText}>Start {trial.name}</Text>}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             <Text style={styles.sectionTitle}>Monthly plans</Text>
             <Text style={styles.sectionHint}>{autoRenewEnabled ? 'Auto-renews each month. You can cancel anytime.' : 'One-time payment for 1 month — no auto-renew, no surprises.'}</Text>
 
@@ -248,8 +315,17 @@ const styles = StyleSheet.create({
 
   statusCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface,
-    borderRadius: 12, padding: 14, borderLeftWidth: 4, borderWidth: 1, borderColor: COLORS.border, marginBottom: 18,
+    borderRadius: 12, padding: 14, marginBottom: 16, borderLeftWidth: 4,
+    borderWidth: 1, borderColor: COLORS.border,
   },
+  trialCard: {
+    backgroundColor: '#F5F3FF', borderRadius: 16, padding: 16, marginBottom: 18,
+    borderWidth: 1, borderColor: '#DDD6FE',
+  },
+  trialKicker: { fontSize: 11, fontWeight: '700', color: '#6D28D9', letterSpacing: 0.4, textTransform: 'uppercase' },
+  trialName: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, marginTop: 4, marginBottom: 6 },
+  trialHint: { fontSize: 12.5, color: COLORS.textSecondary, lineHeight: 18, marginBottom: 10 },
+  trialDays: { fontSize: 12.5, fontWeight: '700', color: '#5B21B6', marginTop: 8, marginBottom: 12 },
   statusLabel: { fontSize: 12, color: COLORS.textMuted },
   statusValue: { fontSize: 16, fontWeight: '800', marginTop: 2 },
   statusSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },

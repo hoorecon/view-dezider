@@ -562,8 +562,8 @@ export default function ProfileScreen() {
               <Ionicons name="ribbon" size={20} color={COLORS.white} />
             </View>
             <View style={{ flexShrink: 1 }}>
-              <Text style={styles.aiCreditsLabel}>Subscription</Text>
-              <Text style={styles.aiCreditsSub}>Monthly plans &amp; auto-renew</Text>
+              <Text style={styles.aiCreditsLabel}>Current plan</Text>
+              <Text style={styles.aiCreditsSub}>Your plan and the one trial you can start</Text>
             </View>
           </View>
           <View style={styles.aiCreditsRight}>

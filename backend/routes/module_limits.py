@@ -211,6 +211,191 @@ async def _resolve_tier(user: dict) -> str:
     return (user.get("tier") or user.get("plan_tier") or "free").lower()
 
 
+TRIAL_COUNT_MODULES = {"my_dezider", "dezider", "pros_cons", "solution_finder"}
+_TRIAL_FOR_PLAN = {
+    "free": "basic_trial",
+    "guest": "basic_trial",
+    "none": "basic_trial",
+    "trial": "basic_trial",
+    "on_demand_l1": "basic_trial",
+    "on_demand_l2": "basic_trial",
+    "on_demand_l3": "basic_trial",
+    "on_demand_l4": "basic_trial",
+    "on_demand_retail_buyer": "basic_trial",
+    "on_demand_bulk_buyer": "basic_trial",
+    "basic": "pro_trial",
+    "starter": "pro_trial",
+    "paid_basic": "pro_trial",
+    "paid_starter": "pro_trial",
+    "pro": "premium_trial",
+    "paid_pro": "premium_trial",
+}
+TRIAL_LABELS = {
+    "basic_trial": "Basic trial",
+    "pro_trial": "Pro trial",
+    "premium_trial": "Premium trial",
+}
+
+
+def _canonical_plan(text: str) -> str:
+    """Map a plan tier or display name onto basic / pro / premium."""
+    t = (text or "").lower()
+    if "premium" in t or "enterprise" in t:
+        return "premium"
+    if t in {"pro", "paid_pro"} or " pro" in f" {t}" or t.startswith("pro ") or t.endswith(" pro") or "pro plan" in t:
+        return "pro"
+    if "basic" in t or "starter" in t:
+        return "basic"
+    return ""
+
+
+async def _paid_subscription_tier(uid: str) -> str:
+    """Tier of the subscription the plans page treats as current.
+
+    Uses the saved plan name and tier, not only the short wallet code, so a
+    plan titled Premium is not mistaken for Free.
+    """
+    if not uid:
+        return ""
+    w = await db.credit_wallets.find_one(
+        {"user_id": uid},
+        {"_id": 0, "current_plan": 1, "subscription_status": 1, "subscription_plan_id": 1, "subscription_end": 1},
+    )
+    if not w:
+        return ""
+    status = str(w.get("subscription_status") or "").lower()
+    if status not in {"active", "manual", "pending", "cancelled"}:
+        return ""
+    end = w.get("subscription_end")
+    if status == "cancelled" and end:
+        end_dt = end
+        if isinstance(end, str):
+            try:
+                end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            except Exception:
+                end_dt = None
+        if end_dt is not None:
+            if getattr(end_dt, "tzinfo", None) is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            if end_dt <= datetime.now(timezone.utc):
+                return ""
+    plan = None
+    plan_id = w.get("subscription_plan_id")
+    if plan_id:
+        plan = await db.subscription_plans.find_one(
+            {"plan_id": plan_id}, {"_id": 0, "tier": 1, "name": 1},
+        )
+    blob = " ".join([
+        str((plan or {}).get("tier") or ""),
+        str((plan or {}).get("name") or ""),
+        str(w.get("current_plan") or ""),
+    ])
+    return _canonical_plan(blob)
+
+
+def trial_offer_key(plan_tier: str) -> str:
+    """The single trial this plan may see. Empty string when none applies."""
+    return _TRIAL_FOR_PLAN.get(str(plan_tier or "").lower(), "")
+
+
+async def _active_trial_type(user: dict) -> str:
+    """Return basic_trial / pro_trial / premium_trial while that trial is in date."""
+    from core.user_type_resolver import _is_trial_active
+    uid = user.get("user_id") if isinstance(user, dict) else None
+    doc = user if isinstance(user, dict) else {}
+    if uid and not doc.get("trial_expires_at"):
+        stored = await db.users.find_one(
+            {"user_id": uid}, {"_id": 0, "trial_type": 1, "trial_expires_at": 1},
+        )
+        if stored:
+            doc = {**doc, **stored}
+    found = _is_trial_active(doc) or ""
+    if found == "starter_trial":
+        found = "basic_trial"
+    if found not in TRIAL_LABELS:
+        return ""
+    paid = await _paid_subscription_tier(uid) if uid else ""
+    allowed = trial_offer_key(paid) if paid else found
+    if paid and found != allowed:
+        return ""
+    return found
+
+
+async def underlying_plan_tier(user: dict) -> str:
+    """Plan used to choose the trial, ignoring an in-progress trial type."""
+    uid = user.get("user_id") if isinstance(user, dict) else None
+    paid = await _paid_subscription_tier(uid) if uid else ""
+    if paid:
+        return paid
+    tier = await _resolve_tier(user)
+    if tier in TRIAL_LABELS or tier == "starter_trial":
+        uid = user.get("user_id")
+        w = await db.credit_wallets.find_one(
+            {"user_id": uid}, {"_id": 0, "current_plan": 1, "subscription_status": 1},
+        ) if uid else None
+        if w:
+            cp = str(w.get("current_plan") or "").lower()
+            st = str(w.get("subscription_status") or "").lower()
+            if cp and cp not in {"free", "none"} and st in {"active", "manual", "pending"}:
+                return cp
+        return "free"
+    return tier
+
+
+async def build_trial_offer(user: dict) -> dict:
+    """One trial card for this user, with the live free-use counts."""
+    plan = await underlying_plan_tier(user)
+    offer = trial_offer_key(plan)
+    active = await _active_trial_type(user)
+    if not offer and not active:
+        return {"eligible": False, "plan_tier": plan}
+    shown = active or offer
+    await _ensure_seed()
+    limits = {}
+    for module in ("my_dezider", "pros_cons", "solution_finder", "expire_days"):
+        limits[module] = await _get_limit(shown, module)
+    usage = {}
+    uid = user.get("user_id")
+    for module in ("my_dezider", "pros_cons", "solution_finder"):
+        used = await _get_usage(uid, module) if uid else 0
+        cap = limits[module]
+        remaining = max(0, cap - used) if cap >= 0 else -1
+        usage[module] = {
+            "limit": cap,
+            "used": used,
+            "remaining": remaining,
+        }
+    doc = await db.users.find_one(
+        {"user_id": uid}, {"_id": 0, "trial_expires_at": 1},
+    ) if uid else None
+    expires = (doc or {}).get("trial_expires_at")
+    remaining_days = None
+    if active and expires:
+        if isinstance(expires, str):
+            try:
+                expires_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            except Exception:
+                expires_dt = None
+        else:
+            expires_dt = expires
+        if expires_dt is not None:
+            if expires_dt.tzinfo is None:
+                expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+            seconds = (expires_dt - datetime.now(timezone.utc)).total_seconds()
+            remaining_days = max(0, int((seconds + 86399) // 86400))
+    return {
+        "eligible": bool(offer) or bool(active),
+        "plan_tier": plan,
+        "trial_type": shown,
+        "name": TRIAL_LABELS.get(shown, shown),
+        "active": bool(active) and active == shown,
+        "expires_at": (doc or {}).get("trial_expires_at"),
+        "expire_days": limits["expire_days"],
+        "remaining_days": remaining_days,
+        "limits": usage,
+    }
+
+
 async def _get_limit(tier: str, module_key: str) -> int:
     """Return the free-use limit for (tier, module) from db.module_free_limits.
     -1 = unlimited. Admin settings in /admin/module-limits are strictly respected."""
@@ -332,13 +517,18 @@ async def check_and_reserve_usage(user: dict, module_key: str) -> None:
         if paid_res.get("has_access"):
             via = paid_res.get("via")
             bal = paid_res.get("balance", 0)
-            if via == "admin_skip" or bal > 0:
-                # Admin skip or active consumable SKU token balance available
+            trial_tier = await _active_trial_type(user)
+            counted = bool(trial_tier) and module_key in TRIAL_COUNT_MODULES
+            if via == "admin_skip" or (bal > 0 and not counted):
+                # Admin skip, or a consumable SKU while this module is not on a trial count.
                 return
     except Exception as e:
         log.warning(f"has_any_paid_access check in module_limits failed: {e}")
 
     tier = await _resolve_tier(user)
+    trial_tier = await _active_trial_type(user)
+    if trial_tier and module_key in TRIAL_COUNT_MODULES:
+        tier = trial_tier
     limit = await _get_limit(tier, module_key)
     if limit < 0:
         return  # unlimited

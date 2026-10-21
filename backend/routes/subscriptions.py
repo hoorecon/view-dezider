@@ -227,6 +227,100 @@ async def my_subscription(user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/subscriptions/trial-offer")
+async def trial_offer(user: dict = Depends(get_current_user)):
+    """The one trial this account may see. Counts come from Module Free-Use Limits."""
+    from routes.module_limits import build_trial_offer
+    offer = await build_trial_offer(user)
+    if offer.get("expires_at") and hasattr(offer["expires_at"], "isoformat"):
+        offer["expires_at"] = offer["expires_at"].isoformat()
+    return offer
+
+
+@router.post("/subscriptions/start-trial")
+async def start_trial(user: dict = Depends(get_current_user)):
+    """Start the single trial this plan is allowed to see.
+
+    Does not change the paid subscription or its credits. My Dezider, Pros & Cons,
+    and Solution Finder then count against that trial's free-use row. Other
+    features follow that trial in the access matrix until expire_days pass.
+    """
+    from routes.module_limits import build_trial_offer, TRIAL_LABELS
+    from core.user_type_resolver import resolve_user_type
+
+    offer = await build_trial_offer(user)
+    trial_type = offer.get("trial_type") or ""
+    if not offer.get("eligible") or trial_type not in TRIAL_LABELS:
+        raise HTTPException(status_code=400, detail="No trial is available on your current plan.")
+    if offer.get("active"):
+        return {"ok": True, "already_active": True, **offer}
+
+    days = int(offer.get("expire_days") or 0)
+    if days <= 0:
+        from routes.acm_v2 import DEFAULT_RESOLVER_CONFIG
+        cfg_row = await db.acm_meta.find_one({"key": "resolver_config"}, {"_id": 0}) or {}
+        cfg = {**DEFAULT_RESOLVER_CONFIG, **(cfg_row.get("config") or {})}
+        days = int((cfg.get("trial_days") or {}).get(trial_type) or 1)
+
+    now = _now()
+    expires = now + timedelta(days=days)
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "trial_type": trial_type,
+            "trial_started_at": now,
+            "trial_expires_at": expires,
+        }},
+    )
+    fresh = await db.users.find_one({"user_id": user["user_id"]})
+    user_type, plan, effective, reason = await resolve_user_type(fresh or user)
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "user_type": user_type,
+            "effective_access_key": effective,
+            "effective_user_type": user_type,
+            "effective_reason": reason,
+            "effective_resolved_at": now,
+            **({"subscription_plan": plan} if plan and plan != "none" else {}),
+        }},
+    )
+    offer = await build_trial_offer({**user, "user_id": user["user_id"]})
+    if offer.get("expires_at") and hasattr(offer["expires_at"], "isoformat"):
+        offer["expires_at"] = offer["expires_at"].isoformat()
+    return {"ok": True, "already_active": False, **offer}
+
+
+@router.post("/subscriptions/stop-trial")
+async def stop_trial(user: dict = Depends(get_current_user)):
+    """Turn the trial off. The paid plan and its credits stay as they are."""
+    from routes.module_limits import build_trial_offer
+    from core.user_type_resolver import resolve_user_type
+
+    now = _now()
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$unset": {"trial_type": "", "trial_started_at": "", "trial_expires_at": ""}},
+    )
+    fresh = await db.users.find_one({"user_id": user["user_id"]})
+    user_type, plan, effective, reason = await resolve_user_type(fresh or user)
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "user_type": user_type if user_type not in {"basic_trial", "starter_trial", "pro_trial", "premium_trial"} else "free",
+            "effective_access_key": effective if effective not in {"basic_trial", "starter_trial", "pro_trial", "premium_trial"} else "free",
+            "effective_user_type": user_type,
+            "effective_reason": reason,
+            "effective_resolved_at": now,
+            "subscription_plan": plan if plan and plan != "none" else "none",
+        }},
+    )
+    offer = await build_trial_offer({"user_id": user["user_id"]})
+    if offer.get("expires_at") and hasattr(offer["expires_at"], "isoformat"):
+        offer["expires_at"] = offer["expires_at"].isoformat()
+    return {"ok": True, **offer}
+
+
 # ───────────────────── Razorpay self-heal / reconciliation ─────────────────────
 async def _reconcile_user_from_razorpay(user_id: str, rzp_client) -> Dict[str, Any]:
     """Pull the user's local subscription rows, fetch their INVOICES from
